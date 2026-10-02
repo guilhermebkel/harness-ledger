@@ -511,6 +511,28 @@ export class ClaudeCodeFixtureUtil {
       .write(ClaudeCodeFixtureUtil.sessionPath(fixture, sessionId));
   }
 
+  /**
+   * A session that ships a change by hand (content is synthetic): a look around, then the same five work
+   * commands every time; it auto-compacts near the context limit; and a model leaks text into a tool name.
+   */
+  static writeWorkflowSession(fixture: Fixture, sessionId: string, startedAt: string): void {
+    const transcript = new ClaudeCodeTranscriptBuilder(sessionId, fixture.projectDir, startedAt)
+      .user("Ship the billing fix")
+      .tool(`ls_${sessionId}`, "Bash", { command: "ls -la" })
+      .result(`ls_${sessionId}`, "src");
+    const steps = ["git status", "git add -A", "npx tsc --noEmit", "git commit -m 'fix billing'", "git push origin HEAD"];
+    steps.forEach((command, stepIndex) => {
+      transcript.tool(`w${stepIndex}_${sessionId}`, "Bash", { command }).result(`w${stepIndex}_${sessionId}`, "ok");
+    });
+    transcript
+      .record("system", { subtype: "turn_duration", durationMs: 60_000, isMeta: true })
+      .record("system", { subtype: "compact_boundary", compactMetadata: { trigger: "auto", preTokens: 950_000 } })
+      .tool(`bad_${sessionId}`, "; the getAll call uses userId from the request.<tool_call>Edit", { file_path: "x" })
+      .result(`bad_${sessionId}`, "<tool_use_error>Error: No such tool available</tool_use_error>", { isError: true })
+      .say("Shipped.")
+      .write(ClaudeCodeFixtureUtil.sessionPath(fixture, sessionId));
+  }
+
   /** Points the reader at the fixture's Claude Code home. Returns a function that restores the environment. */
   static useFixtureEnv(fixture: Fixture): () => void {
     const previousHome = process.env.IMH_CLAUDE_HOME;

@@ -25,6 +25,10 @@ export interface SignalThresholds {
   minSubagentRereads: number;
   /** Sessions in which a similar request must appear to be a repeated request. */
   minRepeatedRequestSessions: number;
+  /** Sessions that must repeat the same sequence of commands before it counts as a workflow. */
+  minWorkflowSessions: number;
+  /** Shortest sequence of distinct commands that counts as a workflow. */
+  minWorkflowSteps: number;
   /** Word-set similarity (0–1) for two requests to count as the same request. */
   repeatedRequestSimilarity: number;
 }

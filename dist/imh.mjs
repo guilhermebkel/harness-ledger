@@ -397,8 +397,38 @@ var HashUtil = class {
 };
 
 // src/Shared/Utils/NormalizeUtil.ts
+var EXPLORATION_PROGRAMS = /* @__PURE__ */ new Set([
+  "ls",
+  "cat",
+  "find",
+  "grep",
+  "rg",
+  "sed",
+  "head",
+  "tail",
+  "wc",
+  "echo",
+  "pwd",
+  "tree",
+  "which",
+  "sort",
+  "awk",
+  "cut",
+  "jq",
+  "file",
+  "stat",
+  "du",
+  "diff",
+  "true",
+  "sleep",
+  "less",
+  "printf",
+  "date",
+  "env",
+  "type"
+]);
 var COMMAND_WRAPPERS = /* @__PURE__ */ new Set(["sudo", "time", "nohup", "env", "command", "exec", "timeout", "do", "then", "else"]);
-var NAVIGATION_COMMAND = /^(cd|pushd|popd|export|source|\.|set|for|while|until|if|elif|done|fi|esac)\b/;
+var NAVIGATION_COMMAND = /^(cd|pushd|popd|export|source|\.|set|for|while|until|if|elif|done|fi|esac|nvm use|conda activate|pyenv shell)\b/;
 var ENV_ASSIGNMENT = /^[A-Z_][A-Z0-9_]*=/;
 var PROGRAMS_WITH_SUBCOMMAND = /* @__PURE__ */ new Set([
   "npm",
@@ -489,6 +519,10 @@ var NormalizeUtil = class _NormalizeUtil {
     }
     return RedactUtil.redact(keyParts.join(" "));
   }
+  /** True for a command key whose program only reads or prints (`ls`, `cat`, `grep`). */
+  static isExplorationCommand(commandKey) {
+    return EXPLORATION_PROGRAMS.has(commandKey.split(" ")[0] ?? "");
+  }
   /** The first meaningful line of an error, normalized so the same error groups across sessions. */
   static errorKey(text) {
     const lines = text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !/^exit code \d+$/i.test(line) && !/^<\/?[\w-]+\s*\/?>$/.test(line));
@@ -576,6 +610,7 @@ var SignalDetectorService = class {
     this.detectSubagentRereads(session, index);
     this.detectCorrectionsAndInterruptions(session, index);
     this.detectApiErrors(session, index);
+    this.detectCompactions(session);
   }
   /** Greedy clustering of prompts by word-set similarity; a cluster seen in enough sessions is a repeated request. */
   detectRepeatedRequests(sessions) {
@@ -668,6 +703,29 @@ var SignalDetectorService = class {
         group.details.tool = call.key;
         group.details.error = errorHead;
       }
+    }
+  }
+  /** The conversation outgrew the context window: the work may need subagents, a skill, or separate sessions. */
+  detectCompactions(session) {
+    for (const compaction of session.compactions) {
+      const isSubagent = !SessionUtil.isMainThread(compaction.thread);
+      const piece = isSubagent ? this.attribution.pieceIdFor("agent", compaction.thread.agentType) : AttributionService.MAIN_PIECE;
+      const turnsBefore = session.reported.turns.filter(
+        (turn) => (turn.endedAtMs ?? 0) <= (compaction.occurredAtMs ?? 0)
+      ).length;
+      const title = compaction.trigger === "manual" ? "Context compacted by hand during long sessions" : "Sessions outgrow the context window and auto-compact";
+      const group = this.collector.add(`context_compaction:${compaction.trigger}`, "context_compaction", title, {
+        session,
+        ref: {
+          ...compaction.ref,
+          excerpt: turnsBefore ? `${compaction.ref.excerpt ?? ""} after ${turnsBefore} turns` : compaction.ref.excerpt
+        },
+        pieces: [piece],
+        activeMs: 0,
+        usage: TokenUsageUtil.zero()
+      });
+      const contextTokens = compaction.contextTokens ?? 0;
+      group.details.maxContextTokens = Math.max(group.details.maxContextTokens ?? 0, contextTokens) || void 0;
     }
   }
   /** Failed model API requests: a wrong model name or expired credentials are harness problems. */
@@ -863,6 +921,130 @@ var SignalDetectorService = class {
   }
 };
 
+// src/Shared/Services/WorkflowDetectorService.ts
+var MAX_WORKFLOW_STEPS = 5;
+var WORKFLOW_HASH_CHARS = 8;
+var MAX_WORKFLOW_SIGNALS = 10;
+var STEP_SEPARATOR = " \u2192 ";
+var SUBSUMED_SESSION_RATIO = 0.75;
+var MAX_WORKFLOW_SPAN_MINUTES = 15;
+var WorkflowDetectorService = class {
+  constructor(options, collector) {
+    this.options = options;
+    this.collector = collector;
+  }
+  detect(sessions, sessionIdToIndex) {
+    const candidates = this.candidatesOf(sessions).filter((candidate) => candidate.sessionIdToCalls.size >= this.options.thresholds.minWorkflowSessions);
+    const sessionIdToSession = new Map(sessions.map((session) => [session.sessionId, session]));
+    for (const workflow of this.withoutSubsumed(candidates).slice(0, MAX_WORKFLOW_SIGNALS)) {
+      const gram = workflow.steps.join(STEP_SEPARATOR);
+      const title = `Same steps in ${workflow.sessionIdToCalls.size} sessions: ${gram}`;
+      const signalId = `repeated_workflow:${HashUtil.sha(gram, WORKFLOW_HASH_CHARS)}`;
+      for (const [sessionId, calls] of workflow.sessionIdToCalls) {
+        const session = sessionIdToSession.get(sessionId);
+        const index = sessionIdToIndex.get(sessionId);
+        const [firstCall] = calls;
+        if (!session || !index || !firstCall) {
+          continue;
+        }
+        const occurrence = {
+          session,
+          ref: {
+            ...firstCall.ref,
+            excerpt: calls.map((call) => call.summary).join(" ; ")
+          },
+          pieces: CollectionUtil.unique(
+            calls.flatMap((call) => index.toolCallIdToPieces.get(call.id) ?? [AttributionService.MAIN_PIECE])
+          ),
+          ...this.workflowCost(calls, index)
+        };
+        const group = this.collector.add(signalId, "repeated_workflow", title, occurrence);
+        group.details.steps = workflow.steps;
+      }
+    }
+  }
+  /** Every run of distinct work commands, per thread, keeping the first time each session ran it. */
+  candidatesOf(sessions) {
+    const gramToCandidate = /* @__PURE__ */ new Map();
+    for (const session of sessions) {
+      for (const calls of this.workCommandsByThread(session)) {
+        for (let length = this.options.thresholds.minWorkflowSteps; length <= MAX_WORKFLOW_STEPS; length++) {
+          for (let start = 0; start + length <= calls.length; start++) {
+            const window = calls.slice(start, start + length);
+            const steps = window.map((call) => call.key);
+            const isTooSpread = this.spanOf(window) > MAX_WORKFLOW_SPAN_MINUTES * TimeUtil.MS_PER_MINUTE;
+            if (new Set(steps).size < length || isTooSpread) {
+              continue;
+            }
+            const gram = steps.join(STEP_SEPARATOR);
+            const candidate = gramToCandidate.get(gram) ?? {
+              steps,
+              sessionIdToCalls: /* @__PURE__ */ new Map()
+            };
+            if (!candidate.sessionIdToCalls.has(session.sessionId)) {
+              candidate.sessionIdToCalls.set(session.sessionId, window);
+            }
+            gramToCandidate.set(gram, candidate);
+          }
+        }
+      }
+    }
+    return [...gramToCandidate.values()];
+  }
+  workCommandsByThread(session) {
+    const threadIdToCalls = /* @__PURE__ */ new Map();
+    const workCalls = session.tools.filter(
+      (call) => call.category === "shell" && !NormalizeUtil.isExplorationCommand(call.key)
+    );
+    for (const call of workCalls) {
+      const threadCalls = threadIdToCalls.get(call.thread.id) ?? [];
+      if (threadCalls.at(-1)?.key !== call.key) {
+        threadCalls.push(call);
+      }
+      threadIdToCalls.set(call.thread.id, threadCalls);
+    }
+    return [...threadIdToCalls.values()];
+  }
+  /**
+   * Longest workflows first, so the whole procedure wins over its pieces: a shorter sequence inside a kept
+   * one is dropped when the kept one happens in about as many sessions. Then the most widespread first.
+   */
+  withoutSubsumed(candidates) {
+    const longestFirst = [...candidates].sort((left, right) => {
+      const lengthDifference = right.steps.length - left.steps.length;
+      return lengthDifference || right.sessionIdToCalls.size - left.sessionIdToCalls.size;
+    });
+    const kept = [];
+    for (const candidate of longestFirst) {
+      const gram = candidate.steps.join(STEP_SEPARATOR);
+      const isCovered = kept.some((keptWorkflow) => {
+        const hasCandidateInside = keptWorkflow.steps.join(STEP_SEPARATOR).includes(gram);
+        const minimumSessions = candidate.sessionIdToCalls.size * SUBSUMED_SESSION_RATIO;
+        return hasCandidateInside && keptWorkflow.sessionIdToCalls.size >= minimumSessions;
+      });
+      if (!isCovered) {
+        kept.push(candidate);
+      }
+    }
+    return kept.sort((left, right) => right.sessionIdToCalls.size - left.sessionIdToCalls.size);
+  }
+  spanOf(calls) {
+    const lastCall = calls.at(-1);
+    const endedAtMs = lastCall?.result?.returnedAtMs ?? lastCall?.calledAtMs ?? 0;
+    return endedAtMs - (calls[0]?.calledAtMs ?? endedAtMs);
+  }
+  /** Time from the first step until the last one returned, and the tokens of the messages that issued the steps. */
+  workflowCost(calls, index) {
+    const messageIds = new Set(calls.map((call) => call.messageId));
+    const stepMessages = (index.threadIdToMessages.get(calls[0]?.thread.id ?? "") ?? []).filter((message) => messageIds.has(message.id));
+    return {
+      activeMs: Math.min(this.options.idleMs * calls.length, Math.max(0, this.spanOf(calls))),
+      usage: stepMessages.reduce((total, message) => TokenUsageUtil.add(total, message.usage), TokenUsageUtil.zero()),
+      model: stepMessages[0]?.model
+    };
+  }
+};
+
 // src/Shared/Services/SignalService.ts
 var MAX_COUNTED_VALUES = 5;
 var MIN_SESSIONS_FOR_FULL_EVIDENCE = 2;
@@ -889,6 +1071,8 @@ var SignalService = class _SignalService {
     permission_denied: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     hook_blocked: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     api_error: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
+    context_compaction: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
+    repeated_workflow: (_occurrences, sessions, options) => sessions >= options.thresholds.minWorkflowSessions,
     user_correction: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     interruption: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     repeated_read: (occurrences, _sessions, options) => occurrences >= options.thresholds.minExtraReads,
@@ -903,10 +1087,14 @@ var SignalService = class _SignalService {
     const attribution = new AttributionService(pieceIds);
     const collector = new OccurrenceCollectorService();
     const detector = new SignalDetectorService(this.options, attribution, collector);
+    const sessionIdToIndex = /* @__PURE__ */ new Map();
     for (const session of sessions) {
-      detector.detectInSession(session, attribution.buildSessionIndex(session));
+      const index = attribution.buildSessionIndex(session);
+      sessionIdToIndex.set(session.sessionId, index);
+      detector.detectInSession(session, index);
     }
     detector.detectRepeatedRequests(sessions);
+    new WorkflowDetectorService(this.options, collector).detect(sessions, sessionIdToIndex);
     const signals = collector.groups().filter((group) => this.isStrongEnough(group)).map((group) => this.buildSignal(group));
     if (inventory) {
       signals.push(...this.unusedPieceSignals(sessions, inventory), ...this.largePieceSignals(inventory));
@@ -2448,6 +2636,9 @@ var HUMAN_ORIGIN = "human";
 var SYNTHETIC_MODEL = "<synthetic>";
 var MODEL_IN_ERROR = /\bmodel \(([^)\s]{1,80})\)/i;
 var UNKNOWN_API_ERROR = "unknown";
+var TOKENS_PER_THOUSAND = 1e3;
+var VALID_TOOL_NAME = /^[\w.:-]{1,100}$/;
+var MALFORMED_TOOL_NAME = "(malformed tool name)";
 var ClaudeCodeSessionService = class {
   constructor(homeDir) {
     this.homeDir = homeDir;
@@ -2489,6 +2680,7 @@ var ClaudeCodeSessionService = class {
       tools: [],
       messages: [],
       apiErrors: [],
+      compactions: [],
       reported: {
         isCostPartial: false,
         turns: []
@@ -2808,12 +3000,29 @@ var ClaudeCodeSessionService = class {
   handleSystemLine(context, line, isMainFile) {
     const durationMs = GuardUtil.asNumber(line.record.durationMs);
     const isMainTurn = isMainFile && line.record.isSidechain !== true;
+    if (line.record.subtype === "compact_boundary") {
+      this.handleCompaction(context, line);
+      return;
+    }
     if (line.record.subtype === "turn_duration" && isMainTurn && durationMs !== void 0) {
       context.facts.reported.turns.push({
         durationMs,
         endedAtMs: line.occurredAtMs
       });
     }
+  }
+  handleCompaction(context, line) {
+    const metadata = GuardUtil.asRecord(line.record.compactMetadata);
+    const trigger = metadata?.trigger === "manual" ? "manual" : "auto";
+    const contextTokens = GuardUtil.asNumber(metadata?.preTokens);
+    const tokensText = contextTokens === void 0 ? "" : ` at ~${Math.round(contextTokens / TOKENS_PER_THOUSAND)}k tokens`;
+    context.facts.compactions.push({
+      trigger,
+      contextTokens,
+      thread: line.thread,
+      ref: this.evidenceFactory(context, line)(`${trigger} compaction${tokensText}`),
+      occurredAtMs: line.occurredAtMs
+    });
   }
   messageText(message) {
     if (typeof message.content === "string") {
@@ -2910,7 +3119,8 @@ var ClaudeCodeSessionService = class {
     }).join("\n");
   }
   buildToolCall(block, toolUseId, callContext) {
-    const name = GuardUtil.asString(block.name) ?? "unknown";
+    const rawName = GuardUtil.asString(block.name) ?? "unknown";
+    const name = VALID_TOOL_NAME.test(rawName) ? rawName : MALFORMED_TOOL_NAME;
     const input = GuardUtil.asRecord(block.input) ?? {};
     const description = this.describeToolCall(name, input, callContext.projectDir);
     return {
@@ -3059,6 +3269,8 @@ var ConfigService = class _ConfigService {
       minExtraReads: 2,
       minSubagentRereads: 3,
       minRepeatedRequestSessions: 3,
+      minWorkflowSessions: 4,
+      minWorkflowSteps: 3,
       repeatedRequestSimilarity: 0.5
     }
   };

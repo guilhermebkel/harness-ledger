@@ -54,6 +54,9 @@ const SYNTHETIC_MODEL = "<synthetic>";
 /** Model named in an API-error message, e.g. "There's an issue with the selected model (x)". */
 const MODEL_IN_ERROR = /\bmodel \(([^)\s]{1,80})\)/i;
 const UNKNOWN_API_ERROR = "unknown";
+const TOKENS_PER_THOUSAND = 1000;
+const VALID_TOOL_NAME = /^[\w.:-]{1,100}$/;
+const MALFORMED_TOOL_NAME = "(malformed tool name)";
 
 export class ClaudeCodeSessionService {
   constructor(private readonly homeDir: string) {}
@@ -98,6 +101,7 @@ export class ClaudeCodeSessionService {
       tools: [],
       messages: [],
       apiErrors: [],
+      compactions: [],
       reported: {
         isCostPartial: false,
         turns: [],
@@ -466,12 +470,30 @@ export class ClaudeCodeSessionService {
   ): void {
     const durationMs = GuardUtil.asNumber(line.record.durationMs);
     const isMainTurn = isMainFile && line.record.isSidechain !== true;
+    if (line.record.subtype === "compact_boundary") {
+      this.handleCompaction(context, line);
+      return;
+    }
     if (line.record.subtype === "turn_duration" && isMainTurn && durationMs !== undefined) {
       context.facts.reported.turns.push({
         durationMs,
         endedAtMs: line.occurredAtMs,
       });
     }
+  }
+
+  private handleCompaction(context: ClaudeCodeParseContext, line: ClaudeCodeTranscriptLine): void {
+    const metadata = GuardUtil.asRecord(line.record.compactMetadata);
+    const trigger = metadata?.trigger === "manual" ? "manual" : "auto";
+    const contextTokens = GuardUtil.asNumber(metadata?.preTokens);
+    const tokensText = contextTokens === undefined ? "" : ` at ~${Math.round(contextTokens / TOKENS_PER_THOUSAND)}k tokens`;
+    context.facts.compactions.push({
+      trigger,
+      contextTokens,
+      thread: line.thread,
+      ref: this.evidenceFactory(context, line)(`${trigger} compaction${tokensText}`),
+      occurredAtMs: line.occurredAtMs,
+    });
   }
 
   private messageText(message: UnknownRecord): string {
@@ -592,7 +614,9 @@ export class ClaudeCodeSessionService {
   }
 
   private buildToolCall(block: UnknownRecord, toolUseId: string, callContext: ClaudeCodeToolCallContext): ToolCall {
-    const name = GuardUtil.asString(block.name) ?? "unknown";
+    // Some models behind proxies leak text into the tool name; never carry that text into keys or reports.
+    const rawName = GuardUtil.asString(block.name) ?? "unknown";
+    const name = VALID_TOOL_NAME.test(rawName) ? rawName : MALFORMED_TOOL_NAME;
     const input = GuardUtil.asRecord(block.input) ?? {};
     const description = this.describeToolCall(name, input, callContext.projectDir);
     return {

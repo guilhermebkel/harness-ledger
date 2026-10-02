@@ -8,6 +8,8 @@ export type SignalType
     | "permission_denied"
     | "hook_blocked"
     | "api_error"
+    | "context_compaction"
+    | "repeated_workflow"
     | "repeated_read"
     | "subagent_reread"
     | "repeated_request"
@@ -44,6 +46,10 @@ export interface SignalDetails {
   /** tool_error */
   tool?: string;
   error?: string;
+  /** repeated_workflow: the commands, in order. */
+  steps?: string[];
+  /** context_compaction: the largest context seen right before compacting. */
+  maxContextTokens?: number;
   /** repeated_request */
   example?: string;
   commands?: string[];

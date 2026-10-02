@@ -214,3 +214,49 @@ describe("AnalyzeCommand on data Claude Code computes itself", () => {
     expect(skillUsage?.tokens).toBeGreaterThan(0);
   });
 });
+
+describe("AnalyzeCommand on work that could be a skill, a script or a subagent", () => {
+  let workflowFixture: Fixture;
+  let restoreWorkflowEnv: () => void;
+
+  beforeAll(() => {
+    restoreEnv();
+    workflowFixture = ClaudeCodeFixtureUtil.makeFixture();
+    for (let sessionIndex = 0; sessionIndex < 4; sessionIndex++) {
+      ClaudeCodeFixtureUtil.writeWorkflowSession(workflowFixture, `wf${sessionIndex}`, `2026-09-2${sessionIndex}T10:00:00.000Z`);
+    }
+    restoreWorkflowEnv = ClaudeCodeFixtureUtil.useFixtureEnv(workflowFixture);
+  });
+
+  afterAll(() => {
+    restoreWorkflowEnv();
+    restoreEnv = ClaudeCodeFixtureUtil.useFixtureEnv(fixture);
+    rmSync(workflowFixture.root, { recursive: true, force: true });
+  });
+
+  async function analyzeWorkflows() {
+    return command.run({ projectDir: workflowFixture.projectDir, dataDir: workflowFixture.dataDir });
+  }
+
+  it("finds the same steps repeated across sessions, without the exploration around them", async () => {
+    const analysis = await analyzeWorkflows();
+    const workflows = analysis.signals.filter((signal) => signal.type === "repeated_workflow");
+    expect(workflows).toHaveLength(1);
+    expect(workflows[0]).toMatchObject({ sessions: 4, pieces: ["main"] });
+    expect(workflows[0]?.details.steps).toEqual(["git status", "git add", "npx tsc", "git commit", "git push"]);
+  });
+
+  it("reports sessions that outgrow the context window", async () => {
+    const analysis = await analyzeWorkflows();
+    const compaction = signalById(analysis.signals, "context_compaction:auto");
+    expect(compaction).toMatchObject({ occurrences: 4, sessions: 4 });
+    expect(compaction.details.maxContextTokens).toBe(950_000);
+    expect(compaction.evidence[0]?.excerpt).toBe("auto compaction at ~950k tokens after 1 turns");
+  });
+
+  it("groups malformed tool calls without the leaked text", async () => {
+    const serialized = JSON.stringify(await analyzeWorkflows());
+    expect(serialized).toContain("(malformed tool name)");
+    expect(serialized).not.toContain("getAll");
+  });
+});

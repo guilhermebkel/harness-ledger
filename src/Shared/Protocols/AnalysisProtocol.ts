@@ -77,7 +77,7 @@ export interface SessionTotals extends CostSummary { subagentActiveMinutes: numb
 
 /** Totals the provider computed itself, next to the script's estimates (not added to them). */
 export interface ReportedTotals {
-  /** Sum of the provider's own cost for the sessions that recorded one. */
+  /** Sum of the provider's own cost for the sessions that recorded one; may miss runs of resumed sessions. */
   costUsd?: number;
   sessionsWithCost: number;
   /** Some session's cost leaves out a model the provider could not price. */

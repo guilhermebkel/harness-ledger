@@ -1,6 +1,7 @@
 // Deterministic pattern extraction (ADR 0002). Every number comes from the transcripts;
 // the skill turns these signals into classified findings.
 
+import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
 import type { HarnessPiece, Inventory, PieceKind } from "@/Shared/Protocols/HarnessProtocol.js";
 import type { EvidenceRef, SessionFacts } from "@/Shared/Protocols/SessionProtocol.js";
 import type {
@@ -24,6 +25,7 @@ import { AttributionService } from "./AttributionService.js";
 import { CostService } from "./CostService.js";
 import { OccurrenceCollectorService } from "./OccurrenceCollectorService.js";
 import { SignalDetectorService } from "./SignalDetectorService.js";
+import { WorkflowDetectorService } from "./WorkflowDetectorService.js";
 
 const MAX_COUNTED_VALUES = 5;
 /** Evidence from fewer sessions than this is marked partial (re-reads within one session are still meaningful). */
@@ -62,6 +64,8 @@ export class SignalService {
     permission_denied: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     hook_blocked: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     api_error: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
+    context_compaction: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
+    repeated_workflow: (_occurrences, sessions, options) => sessions >= options.thresholds.minWorkflowSessions,
     user_correction: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     interruption: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     repeated_read: (occurrences, _sessions, options) => occurrences >= options.thresholds.minExtraReads,
@@ -82,10 +86,14 @@ export class SignalService {
     const attribution = new AttributionService(pieceIds);
     const collector = new OccurrenceCollectorService();
     const detector = new SignalDetectorService(this.options, attribution, collector);
+    const sessionIdToIndex = new Map<string, SessionIndex>();
     for (const session of sessions) {
-      detector.detectInSession(session, attribution.buildSessionIndex(session));
+      const index = attribution.buildSessionIndex(session);
+      sessionIdToIndex.set(session.sessionId, index);
+      detector.detectInSession(session, index);
     }
     detector.detectRepeatedRequests(sessions);
+    new WorkflowDetectorService(this.options, collector).detect(sessions, sessionIdToIndex);
 
     const signals = collector
       .groups()

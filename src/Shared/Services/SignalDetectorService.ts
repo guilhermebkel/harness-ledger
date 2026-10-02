@@ -49,6 +49,7 @@ export class SignalDetectorService {
     this.detectSubagentRereads(session, index);
     this.detectCorrectionsAndInterruptions(session, index);
     this.detectApiErrors(session, index);
+    this.detectCompactions(session);
   }
 
   /** Greedy clustering of prompts by word-set similarity; a cluster seen in enough sessions is a repeated request. */
@@ -145,6 +146,34 @@ export class SignalDetectorService {
         group.details.tool = call.key;
         group.details.error = errorHead;
       }
+    }
+  }
+
+  /** The conversation outgrew the context window: the work may need subagents, a skill, or separate sessions. */
+  private detectCompactions(session: SessionFacts): void {
+    for (const compaction of session.compactions) {
+      const isSubagent = !SessionUtil.isMainThread(compaction.thread);
+      const piece = isSubagent
+        ? this.attribution.pieceIdFor("agent", compaction.thread.agentType)
+        : AttributionService.MAIN_PIECE;
+      const turnsBefore = session.reported.turns.filter(
+        (turn) => (turn.endedAtMs ?? 0) <= (compaction.occurredAtMs ?? 0),
+      ).length;
+      const title = compaction.trigger === "manual"
+        ? "Context compacted by hand during long sessions"
+        : "Sessions outgrow the context window and auto-compact";
+      const group = this.collector.add(`context_compaction:${compaction.trigger}`, "context_compaction", title, {
+        session,
+        ref: {
+          ...compaction.ref,
+          excerpt: turnsBefore ? `${compaction.ref.excerpt ?? ""} after ${turnsBefore} turns` : compaction.ref.excerpt,
+        },
+        pieces: [piece],
+        activeMs: 0,
+        usage: TokenUsageUtil.zero(),
+      });
+      const contextTokens = compaction.contextTokens ?? 0;
+      group.details.maxContextTokens = Math.max(group.details.maxContextTokens ?? 0, contextTokens) || undefined;
     }
   }
 

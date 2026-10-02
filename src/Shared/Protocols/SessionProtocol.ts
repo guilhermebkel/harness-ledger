@@ -119,6 +119,17 @@ export interface ApiError {
   occurredAtMs?: number;
 }
 
+/** The conversation outgrew the context window and was summarized to continue. */
+export interface ContextCompaction {
+  /** "auto" when the agent hit the limit; "manual" when the person asked for it. */
+  trigger: "auto" | "manual";
+  /** Context size right before compacting, when recorded. */
+  contextTokens?: number;
+  thread: ThreadRef;
+  ref: EvidenceRef;
+  occurredAtMs?: number;
+}
+
 /** One agent turn as the provider timed it: from the person's message until the agent stopped. */
 export interface ReportedTurn {
   durationMs: number;
@@ -127,7 +138,10 @@ export interface ReportedTurn {
 
 /** Figures the provider computed itself, kept apart from the script's own estimates. */
 export interface ProviderReport {
-  /** The provider's own cost for the session, in USD. */
+  /**
+   * The provider's own cost for the session, in USD, as far as it recorded it. A session resumed many
+   * times may have recorded only some runs, so this can be lower than the real cost.
+   */
   costUsd?: number;
   /** The provider could not price some model, so `costUsd` leaves it out. */
   isCostPartial: boolean;
@@ -149,6 +163,7 @@ export interface SessionFacts {
   tools: ToolCall[];
   messages: AssistantMessage[];
   apiErrors: ApiError[];
+  compactions: ContextCompaction[];
   reported: ProviderReport;
   /** Transcript files read, including subagent transcripts. */
   files: string[];

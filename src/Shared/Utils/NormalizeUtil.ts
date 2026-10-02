@@ -1,9 +1,14 @@
 import { RedactUtil } from "./RedactUtil.js";
 
+/** Commands that look around rather than do the work; a workflow is made of the others. */
+const EXPLORATION_PROGRAMS = new Set([
+  "ls", "cat", "find", "grep", "rg", "sed", "head", "tail", "wc", "echo", "pwd", "tree", "which", "sort", "awk",
+  "cut", "jq", "file", "stat", "du", "diff", "true", "sleep", "less", "printf", "date", "env", "type",
+]);
 /** Words that run the next word as the command, including shell keywords (`do pnpm test`, `then make`). */
 const COMMAND_WRAPPERS = new Set(["sudo", "time", "nohup", "env", "command", "exec", "timeout", "do", "then", "else"]);
 /** Segments that set up the shell rather than do the work: navigation, variables and loop or condition headers. */
-const NAVIGATION_COMMAND = /^(cd|pushd|popd|export|source|\.|set|for|while|until|if|elif|done|fi|esac)\b/;
+const NAVIGATION_COMMAND = /^(cd|pushd|popd|export|source|\.|set|for|while|until|if|elif|done|fi|esac|nvm use|conda activate|pyenv shell)\b/;
 const ENV_ASSIGNMENT = /^[A-Z_][A-Z0-9_]*=/;
 /** Programs whose subcommand is part of what the command means (`git push`, `npm test`). */
 const PROGRAMS_WITH_SUBCOMMAND = new Set([
@@ -82,6 +87,11 @@ export class NormalizeUtil {
       }
     }
     return RedactUtil.redact(keyParts.join(" "));
+  }
+
+  /** True for a command key whose program only reads or prints (`ls`, `cat`, `grep`). */
+  static isExplorationCommand(commandKey: string): boolean {
+    return EXPLORATION_PROGRAMS.has(commandKey.split(" ")[0] ?? "");
   }
 
   /** The first meaningful line of an error, normalized so the same error groups across sessions. */

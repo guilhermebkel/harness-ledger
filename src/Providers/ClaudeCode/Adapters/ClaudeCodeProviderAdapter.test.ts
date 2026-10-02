@@ -267,3 +267,26 @@ describe("parseSession on data Claude Code computes itself", () => {
     expect(write?.skillInUse).toBe("db-migrations");
   });
 });
+
+describe("parseSession on long sessions and malformed calls", () => {
+  let workflowFacts: SessionFacts;
+
+  beforeAll(async () => {
+    ClaudeCodeFixtureUtil.writeWorkflowSession(fixture, "wf1", "2026-09-24T10:00:00.000Z");
+    const transcripts = await adapter.discoverTranscripts({ projectDir: fixture.projectDir });
+    const transcript = transcripts.find((candidate) => candidate.sessionId === "wf1");
+    workflowFacts = await adapter.parseSession(transcript!, { idleMs: 5 * 60_000, projectDir: fixture.projectDir });
+  });
+
+  it("reads context compactions with their trigger and size", () => {
+    expect(workflowFacts.compactions).toEqual([
+      expect.objectContaining({ trigger: "auto", contextTokens: 950_000 }),
+    ]);
+  });
+
+  it("never carries text leaked into a tool name", () => {
+    const malformed = workflowFacts.tools.find((call) => call.name === "(malformed tool name)");
+    expect(malformed?.key).toBe("(malformed tool name)");
+    expect(JSON.stringify(workflowFacts.tools)).not.toContain("getAll");
+  });
+});
