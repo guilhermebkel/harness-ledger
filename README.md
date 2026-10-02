@@ -106,13 +106,13 @@ Not every failure needs more instructions. Each finding falls into one class, an
 ### Supported agents
 
 - [x] Claude Code
-- [ ] Codex
-- [ ] Cursor
+- [ ] Codex ([#3](https://github.com/guilhermebkel/improve-my-harness/issues/3))
+- [ ] Cursor ([#4](https://github.com/guilhermebkel/improve-my-harness/issues/4))
 
 ### Features
 
 - [ ] **v1 — Insights:** history analysis, harness inventory, classified findings, suggestions, before/after comparison.
-- [ ] **v2 — Bench:** prove a suggestion before adopting it. Replay tasks from your sessions or past PRs with different models, reasoning effort, subagents or harness pieces; filter by tests; blind human review with a calibrated LLM judge; recommend the **cheapest configuration that still does the job**.
+- [ ] **v2 — Bench** ([#2](https://github.com/guilhermebkel/improve-my-harness/issues/2)): prove a suggestion before adopting it. Replay tasks from your sessions or past PRs with different models, reasoning effort, subagents or harness pieces; filter by tests; blind human review with a calibrated LLM judge; recommend the **cheapest configuration that still does the job**.
 - [ ] **Cross-agent comparison:** when you use more than one agent on the same project, compare which harness fails less on similar tasks.
 - [ ] **Team mode:** aggregate sessions across a team.
 - [ ] **Scheduled runs:** periodic analysis that opens a PR with suggested changes for human review.
@@ -140,6 +140,8 @@ The skill calls the bundled script; you can also run it directly:
 node dist/imh.mjs analyze --project /path/to/repo --since 14d --pretty
 node dist/imh.mjs --help
 ```
+
+Vocabulary is in [`GLOSSARY.md`](GLOSSARY.md) and design decisions in [`docs/adr/`](docs/adr/).
 
 Layout: `src/adapters/<agent>/` reads one agent's sessions and harness; `src/analysis/` extracts signals, usage and before/after on the shared model in `src/core/types.ts`; `skills/improve-my-harness/` is what the agent reads.
 
