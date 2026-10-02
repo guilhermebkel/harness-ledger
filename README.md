@@ -144,7 +144,7 @@ node dist/imh.mjs --help
 
 Vocabulary is in [`GLOSSARY.md`](GLOSSARY.md) and design decisions in [`docs/adr/`](docs/adr/).
 
-Layout: `src/Providers/<Provider>/` reads one tool's sessions and harness into the shared model; `src/Shared/` (commands, services, protocols, utils) extracts signals, usage and before/after without knowing which tool produced them; `skills/improve-my-harness/` is what the agent reads. Before committing, run `pnpm lint` and `pnpm typecheck`.
+Layout: `src/Providers/<Provider>/` reads one tool's sessions and harness into the shared model; `src/Shared/` (commands, services, protocols, utils) extracts signals, usage and before/after without knowing which tool produced them; `skills/improve-my-harness/` is what the agent reads. Before committing, run `pnpm check` (lint, typecheck, tests, build).
 
 ## License
 

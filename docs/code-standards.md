@@ -55,7 +55,7 @@ The layout and its reasons are in ADR 0008.
 
 ## Before committing
 
-Run `pnpm lint` and `pnpm typecheck` (tsc) after every change and fix what they report before committing. `pnpm check` runs both plus the tests and the `dist/` freshness check; CI runs the same.
+Commit once per task, not per file: make all the edits, then verify once. Before the commit, `pnpm lint`, `pnpm typecheck` (tsc) and `pnpm test` must pass, and `dist/` must be rebuilt with `pnpm build`. `pnpm check` runs all of this and fails on a stale `dist/`; CI runs the same. While iterating, run only the relevant test or file (`pnpm exec vitest run <file>`).
 
 ## Dependencies
 

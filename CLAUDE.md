@@ -34,7 +34,9 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 
 ## Rules
 
-- **After changing code and before every commit, run `pnpm lint` and `pnpm typecheck` (tsc) and fix everything they report.** Then `pnpm check` (adds tests and the `dist/` freshness check). Never commit with lint or type errors.
+- **Commit once per task, not per file.** Make all the edits a task needs, then verify once and commit everything together.
+- **Before every commit, run `pnpm lint`, `pnpm typecheck` (tsc) and `pnpm test`, and fix everything they report.** Then `pnpm build` and stage `dist/`. `pnpm check` runs all of this in one go and also fails on a stale `dist/`; CI runs the same. Never commit with lint errors, type errors or failing tests.
+- While iterating, run only what you need (`pnpm exec vitest run <file>`, `pnpm exec eslint <file>`); keep the full run for the end.
 - Provider-specific code (paths, transcript and settings formats, tool names, prompt tags, env variables) lives only in `src/Providers/<Provider>/`. `src/Shared/` never imports a provider except through `ProviderModule`, and providers never import each other (ADR 0008, enforced by lint). If shared code needs provider knowledge, extend the shared model or `BaseProviderAdapter` instead.
 - Write classes: static-only Utils, Services with constructor-injected dependencies, Commands with `run`. Protocols hold only types.
 - Put each test next to the file it tests, named `<File>.test.ts`.
