@@ -26,7 +26,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
-    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build && git diff --exit-code dist/"
+    "quality": "knip && jscpd --silent",
+    "check": "pnpm typecheck && pnpm lint && pnpm quality && pnpm test && pnpm build && git diff --exit-code dist/"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
@@ -34,7 +35,10 @@
     "@types/node": "^22.0.0",
     "esbuild": "^0.24.0",
     "eslint": "^9.39.5",
+    "eslint-plugin-sonarjs": "^4.2.2",
     "globals": "^17.13.0",
+    "jscpd": "^5.4.0",
+    "knip": "^6.39.0",
     "typescript": "^5.6.0",
     "typescript-eslint": "^8.71.0",
     "vitest": "^2.1.0"

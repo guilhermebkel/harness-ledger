@@ -42,18 +42,7 @@ export class ProcessProfileService {
           continue;
         }
         const totals = stageToTotals.get(stage) ?? this.emptyTotals();
-        totals.sessionIds.add(session.sessionId);
-        totals.steps++;
-        totals.failures += call.result?.isError === true ? 1 : 0;
-        totals.contextChars += call.result?.contentChars ?? 0;
-        for (const piece of index?.toolCallIdToPieces.get(call.id) ?? []) {
-          if (piece !== AttributionService.MAIN_PIECE) {
-            totals.pieceToCount.set(piece, (totals.pieceToCount.get(piece) ?? 0) + 1);
-          }
-        }
-        if (call.category === "shell" && STAGES_WITH_COMMANDS.has(stage)) {
-          totals.commandToCount.set(call.key, (totals.commandToCount.get(call.key) ?? 0) + 1);
-        }
+        this.addCall(totals, session.sessionId, call, stage, index);
         stageToTotals.set(stage, totals);
       }
     }
@@ -61,6 +50,27 @@ export class ProcessProfileService {
       const totals = stageToTotals.get(stage);
       return totals ? [this.toProfile(stage, totals)] : [];
     });
+  }
+
+  private addCall(
+    totals: StageTotals,
+    sessionId: string,
+    call: ToolCall,
+    stage: ProcessStage,
+    index?: SessionIndex,
+  ): void {
+    totals.sessionIds.add(sessionId);
+    totals.steps++;
+    totals.failures += call.result?.isError === true ? 1 : 0;
+    totals.contextChars += call.result?.contentChars ?? 0;
+    const pieces = (index?.toolCallIdToPieces.get(call.id) ?? [])
+      .filter((piece) => piece !== AttributionService.MAIN_PIECE);
+    for (const piece of pieces) {
+      totals.pieceToCount.set(piece, (totals.pieceToCount.get(piece) ?? 0) + 1);
+    }
+    if (call.category === "shell" && STAGES_WITH_COMMANDS.has(stage)) {
+      totals.commandToCount.set(call.key, (totals.commandToCount.get(call.key) ?? 0) + 1);
+    }
   }
 
   private stageOf(call: ToolCall): ProcessStage | undefined {

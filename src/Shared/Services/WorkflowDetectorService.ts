@@ -81,33 +81,40 @@ export class WorkflowDetectorService {
   private candidatesOf(sessions: SessionFacts[]): WorkflowCandidate[] {
     const gramToCandidate = new Map<string, WorkflowCandidate>();
     for (const session of sessions) {
-      for (const calls of this.workCommandsByThread(session)) {
-        for (let length = this.options.thresholds.minWorkflowSteps; length <= MAX_WORKFLOW_STEPS; length++) {
-          for (let start = 0; start + length <= calls.length; start++) {
-            const window = calls.slice(start, start + length);
-            const steps = window.map((call) => call.key);
-            const isTooSpread = this.spanOf(window) > MAX_WORKFLOW_SPAN_MINUTES * TimeUtil.MS_PER_MINUTE;
-            if (new Set(steps).size < length || isTooSpread) {
-              continue;
-            }
-            const gram = steps.join(STEP_SEPARATOR);
-            const candidate = gramToCandidate.get(gram) ?? {
-              steps,
-              sessionIdToRuns: new Map<string, ToolCall[][]>(),
-            };
-            const sessionRuns = candidate.sessionIdToRuns.get(session.sessionId) ?? [];
-            const previousRunEnd = sessionRuns.at(-1)?.at(-1)?.calledAtMs ?? Number.NEGATIVE_INFINITY;
-            const isAfterPreviousRun = (window[0]?.calledAtMs ?? 0) > previousRunEnd;
-            if (isAfterPreviousRun) {
-              sessionRuns.push(window);
-            }
-            candidate.sessionIdToRuns.set(session.sessionId, sessionRuns);
-            gramToCandidate.set(gram, candidate);
-          }
-        }
+      for (const window of this.workCommandsByThread(session).flatMap((calls) => this.windowsOf(calls))) {
+        this.addWindow(gramToCandidate, session.sessionId, window);
       }
     }
     return [...gramToCandidate.values()];
+  }
+
+  /** Every contiguous slice of a thread's commands with an allowed workflow length. */
+  private windowsOf(calls: ToolCall[]): ToolCall[][] {
+    const windows: ToolCall[][] = [];
+    for (let length = this.options.thresholds.minWorkflowSteps; length <= MAX_WORKFLOW_STEPS; length++) {
+      for (let start = 0; start + length <= calls.length; start++) {
+        windows.push(calls.slice(start, start + length));
+      }
+    }
+    return windows;
+  }
+
+  /** Records one window of commands as a run of its n-gram, unless it repeats a step, spreads too long or overlaps the last run. */
+  private addWindow(gramToCandidate: Map<string, WorkflowCandidate>, sessionId: string, window: ToolCall[]): void {
+    const steps = window.map((call) => call.key);
+    const isTooSpread = this.spanOf(window) > MAX_WORKFLOW_SPAN_MINUTES * TimeUtil.MS_PER_MINUTE;
+    if (new Set(steps).size < window.length || isTooSpread) {
+      return;
+    }
+    const gram = steps.join(STEP_SEPARATOR);
+    const candidate = gramToCandidate.get(gram) ?? { steps, sessionIdToRuns: new Map<string, ToolCall[][]>() };
+    const sessionRuns = candidate.sessionIdToRuns.get(sessionId) ?? [];
+    const previousRunEnd = sessionRuns.at(-1)?.at(-1)?.calledAtMs ?? Number.NEGATIVE_INFINITY;
+    if ((window[0]?.calledAtMs ?? 0) > previousRunEnd) {
+      sessionRuns.push(window);
+    }
+    candidate.sessionIdToRuns.set(sessionId, sessionRuns);
+    gramToCandidate.set(gram, candidate);
   }
 
   private workCommandsByThread(session: SessionFacts): ToolCall[][] {

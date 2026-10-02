@@ -15,6 +15,12 @@ interface MainThreadEvent {
   call?: ToolCall;
 }
 
+/** Pieces driving the current turn, and the ones the next prompt inherits (they include an agent the turn started). */
+interface TurnPieces {
+  current: string[];
+  last: string[];
+}
+
 export class AttributionService {
   /** Attribution for steps no skill, command or subagent was driving. */
   static readonly MAIN_PIECE = "main";
@@ -78,32 +84,31 @@ export class AttributionService {
   }
 
   private attributeMainThread(mainEvents: MainThreadEvent[], index: SessionIndex): void {
-    let currentTurnPieces: string[] = [];
-    let lastTurnPieces: string[] = [];
+    const turn: TurnPieces = { current: [], last: [] };
     for (const event of mainEvents) {
       if (event.prompt) {
-        const previousPieces = lastTurnPieces.length ? lastTurnPieces : [AttributionService.MAIN_PIECE];
+        const previousPieces = turn.last.length ? turn.last : [AttributionService.MAIN_PIECE];
         index.promptToPreviousTurnPieces.set(event.prompt, previousPieces);
-        currentTurnPieces = event.prompt.command ? [this.commandPieceId(event.prompt.command)] : [];
-        lastTurnPieces = currentTurnPieces;
-        continue;
+        turn.current = event.prompt.command ? [this.commandPieceId(event.prompt.command)] : [];
+        turn.last = turn.current;
+      } else if (event.call) {
+        this.attributeCall(event.call, turn, index);
       }
-      const call = event.call;
-      if (!call) {
-        continue;
-      }
-      // The skill the provider says was running wins over the one inferred from the turn.
-      const skillName = call.skillInUse ?? call.skill;
-      if (skillName) {
-        currentTurnPieces = CollectionUtil.unique([...currentTurnPieces, this.pieceIdFor("skill", skillName)]);
-        lastTurnPieces = currentTurnPieces;
-      }
-      if (call.subagentType) {
-        lastTurnPieces = CollectionUtil.unique([...currentTurnPieces, this.pieceIdFor("agent", call.subagentType)]);
-      }
-      const callPieces = currentTurnPieces.length ? currentTurnPieces : [AttributionService.MAIN_PIECE];
-      index.toolCallIdToPieces.set(call.id, callPieces);
     }
+  }
+
+  /** A call belongs to the pieces running in its turn; a skill it loads joins them, an agent it starts follows the turn. */
+  private attributeCall(call: ToolCall, turn: TurnPieces, index: SessionIndex): void {
+    // The skill the provider says was running wins over the one inferred from the turn.
+    const skillName = call.skillInUse ?? call.skill;
+    if (skillName) {
+      turn.current = CollectionUtil.unique([...turn.current, this.pieceIdFor("skill", skillName)]);
+      turn.last = turn.current;
+    }
+    if (call.subagentType) {
+      turn.last = CollectionUtil.unique([...turn.current, this.pieceIdFor("agent", call.subagentType)]);
+    }
+    index.toolCallIdToPieces.set(call.id, turn.current.length ? turn.current : [AttributionService.MAIN_PIECE]);
   }
 
   private groupMessagesByThread(messages: AssistantMessage[]): Map<string, AssistantMessage[]> {

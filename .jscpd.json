@@ -1,0 +1,8 @@
+{
+  "path": ["src", "scripts"],
+  "ignore": ["**/*.test.ts", "**/*FixtureUtil.ts"],
+  "format": ["typescript", "javascript"],
+  "minTokens": 50,
+  "threshold": 1,
+  "reporters": ["console"]
+}

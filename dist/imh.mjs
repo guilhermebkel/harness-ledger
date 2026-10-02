@@ -506,31 +506,29 @@ var AttributionService = class _AttributionService {
     return this.pieceIds.has(`skill:${name}`) ? `skill:${name}` : `command:${name}`;
   }
   attributeMainThread(mainEvents, index) {
-    let currentTurnPieces = [];
-    let lastTurnPieces = [];
+    const turn = { current: [], last: [] };
     for (const event of mainEvents) {
       if (event.prompt) {
-        const previousPieces = lastTurnPieces.length ? lastTurnPieces : [_AttributionService.MAIN_PIECE];
+        const previousPieces = turn.last.length ? turn.last : [_AttributionService.MAIN_PIECE];
         index.promptToPreviousTurnPieces.set(event.prompt, previousPieces);
-        currentTurnPieces = event.prompt.command ? [this.commandPieceId(event.prompt.command)] : [];
-        lastTurnPieces = currentTurnPieces;
-        continue;
+        turn.current = event.prompt.command ? [this.commandPieceId(event.prompt.command)] : [];
+        turn.last = turn.current;
+      } else if (event.call) {
+        this.attributeCall(event.call, turn, index);
       }
-      const call = event.call;
-      if (!call) {
-        continue;
-      }
-      const skillName = call.skillInUse ?? call.skill;
-      if (skillName) {
-        currentTurnPieces = CollectionUtil.unique([...currentTurnPieces, this.pieceIdFor("skill", skillName)]);
-        lastTurnPieces = currentTurnPieces;
-      }
-      if (call.subagentType) {
-        lastTurnPieces = CollectionUtil.unique([...currentTurnPieces, this.pieceIdFor("agent", call.subagentType)]);
-      }
-      const callPieces = currentTurnPieces.length ? currentTurnPieces : [_AttributionService.MAIN_PIECE];
-      index.toolCallIdToPieces.set(call.id, callPieces);
     }
+  }
+  /** A call belongs to the pieces running in its turn; a skill it loads joins them, an agent it starts follows the turn. */
+  attributeCall(call, turn, index) {
+    const skillName = call.skillInUse ?? call.skill;
+    if (skillName) {
+      turn.current = CollectionUtil.unique([...turn.current, this.pieceIdFor("skill", skillName)]);
+      turn.last = turn.current;
+    }
+    if (call.subagentType) {
+      turn.last = CollectionUtil.unique([...turn.current, this.pieceIdFor("agent", call.subagentType)]);
+    }
+    index.toolCallIdToPieces.set(call.id, turn.current.length ? turn.current : [_AttributionService.MAIN_PIECE]);
   }
   groupMessagesByThread(messages) {
     const threadIdToMessages = /* @__PURE__ */ new Map();
@@ -1053,33 +1051,38 @@ var WorkflowDetectorService = class {
   candidatesOf(sessions) {
     const gramToCandidate = /* @__PURE__ */ new Map();
     for (const session of sessions) {
-      for (const calls of this.workCommandsByThread(session)) {
-        for (let length = this.options.thresholds.minWorkflowSteps; length <= MAX_WORKFLOW_STEPS; length++) {
-          for (let start = 0; start + length <= calls.length; start++) {
-            const window = calls.slice(start, start + length);
-            const steps = window.map((call) => call.key);
-            const isTooSpread = this.spanOf(window) > MAX_WORKFLOW_SPAN_MINUTES * TimeUtil.MS_PER_MINUTE;
-            if (new Set(steps).size < length || isTooSpread) {
-              continue;
-            }
-            const gram = steps.join(STEP_SEPARATOR);
-            const candidate = gramToCandidate.get(gram) ?? {
-              steps,
-              sessionIdToRuns: /* @__PURE__ */ new Map()
-            };
-            const sessionRuns = candidate.sessionIdToRuns.get(session.sessionId) ?? [];
-            const previousRunEnd = sessionRuns.at(-1)?.at(-1)?.calledAtMs ?? Number.NEGATIVE_INFINITY;
-            const isAfterPreviousRun = (window[0]?.calledAtMs ?? 0) > previousRunEnd;
-            if (isAfterPreviousRun) {
-              sessionRuns.push(window);
-            }
-            candidate.sessionIdToRuns.set(session.sessionId, sessionRuns);
-            gramToCandidate.set(gram, candidate);
-          }
-        }
+      for (const window of this.workCommandsByThread(session).flatMap((calls) => this.windowsOf(calls))) {
+        this.addWindow(gramToCandidate, session.sessionId, window);
       }
     }
     return [...gramToCandidate.values()];
+  }
+  /** Every contiguous slice of a thread's commands with an allowed workflow length. */
+  windowsOf(calls) {
+    const windows = [];
+    for (let length = this.options.thresholds.minWorkflowSteps; length <= MAX_WORKFLOW_STEPS; length++) {
+      for (let start = 0; start + length <= calls.length; start++) {
+        windows.push(calls.slice(start, start + length));
+      }
+    }
+    return windows;
+  }
+  /** Records one window of commands as a run of its n-gram, unless it repeats a step, spreads too long or overlaps the last run. */
+  addWindow(gramToCandidate, sessionId, window) {
+    const steps = window.map((call) => call.key);
+    const isTooSpread = this.spanOf(window) > MAX_WORKFLOW_SPAN_MINUTES * TimeUtil.MS_PER_MINUTE;
+    if (new Set(steps).size < window.length || isTooSpread) {
+      return;
+    }
+    const gram = steps.join(STEP_SEPARATOR);
+    const candidate = gramToCandidate.get(gram) ?? { steps, sessionIdToRuns: /* @__PURE__ */ new Map() };
+    const sessionRuns = candidate.sessionIdToRuns.get(sessionId) ?? [];
+    const previousRunEnd = sessionRuns.at(-1)?.at(-1)?.calledAtMs ?? Number.NEGATIVE_INFINITY;
+    if ((window[0]?.calledAtMs ?? 0) > previousRunEnd) {
+      sessionRuns.push(window);
+    }
+    candidate.sessionIdToRuns.set(sessionId, sessionRuns);
+    gramToCandidate.set(gram, candidate);
   }
   workCommandsByThread(session) {
     const threadIdToCalls = /* @__PURE__ */ new Map();
@@ -1396,16 +1399,8 @@ var SignalService = class _SignalService {
   usedPieceIdsIn(sessions) {
     const usedPieceIds = /* @__PURE__ */ new Set();
     for (const session of sessions) {
-      for (const call of session.tools) {
-        if (call.subagentType) {
-          usedPieceIds.add(`agent:${call.subagentType}`);
-        }
-        if (call.skill) {
-          usedPieceIds.add(`skill:${call.skill}`);
-        }
-        if (call.category === "mcp") {
-          usedPieceIds.add(call.key);
-        }
+      for (const pieceId of session.tools.flatMap((call) => this.piecesCalledBy(call))) {
+        usedPieceIds.add(pieceId);
       }
       for (const threadFacts of session.threads.filter((thread) => !SessionUtil.isMainThread(thread.thread))) {
         usedPieceIds.add(`agent:${threadFacts.thread.agentType}`);
@@ -1416,6 +1411,13 @@ var SignalService = class _SignalService {
       }
     }
     return usedPieceIds;
+  }
+  piecesCalledBy(call) {
+    return [
+      ...call.subagentType ? [`agent:${call.subagentType}`] : [],
+      ...call.skill ? [`skill:${call.skill}`] : [],
+      ...call.category === "mcp" ? [call.key] : []
+    ];
   }
   /** Editable pieces large enough to be worth trimming; instructions are loaded on every turn. */
   largePieceSignals(inventory) {
@@ -1538,6 +1540,15 @@ var UsageService = class {
       agentTotals.sessionIds.add(session.sessionId);
       agentTotals.activeMs += threadFacts.activeMs;
     }
+    this.accumulateMessages(pieceToTotals, session);
+    this.accumulateToolCalls(pieceToTotals, session, index);
+    for (const command of session.prompts.map((prompt) => prompt.command).filter((name) => name !== void 0)) {
+      const commandTotals = this.totalsOf(pieceToTotals, this.attribution.commandPieceId(command));
+      commandTotals.invocations++;
+      commandTotals.sessionIds.add(session.sessionId);
+    }
+  }
+  accumulateMessages(pieceToTotals, session) {
     for (const message of session.messages) {
       const threadPiece = SessionUtil.isMainThread(message.thread) ? AttributionService.MAIN_PIECE : `agent:${message.thread.agentType}`;
       const skillPieces = message.skillInUse ? [this.attribution.pieceIdFor("skill", message.skillInUse)] : [];
@@ -1551,6 +1562,8 @@ var UsageService = class {
         }
       }
     }
+  }
+  accumulateToolCalls(pieceToTotals, session, index) {
     for (const call of session.tools) {
       const errorCount = call.result?.isError === true ? 1 : 0;
       for (const piece of index.toolCallIdToPieces.get(call.id) ?? [AttributionService.MAIN_PIECE]) {
@@ -1569,11 +1582,6 @@ var UsageService = class {
         serverTotals.toolErrors += errorCount;
         serverTotals.sessionIds.add(session.sessionId);
       }
-    }
-    for (const command of session.prompts.map((prompt) => prompt.command).filter((name) => name !== void 0)) {
-      const commandTotals = this.totalsOf(pieceToTotals, this.attribution.commandPieceId(command));
-      commandTotals.invocations++;
-      commandTotals.sessionIds.add(session.sessionId);
     }
   }
   toPieceUsage(piece, totals) {
@@ -1880,18 +1888,7 @@ var ProcessProfileService = class _ProcessProfileService {
           continue;
         }
         const totals = stageToTotals.get(stage) ?? this.emptyTotals();
-        totals.sessionIds.add(session.sessionId);
-        totals.steps++;
-        totals.failures += call.result?.isError === true ? 1 : 0;
-        totals.contextChars += call.result?.contentChars ?? 0;
-        for (const piece of index?.toolCallIdToPieces.get(call.id) ?? []) {
-          if (piece !== AttributionService.MAIN_PIECE) {
-            totals.pieceToCount.set(piece, (totals.pieceToCount.get(piece) ?? 0) + 1);
-          }
-        }
-        if (call.category === "shell" && STAGES_WITH_COMMANDS.has(stage)) {
-          totals.commandToCount.set(call.key, (totals.commandToCount.get(call.key) ?? 0) + 1);
-        }
+        this.addCall(totals, session.sessionId, call, stage, index);
         stageToTotals.set(stage, totals);
       }
     }
@@ -1899,6 +1896,19 @@ var ProcessProfileService = class _ProcessProfileService {
       const totals = stageToTotals.get(stage);
       return totals ? [this.toProfile(stage, totals)] : [];
     });
+  }
+  addCall(totals, sessionId, call, stage, index) {
+    totals.sessionIds.add(sessionId);
+    totals.steps++;
+    totals.failures += call.result?.isError === true ? 1 : 0;
+    totals.contextChars += call.result?.contentChars ?? 0;
+    const pieces = (index?.toolCallIdToPieces.get(call.id) ?? []).filter((piece) => piece !== AttributionService.MAIN_PIECE);
+    for (const piece of pieces) {
+      totals.pieceToCount.set(piece, (totals.pieceToCount.get(piece) ?? 0) + 1);
+    }
+    if (call.category === "shell" && STAGES_WITH_COMMANDS.has(stage)) {
+      totals.commandToCount.set(call.key, (totals.commandToCount.get(call.key) ?? 0) + 1);
+    }
   }
   stageOf(call) {
     if (call.category === "shell") {
@@ -2219,42 +2229,45 @@ var FrontmatterUtil = class _FrontmatterUtil {
         body: text
       };
     }
-    const data = {};
-    let currentKey;
-    let blockMode;
+    const state = { data: {}, currentKey: void 0, blockMode: void 0 };
     for (const rawLine of (match[1] ?? "").split(/\r?\n/)) {
-      const line = rawLine.replace(/\s+$/, "");
-      const isBlankOrComment = !line.trim() || line.trim().startsWith("#");
-      if (isBlankOrComment) {
-        continue;
-      }
-      const listItem = /^\s+-\s+(.*)$/.exec(line);
-      if (listItem && currentKey && blockMode !== "text") {
-        const previous = data[currentKey];
-        const list = Array.isArray(previous) ? previous : [];
-        list.push(_FrontmatterUtil.unquote(listItem[1] ?? ""));
-        data[currentKey] = list;
-        blockMode = "list";
-        continue;
-      }
-      const isTextContinuation = /^\s+/.test(line) && currentKey !== void 0 && blockMode === "text";
-      if (isTextContinuation && currentKey) {
-        data[currentKey] = `${String(data[currentKey] ?? "")} ${line.trim()}`.trim();
-        continue;
-      }
-      const keyValue = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
-      if (!keyValue) {
-        continue;
-      }
-      currentKey = keyValue[1] ?? "";
-      const value = (keyValue[2] ?? "").trim();
-      blockMode = BLOCK_TEXT_MARKERS.has(value) ? "text" : void 0;
-      data[currentKey] = _FrontmatterUtil.parseScalarOrFlowList(value);
+      _FrontmatterUtil.readLine(state, rawLine.replace(/\s+$/, ""));
     }
+    const data = state.data;
     return {
       data,
       body: text.slice(match[0].length)
     };
+  }
+  /** Applies one frontmatter line: a list item, a continuation of block text, or a new `key: value`. */
+  static readLine(state, line) {
+    const isBlankOrComment = !line.trim() || line.trim().startsWith("#");
+    if (isBlankOrComment) {
+      return;
+    }
+    const key = state.currentKey;
+    const listItem = /^\s+-\s+(.*)$/.exec(line);
+    if (listItem && key && state.blockMode !== "text") {
+      const previous = state.data[key];
+      const list = Array.isArray(previous) ? previous : [];
+      list.push(_FrontmatterUtil.unquote(listItem[1] ?? ""));
+      state.data[key] = list;
+      state.blockMode = "list";
+      return;
+    }
+    if (/^\s+/.test(line) && key && state.blockMode === "text") {
+      state.data[key] = `${String(state.data[key] ?? "")} ${line.trim()}`.trim();
+      return;
+    }
+    const keyValue = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
+    if (!keyValue) {
+      return;
+    }
+    const newKey = keyValue[1] ?? "";
+    const value = (keyValue[2] ?? "").trim();
+    state.currentKey = newKey;
+    state.blockMode = BLOCK_TEXT_MARKERS.has(value) ? "text" : void 0;
+    state.data[newKey] = _FrontmatterUtil.parseScalarOrFlowList(value);
   }
   /** A list field written as a YAML list, a flow list or a comma/space separated string (`tools: Read, Bash`). */
   static asList(value) {

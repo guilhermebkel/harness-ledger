@@ -3,7 +3,7 @@
 
 import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
 import type { HarnessPiece, Inventory, PieceKind } from "@/Shared/Protocols/HarnessProtocol.js";
-import type { EvidenceRef, SessionFacts } from "@/Shared/Protocols/SessionProtocol.js";
+import type { EvidenceRef, SessionFacts, ToolCall } from "@/Shared/Protocols/SessionProtocol.js";
 import type {
   CountedDetail,
   CountedValue,
@@ -235,16 +235,8 @@ export class SignalService {
   private usedPieceIdsIn(sessions: SessionFacts[]): Set<string> {
     const usedPieceIds = new Set<string>();
     for (const session of sessions) {
-      for (const call of session.tools) {
-        if (call.subagentType) {
-          usedPieceIds.add(`agent:${call.subagentType}`);
-        }
-        if (call.skill) {
-          usedPieceIds.add(`skill:${call.skill}`);
-        }
-        if (call.category === "mcp") {
-          usedPieceIds.add(call.key);
-        }
+      for (const pieceId of session.tools.flatMap((call) => this.piecesCalledBy(call))) {
+        usedPieceIds.add(pieceId);
       }
       for (const threadFacts of session.threads.filter((thread) => !SessionUtil.isMainThread(thread.thread))) {
         usedPieceIds.add(`agent:${threadFacts.thread.agentType}`);
@@ -255,6 +247,14 @@ export class SignalService {
       }
     }
     return usedPieceIds;
+  }
+
+  private piecesCalledBy(call: ToolCall): string[] {
+    return [
+      ...(call.subagentType ? [`agent:${call.subagentType}`] : []),
+      ...(call.skill ? [`skill:${call.skill}`] : []),
+      ...(call.category === "mcp" ? [call.key] : []),
+    ];
   }
 
   /** Editable pieces large enough to be worth trimming; instructions are loaded on every turn. */

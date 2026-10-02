@@ -51,6 +51,47 @@ function nameOf(value) {
   return String(value).slice(0, MAX_NAME_CHARS);
 }
 
+function parseRecord(line) {
+  try {
+    const record = JSON.parse(line);
+    return record && typeof record === "object" ? record : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function recordLine(shape, record) {
+  if (!record) {
+    shape.badLines++;
+    return;
+  }
+  const lineType = nameOf(record.type ?? "(no type)");
+  increment(shape.lineTypes, lineType);
+  for (const key of Object.keys(record)) {
+    increment(shape.lineKeys, `${lineType}.${key}`);
+  }
+  const subtype = record.subtype ?? record.attachment?.type ?? record.payload?.type;
+  if (typeof subtype === "string") {
+    increment(shape.subtypes, `${lineType}/${nameOf(subtype)}`);
+  }
+  recordBlocks(shape, lineType, record.message?.content ?? record.payload?.content);
+  const toolResult = record.toolUseResult;
+  const isToolResultObject = toolResult && typeof toolResult === "object" && !Array.isArray(toolResult);
+  for (const key of isToolResultObject ? Object.keys(toolResult) : []) {
+    increment(shape.toolResultKeys, key);
+  }
+}
+
+function recordBlocks(shape, lineType, content) {
+  const blocks = (Array.isArray(content) ? content : []).filter((block) => block && typeof block === "object");
+  for (const block of blocks) {
+    increment(shape.blockTypes, `${lineType}/${nameOf(block.type)}`);
+    if (typeof block.name === "string") {
+      increment(shape.toolNames, block.name.startsWith("mcp__") ? "mcp__*" : nameOf(block.name));
+    }
+  }
+}
+
 async function survey(folder) {
   const shape = {
     files: 0,
@@ -71,41 +112,7 @@ async function survey(folder) {
         continue;
       }
       shape.lines++;
-      let record;
-      try {
-        record = JSON.parse(line);
-      } catch {
-        shape.badLines++;
-        continue;
-      }
-      if (!record || typeof record !== "object") {
-        shape.badLines++;
-        continue;
-      }
-      const lineType = nameOf(record.type ?? "(no type)");
-      increment(shape.lineTypes, lineType);
-      for (const key of Object.keys(record)) {
-        increment(shape.lineKeys, `${lineType}.${key}`);
-      }
-      const subtype = record.subtype ?? record.attachment?.type ?? record.payload?.type;
-      if (typeof subtype === "string") {
-        increment(shape.subtypes, `${lineType}/${nameOf(subtype)}`);
-      }
-      const content = record.message?.content ?? record.payload?.content;
-      for (const block of Array.isArray(content) ? content : []) {
-        if (block && typeof block === "object") {
-          increment(shape.blockTypes, `${lineType}/${nameOf(block.type)}`);
-          if (typeof block.name === "string") {
-            increment(shape.toolNames, block.name.startsWith("mcp__") ? "mcp__*" : nameOf(block.name));
-          }
-        }
-      }
-      const toolResult = record.toolUseResult;
-      if (toolResult && typeof toolResult === "object" && !Array.isArray(toolResult)) {
-        for (const key of Object.keys(toolResult)) {
-          increment(shape.toolResultKeys, key);
-        }
-      }
+      recordLine(shape, parseRecord(line));
     }
   }
   return shape;

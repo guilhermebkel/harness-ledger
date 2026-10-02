@@ -1,7 +1,7 @@
 // Per-piece usage: how often each agent, skill, command and MCP server ran, what it cost and
 // how often its steps failed. Answers "is this piece worth it?" and feeds before/after.
 
-import type { PieceUsage } from "@/Shared/Protocols/AnalysisProtocol.js";
+import type { PieceUsage, SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
 import type { PriceTable } from "@/Shared/Protocols/ConfigProtocol.js";
 import type { SessionFacts, TokenUsage } from "@/Shared/Protocols/SessionProtocol.js";
 import { NumberUtil } from "@/Shared/Utils/NumberUtil.js";
@@ -72,6 +72,16 @@ export class UsageService {
       agentTotals.sessionIds.add(session.sessionId);
       agentTotals.activeMs += threadFacts.activeMs;
     }
+    this.accumulateMessages(pieceToTotals, session);
+    this.accumulateToolCalls(pieceToTotals, session, index);
+    for (const command of session.prompts.map((prompt) => prompt.command).filter((name) => name !== undefined)) {
+      const commandTotals = this.totalsOf(pieceToTotals, this.attribution.commandPieceId(command));
+      commandTotals.invocations++;
+      commandTotals.sessionIds.add(session.sessionId);
+    }
+  }
+
+  private accumulateMessages(pieceToTotals: Map<string, UsageTotals>, session: SessionFacts): void {
     for (const message of session.messages) {
       const threadPiece = SessionUtil.isMainThread(message.thread)
         ? AttributionService.MAIN_PIECE
@@ -88,6 +98,13 @@ export class UsageService {
         }
       }
     }
+  }
+
+  private accumulateToolCalls(
+    pieceToTotals: Map<string, UsageTotals>,
+    session: SessionFacts,
+    index: SessionIndex,
+  ): void {
     for (const call of session.tools) {
       const errorCount = call.result?.isError === true ? 1 : 0;
       for (const piece of index.toolCallIdToPieces.get(call.id) ?? [AttributionService.MAIN_PIECE]) {
@@ -106,11 +123,6 @@ export class UsageService {
         serverTotals.toolErrors += errorCount;
         serverTotals.sessionIds.add(session.sessionId);
       }
-    }
-    for (const command of session.prompts.map((prompt) => prompt.command).filter((name) => name !== undefined)) {
-      const commandTotals = this.totalsOf(pieceToTotals, this.attribution.commandPieceId(command));
-      commandTotals.invocations++;
-      commandTotals.sessionIds.add(session.sessionId);
     }
   }
 

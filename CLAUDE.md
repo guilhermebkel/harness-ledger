@@ -27,7 +27,8 @@ ADR 0008 has the reasons; `docs/code-standards.md` ("Architecture") has the rule
 pnpm install
 pnpm test           # vitest
 pnpm typecheck
-pnpm lint           # pnpm lint:fix for autofixable rules
+pnpm lint           # pnpm lint:fix for autofixable rules; includes complexity limits (sonarjs)
+pnpm quality        # knip (dead code, unused exports and deps) and jscpd (duplicated code)
 pnpm build          # src/ -> dist/imh.mjs
 pnpm check          # all of the above, and fails if dist/ is stale (CI runs this)
 node dist/imh.mjs --help
@@ -37,7 +38,7 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 ## Rules
 
 - **Commit once per task, not per file.** Make all the edits a task needs, then verify once and commit everything together.
-- **Before every commit, run `pnpm lint`, `pnpm typecheck` (tsc) and `pnpm test`, and fix everything they report.** Then `pnpm build` and stage `dist/`. `pnpm check` runs all of this in one go and also fails on a stale `dist/`; CI runs the same. Never commit with lint errors, type errors or failing tests.
+- **Before every commit, run `pnpm lint`, `pnpm typecheck` (tsc), `pnpm quality` and `pnpm test`, and fix everything they report.** Then `pnpm build` and stage `dist/`. `pnpm check` runs all of this in one go and also fails on a stale `dist/`; CI runs the same. Never commit with lint errors, type errors, quality findings or failing tests; fix the code instead of raising a limit or adding an ignore.
 - While iterating, run only what you need (`pnpm exec vitest run <file>`, `pnpm exec eslint <file>`); keep the full run for the end.
 - Provider-specific code (paths, transcript and settings formats, tool names, prompt tags, env variables) lives only in `src/Providers/<Provider>/`. `src/Shared/` never imports a provider except through `ProviderModule`, and providers never import each other (ADR 0008, enforced by lint). If shared code needs provider knowledge, extend the shared model or `BaseProviderAdapter` instead.
 - Write classes: static-only Utils, Services with constructor-injected dependencies, Commands with `run`. Protocols hold only types.

@@ -6,6 +6,12 @@ import type { Frontmatter, FrontmatterValue } from "@/Shared/Protocols/UtilProto
 
 type BlockMode = "list" | "text" | undefined;
 
+interface ParseState {
+  data: Record<string, FrontmatterValue>;
+  currentKey: string | undefined;
+  blockMode: BlockMode;
+}
+
 const BLOCK_TEXT_MARKERS = new Set(["|", ">", "|-", ">-"]);
 
 export class FrontmatterUtil {
@@ -17,42 +23,46 @@ export class FrontmatterUtil {
         body: text,
       };
     }
-    const data: Record<string, FrontmatterValue> = {};
-    let currentKey: string | undefined;
-    let blockMode: BlockMode;
+    const state: ParseState = { data: {}, currentKey: undefined, blockMode: undefined };
     for (const rawLine of (match[1] ?? "").split(/\r?\n/)) {
-      const line = rawLine.replace(/\s+$/, "");
-      const isBlankOrComment = !line.trim() || line.trim().startsWith("#");
-      if (isBlankOrComment) {
-        continue;
-      }
-      const listItem = /^\s+-\s+(.*)$/.exec(line);
-      if (listItem && currentKey && blockMode !== "text") {
-        const previous = data[currentKey];
-        const list = Array.isArray(previous) ? previous : [];
-        list.push(FrontmatterUtil.unquote(listItem[1] ?? ""));
-        data[currentKey] = list;
-        blockMode = "list";
-        continue;
-      }
-      const isTextContinuation = /^\s+/.test(line) && currentKey !== undefined && blockMode === "text";
-      if (isTextContinuation && currentKey) {
-        data[currentKey] = `${String(data[currentKey] ?? "")} ${line.trim()}`.trim();
-        continue;
-      }
-      const keyValue = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
-      if (!keyValue) {
-        continue;
-      }
-      currentKey = keyValue[1] ?? "";
-      const value = (keyValue[2] ?? "").trim();
-      blockMode = BLOCK_TEXT_MARKERS.has(value) ? "text" : undefined;
-      data[currentKey] = FrontmatterUtil.parseScalarOrFlowList(value);
+      FrontmatterUtil.readLine(state, rawLine.replace(/\s+$/, ""));
     }
+    const data = state.data;
     return {
       data,
       body: text.slice(match[0].length),
     };
+  }
+
+  /** Applies one frontmatter line: a list item, a continuation of block text, or a new `key: value`. */
+  private static readLine(state: ParseState, line: string): void {
+    const isBlankOrComment = !line.trim() || line.trim().startsWith("#");
+    if (isBlankOrComment) {
+      return;
+    }
+    const key = state.currentKey;
+    const listItem = /^\s+-\s+(.*)$/.exec(line);
+    if (listItem && key && state.blockMode !== "text") {
+      const previous = state.data[key];
+      const list = Array.isArray(previous) ? previous : [];
+      list.push(FrontmatterUtil.unquote(listItem[1] ?? ""));
+      state.data[key] = list;
+      state.blockMode = "list";
+      return;
+    }
+    if (/^\s+/.test(line) && key && state.blockMode === "text") {
+      state.data[key] = `${String(state.data[key] ?? "")} ${line.trim()}`.trim();
+      return;
+    }
+    const keyValue = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
+    if (!keyValue) {
+      return;
+    }
+    const newKey = keyValue[1] ?? "";
+    const value = (keyValue[2] ?? "").trim();
+    state.currentKey = newKey;
+    state.blockMode = BLOCK_TEXT_MARKERS.has(value) ? "text" : undefined;
+    state.data[newKey] = FrontmatterUtil.parseScalarOrFlowList(value);
   }
 
   /** A list field written as a YAML list, a flow list or a comma/space separated string (`tools: Read, Bash`). */
