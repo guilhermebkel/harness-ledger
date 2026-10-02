@@ -199,3 +199,39 @@ describe("parseSession on cases seen in real sessions", () => {
     expect(models).not.toContain("<synthetic>");
   });
 });
+
+describe("parseSession on data Claude Code computes itself", () => {
+  let reportFacts: SessionFacts;
+
+  beforeAll(async () => {
+    ClaudeCodeFixtureUtil.writeProviderReportSession(fixture, "rep1", "2026-09-22T10:00:00.000Z");
+    const transcripts = await adapter.discoverTranscripts({ projectDir: fixture.projectDir });
+    const transcript = transcripts.find((candidate) => candidate.sessionId === "rep1");
+    reportFacts = await adapter.parseSession(transcript!, { idleMs: 5 * 60_000, projectDir: fixture.projectDir });
+  });
+
+  it("reads API errors with their code, status, thread and model", () => {
+    expect(reportFacts.apiErrors).toHaveLength(2);
+    expect(reportFacts.apiErrors[0]).toMatchObject({
+      status: 404,
+      code: "model_not_found",
+      model: "glm-5.3",
+      thread: { agentType: "migrations-writer" },
+    });
+  });
+
+  it("adds the last cost of each run of a resumed session and keeps the partial flag", () => {
+    expect(reportFacts.reported.costUsd).toBe(2);
+    expect(reportFacts.reported.isCostPartial).toBe(true);
+  });
+
+  it("reads the main thread's turn durations", () => {
+    expect(reportFacts.reported.turns.map((turn) => turn.durationMs)).toEqual([90_000, 30_000]);
+  });
+
+  it("takes the subagent type from attributionAgent and the running skill from attributionSkill", () => {
+    const write = reportFacts.tools.find((call) => call.name === "Write");
+    expect(write?.thread.agentType).toBe("migrations-writer");
+    expect(write?.skillInUse).toBe("db-migrations");
+  });
+});

@@ -73,12 +73,19 @@ export class UsageService {
       agentTotals.activeMs += threadFacts.activeMs;
     }
     for (const message of session.messages) {
-      const piece = SessionUtil.isMainThread(message.thread) ? AttributionService.MAIN_PIECE : `agent:${message.thread.agentType}`;
-      const totals = this.totalsOf(pieceToTotals, piece);
-      totals.usage = TokenUsageUtil.add(totals.usage, message.usage);
-      totals.usd += this.costService.costUsd(message.usage, message.model);
-      if (message.model) {
-        totals.models.add(message.model);
+      const threadPiece = SessionUtil.isMainThread(message.thread)
+        ? AttributionService.MAIN_PIECE
+        : `agent:${message.thread.agentType}`;
+      // A skill's tokens also count toward the thread it ran in; skill rows overlap main and agent rows.
+      const skillPieces = message.skillInUse ? [this.attribution.pieceIdFor("skill", message.skillInUse)] : [];
+      for (const piece of [threadPiece, ...skillPieces]) {
+        const totals = this.totalsOf(pieceToTotals, piece);
+        totals.usage = TokenUsageUtil.add(totals.usage, message.usage);
+        totals.usd += this.costService.costUsd(message.usage, message.model);
+        totals.sessionIds.add(session.sessionId);
+        if (message.model) {
+          totals.models.add(message.model);
+        }
       }
     }
     for (const call of session.tools) {

@@ -45,6 +45,8 @@ export interface TranscriptOptions {
 export interface ToolStepOptions {
   secondsLater?: number;
   model?: string;
+  /** Extra fields on the assistant lines, e.g. `attributionSkill`. */
+  lineFields?: Record<string, unknown>;
 }
 
 export interface ResultOptions {
@@ -99,10 +101,12 @@ export class ClaudeCodeTranscriptBuilder {
     const message = { id: messageId, role: "assistant", model, usage: DEFAULT_TOOL_USAGE };
     this.lines.push({
       ...this.lineBase("assistant", stepOptions.secondsLater ?? 3),
+      ...stepOptions.lineFields,
       message: { ...message, content: [{ type: "text", text: "Working." }] },
     });
     this.lines.push({
       ...this.lineBase("assistant", 0),
+      ...stepOptions.lineFields,
       message: { ...message, content: [{ type: "tool_use", id, name, input }] },
     });
     return this;
@@ -146,13 +150,20 @@ export class ClaudeCodeTranscriptBuilder {
   }
 
   /** An API error, which Claude Code writes as an assistant message from the "<synthetic>" model. */
-  apiError(text: string, secondsLater = 3): this {
+  apiError(text: string, secondsLater = 3, lineFields: Record<string, unknown> = {}): this {
     const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
     this.lines.push({
       ...this.lineBase("assistant", secondsLater),
       isApiErrorMessage: true,
+      ...lineFields,
       message: { id: `msg_${ClaudeCodeFixtureUtil.nextUuid()}`, role: "assistant", model: "<synthetic>", content: [{ type: "text", text }], usage },
     });
+    return this;
+  }
+
+  /** A line without a message, such as `cost-state` or a `system` line. */
+  record(type: string, fields: Record<string, unknown>, secondsLater = 1): this {
+    this.lines.push({ ...this.lineBase(type, secondsLater), ...fields });
     return this;
   }
 
@@ -425,6 +436,46 @@ export class ClaudeCodeFixtureUtil {
       .result(`glm_${sessionId}`, "export const billing = 1;")
       .apiError("API Error: 404 model_not_found")
       .say("Done.")
+      .write(ClaudeCodeFixtureUtil.sessionPath(fixture, sessionId));
+  }
+
+  /**
+   * Data Claude Code computes itself (content is synthetic):
+   * - two runs of the session (resumed), each ending with a `cost-state` total;
+   * - `turn_duration` lines for the main thread's turns;
+   * - a subagent whose type is known only from `attributionAgent` (no meta file), running a skill
+   *   (`attributionSkill`), whose requests fail twice with `model_not_found` before it falls back.
+   */
+  static writeProviderReportSession(fixture: Fixture, sessionId: string, startedAt: string): void {
+    const agentId = `p${sessionId}`;
+    const agentLine = { attributionAgent: "migrations-writer" };
+    new ClaudeCodeTranscriptBuilder(sessionId, fixture.projectDir, startedAt, { isSidechain: true, agentId })
+      .user(`Write the migration for ${sessionId}`)
+      .apiError("There's an issue with the selected model (glm-5.3). It may not exist.", 2, {
+        ...agentLine, apiErrorStatus: 404, error: "model_not_found",
+      })
+      .apiError("There's an issue with the selected model (glm-5.3). It may not exist.", 2, {
+        ...agentLine, apiErrorStatus: 404, error: "model_not_found",
+      })
+      .tool(`m_${sessionId}`, "Write", { file_path: join(fixture.projectDir, "db/001.sql") }, {
+        secondsLater: 30, lineFields: { ...agentLine, attributionSkill: "db-migrations" },
+      })
+      .result(`m_${sessionId}`, "File created")
+      .write(ClaudeCodeFixtureUtil.subagentPath(fixture, sessionId, agentId));
+    const runStartAtMs = Date.parse(startedAt);
+    new ClaudeCodeTranscriptBuilder(sessionId, fixture.projectDir, startedAt)
+      .user("Add a migration for the invoices table")
+      .tool(`d_${sessionId}`, "Agent", { subagent_type: "migrations-writer", prompt: `Write the migration for ${sessionId}` })
+      .result(`d_${sessionId}`, "Migration written", { secondsLater: 40, toolUseResult: { agentId } })
+      .say("Done.")
+      .record("system", { subtype: "turn_duration", durationMs: 90_000, isMeta: true })
+      .record("cost-state", { totalCostUSD: 0.5, startTime: runStartAtMs, hasUnknownModelCost: false })
+      .record("cost-state", { totalCostUSD: 1.25, startTime: runStartAtMs, hasUnknownModelCost: true })
+      .idle(3600)
+      .user("Now run it")
+      .say("Ran it.")
+      .record("system", { subtype: "turn_duration", durationMs: 30_000, isMeta: true })
+      .record("cost-state", { totalCostUSD: 0.75, startTime: runStartAtMs + 3_600_000, hasUnknownModelCost: false })
       .write(ClaudeCodeFixtureUtil.sessionPath(fixture, sessionId));
   }
 

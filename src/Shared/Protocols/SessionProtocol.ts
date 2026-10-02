@@ -70,6 +70,8 @@ export interface ToolCall {
   subagentPromptHash?: string;
   /** Set for skill invocations. */
   skill?: string;
+  /** The skill whose instructions were driving this call, when the provider records it. */
+  skillInUse?: string;
 }
 
 export interface UserPrompt {
@@ -90,6 +92,8 @@ export interface AssistantMessage {
   thread: ThreadRef;
   sentAtMs?: number;
   ref: EvidenceRef;
+  /** The skill whose instructions were driving this message, when the provider records it. */
+  skillInUse?: string;
 }
 
 export interface ThreadFacts {
@@ -102,6 +106,34 @@ export interface ThreadFacts {
 }
 
 /** Everything the analysis needs from one session: the main transcript and its subagent transcripts. */
+/** A request to the model API that failed (bad model name, auth, server error, rate limit). */
+export interface ApiError {
+  /** HTTP status, when recorded. */
+  status?: number;
+  /** Short error code, e.g. "model_not_found", "authentication_failed", "http_400". */
+  code: string;
+  /** Model the failing request used, when known. */
+  model?: string;
+  thread: ThreadRef;
+  ref: EvidenceRef;
+  occurredAtMs?: number;
+}
+
+/** One agent turn as the provider timed it: from the person's message until the agent stopped. */
+export interface ReportedTurn {
+  durationMs: number;
+  endedAtMs?: number;
+}
+
+/** Figures the provider computed itself, kept apart from the script's own estimates. */
+export interface ProviderReport {
+  /** The provider's own cost for the session, in USD. */
+  costUsd?: number;
+  /** The provider could not price some model, so `costUsd` leaves it out. */
+  isCostPartial: boolean;
+  turns: ReportedTurn[];
+}
+
 export interface SessionFacts {
   provider: string;
   sessionId: string;
@@ -116,6 +148,8 @@ export interface SessionFacts {
   prompts: UserPrompt[];
   tools: ToolCall[];
   messages: AssistantMessage[];
+  apiErrors: ApiError[];
+  reported: ProviderReport;
   /** Transcript files read, including subagent transcripts. */
   files: string[];
   /** Lines that could not be parsed, a sign of format drift. */

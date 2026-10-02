@@ -7,6 +7,7 @@ export type SignalType
     | "tool_error"
     | "permission_denied"
     | "hook_blocked"
+    | "api_error"
     | "repeated_read"
     | "subagent_reread"
     | "repeated_request"
@@ -30,6 +31,8 @@ export interface Mention {
 
 /** Details that only some signal types carry. */
 export interface SignalDetails {
+  /** api_error: models the failing requests used, most frequent first. */
+  models?: CountedValue[];
   /** failed_command: the errors seen, most frequent first. */
   errors?: CountedValue[];
   /** failed_command: the command that worked right after the failure. */
@@ -52,7 +55,7 @@ export interface SignalDetails {
   isLoadedEveryTurn?: boolean;
 }
 
-export type CountedDetail = "errors" | "recoveredWith" | "files";
+export type CountedDetail = "errors" | "recoveredWith" | "files" | "models";
 
 export interface SignalCost {
   activeMinutes: number;

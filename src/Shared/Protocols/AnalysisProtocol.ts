@@ -72,10 +72,23 @@ export interface CostSummary {
 
 export interface SessionTotals extends CostSummary { subagentActiveMinutes: number }
 
+/** Totals the provider computed itself, next to the script's estimates (not added to them). */
+export interface ReportedTotals {
+  /** Sum of the provider's own cost for the sessions that recorded one. */
+  costUsd?: number;
+  sessionsWithCost: number;
+  /** Some session's cost leaves out a model the provider could not price. */
+  isCostPartial: boolean;
+  /** Wall-clock time of agent turns, including waits inside a turn (permission prompts, questions). */
+  turnMinutes?: number;
+  turns: number;
+}
+
 export interface AnalysisTotals extends SessionTotals {
   lostToFailures: CostSummary;
   inCorrectedOrInterruptedTurns: CostSummary;
   isEstimated: true;
+  reportedByProvider: ReportedTotals;
   /** Models with no price in the table; their tokens are counted but their cost is 0. */
   unpricedModels: string[];
   method: string;

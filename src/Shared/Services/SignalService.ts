@@ -61,6 +61,7 @@ export class SignalService {
       occurrences >= options.thresholds.minFailures || sessions >= options.thresholds.minFailureSessions,
     permission_denied: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     hook_blocked: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
+    api_error: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     user_correction: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     interruption: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     repeated_read: (occurrences, _sessions, options) => occurrences >= options.thresholds.minExtraReads,

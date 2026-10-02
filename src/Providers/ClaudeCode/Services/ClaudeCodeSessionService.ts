@@ -40,7 +40,8 @@ const UNKNOWN_SUBAGENT_TYPE = "subagent";
 const DEFAULT_SUBAGENT_TYPE = "general-purpose";
 const MAX_PROMPT_CHARS = 2000;
 const MAX_SUMMARY_CHARS = 160;
-const SUBAGENT_TYPE_KEYS = ["agentType", "agent_type", "subagentType", "subagent_type"];
+/** `attributionAgent` is written on every subagent line by recent versions. */
+const SUBAGENT_TYPE_KEYS = ["agentType", "agent_type", "subagentType", "subagent_type", "attributionAgent"];
 const TIMED_LINE_TYPES = new Set(["user", "assistant", "attachment", "system"]);
 const READ_TOOLS = new Set(["Read", "NotebookRead"]);
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
@@ -49,6 +50,9 @@ const DELEGATION_TOOLS = new Set(["Task", "Agent"]);
 const HUMAN_ORIGIN = "human";
 /** Claude Code writes API errors and "no response" notices as assistant messages from this pseudo-model. */
 const SYNTHETIC_MODEL = "<synthetic>";
+/** Model named in an API-error message, e.g. "There's an issue with the selected model (x)". */
+const MODEL_IN_ERROR = /\bmodel \(([^)\s]{1,80})\)/i;
+const UNKNOWN_API_ERROR = "unknown";
 
 export class ClaudeCodeSessionService {
   constructor(private readonly homeDir: string) {}
@@ -92,6 +96,11 @@ export class ClaudeCodeSessionService {
       prompts: [],
       tools: [],
       messages: [],
+      apiErrors: [],
+      reported: {
+        isCostPartial: false,
+        turns: [],
+      },
       files: [transcript.file, ...transcript.subagentFiles.map((subagentFile) => subagentFile.file)],
       unparsedLines: 0,
     };
@@ -106,6 +115,8 @@ export class ClaudeCodeSessionService {
       delegationCallIdToAgentId: new Map(),
       threadIdToFirstPromptHash: new Map(),
       threadIdToDeclaredType: new Map(),
+      threadIdToLastModel: new Map(),
+      runStartToCostUsd: new Map(),
     };
     await this.readTranscript(context, transcript.file, true);
 
@@ -273,6 +284,14 @@ export class ClaudeCodeSessionService {
       this.handleAttachment(context, line);
       return;
     }
+    if (lineType === "cost-state") {
+      this.handleCostState(context, line);
+      return;
+    }
+    if (lineType === "system") {
+      this.handleSystemLine(context, line, isMainFile);
+      return;
+    }
     const message = GuardUtil.asRecord(record.message);
     if (!message) {
       return;
@@ -321,6 +340,14 @@ export class ClaudeCodeSessionService {
     const messageId = GuardUtil.asString(message.id) ?? `${context.currentFile}:${line.lineNumber}`;
     const usage = this.readUsage(GuardUtil.asRecord(message.usage));
     const toEvidence = this.evidenceFactory(context, line);
+    const model = this.readModel(message);
+    const skillInUse = GuardUtil.asString(line.record.attributionSkill);
+    if (model) {
+      context.threadIdToLastModel.set(line.thread.id, model);
+    }
+    if (line.record.isApiErrorMessage === true) {
+      this.handleApiError(context, line, message);
+    }
     const existing = context.messageIdToMessage.get(messageId);
     if (existing) {
       // Claude Code writes one line per content block and repeats the message's usage on each one.
@@ -328,11 +355,12 @@ export class ClaudeCodeSessionService {
     } else {
       context.messageIdToMessage.set(messageId, {
         id: messageId,
-        model: this.readModel(message),
+        model,
         usage,
         thread: line.thread,
         sentAtMs: line.occurredAtMs,
         ref: toEvidence(),
+        skillInUse,
       });
     }
     for (const block of GuardUtil.asArray(message.content).map((item) => GuardUtil.asRecord(item))) {
@@ -346,6 +374,7 @@ export class ClaudeCodeSessionService {
         calledAtMs: line.occurredAtMs,
         messageId,
         projectDir: context.projectDir,
+        skillInUse,
       });
       context.toolUseIdToPendingCall.set(toolUseId, call);
       context.facts.tools.push(call);
@@ -394,6 +423,63 @@ export class ClaudeCodeSessionService {
     if (textParts.length) {
       this.handlePrompt(context, line, textParts.join("\n"));
     }
+  }
+
+  private handleApiError(
+    context: ClaudeCodeParseContext,
+    line: ClaudeCodeTranscriptLine,
+    message: UnknownRecord,
+  ): void {
+    const status = GuardUtil.asNumber(line.record.apiErrorStatus);
+    const recordedCode = GuardUtil.asString(line.record.error);
+    const hasUsefulCode = recordedCode !== undefined && recordedCode !== UNKNOWN_API_ERROR;
+    const statusCode = status === undefined ? UNKNOWN_API_ERROR : `http_${status}`;
+    const text = this.messageText(message);
+    context.facts.apiErrors.push({
+      status,
+      code: hasUsefulCode ? recordedCode : statusCode,
+      model: MODEL_IN_ERROR.exec(text)?.[1] ?? context.threadIdToLastModel.get(line.thread.id),
+      thread: line.thread,
+      ref: this.evidenceFactory(context, line)(text),
+      occurredAtMs: line.occurredAtMs,
+    });
+  }
+
+  /** Claude Code's own running cost; the last line of each run holds that run's total. */
+  private handleCostState(context: ClaudeCodeParseContext, line: ClaudeCodeTranscriptLine): void {
+    const costUsd = GuardUtil.asNumber(line.record.totalCostUSD);
+    if (costUsd === undefined) {
+      return;
+    }
+    const runStart = String(GuardUtil.asNumber(line.record.startTime) ?? "");
+    context.runStartToCostUsd.set(runStart, costUsd);
+    const reported = context.facts.reported;
+    reported.costUsd = [...context.runStartToCostUsd.values()].reduce((total, runCost) => total + runCost, 0);
+    reported.isCostPartial ||= line.record.hasUnknownModelCost === true;
+  }
+
+  private handleSystemLine(
+    context: ClaudeCodeParseContext,
+    line: ClaudeCodeTranscriptLine,
+    isMainFile: boolean,
+  ): void {
+    const durationMs = GuardUtil.asNumber(line.record.durationMs);
+    const isMainTurn = isMainFile && line.record.isSidechain !== true;
+    if (line.record.subtype === "turn_duration" && isMainTurn && durationMs !== undefined) {
+      context.facts.reported.turns.push({
+        durationMs,
+        endedAtMs: line.occurredAtMs,
+      });
+    }
+  }
+
+  private messageText(message: UnknownRecord): string {
+    if (typeof message.content === "string") {
+      return message.content;
+    }
+    return GuardUtil.asArray(message.content)
+      .map((item) => GuardUtil.asString(GuardUtil.asRecord(item)?.text) ?? "")
+      .join("\n");
   }
 
   /**
@@ -514,6 +600,7 @@ export class ClaudeCodeSessionService {
       ref: callContext.toEvidence(description.summary),
       calledAtMs: callContext.calledAtMs,
       messageId: callContext.messageId,
+      skillInUse: callContext.skillInUse,
     };
   }
 

@@ -17,6 +17,10 @@ export interface ClaudeCodeParseContext {
   threadIdToFirstPromptHash: Map<string, string>;
   /** Subagent types declared on transcript lines. */
   threadIdToDeclaredType: Map<string, string>;
+  /** Last real model each thread used, to name the model behind an API error. */
+  threadIdToLastModel: Map<string, string>;
+  /** `cost-state` totals are cumulative per run of Claude Code; a resumed session starts a new run. */
+  runStartToCostUsd: Map<string, number>;
 }
 
 /** What one transcript line says, with every field read through the guards. */
@@ -36,6 +40,7 @@ export interface ClaudeCodeToolCallContext {
   calledAtMs?: number;
   messageId: string;
   projectDir?: string;
+  skillInUse?: string;
 }
 
 /** What a tool call is about, for grouping and for evidence. */

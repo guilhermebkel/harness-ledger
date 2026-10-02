@@ -15,7 +15,7 @@ export interface SignalThresholds {
   minFailures: number;
   /** ...or when they happen in at least this many sessions. */
   minFailureSessions: number;
-  /** Permission denials, hook blocks, corrections and interruptions. */
+  /** Permission denials, hook blocks, API errors, corrections and interruptions. */
   minRepeatedEvents: number;
   /** Reads of one file within one thread before it counts as re-reading. */
   minReadsPerFile: number;

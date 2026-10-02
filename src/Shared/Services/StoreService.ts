@@ -17,7 +17,7 @@ const SUGGESTIONS_FILE = "suggestions.json";
 
 export class StoreService {
   /** Bump when the parser's output shape changes, so cached facts are re-parsed. */
-  static readonly FACTS_VERSION = 3;
+  static readonly FACTS_VERSION = 4;
 
   constructor(readonly root: string) {}
 

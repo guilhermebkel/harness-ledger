@@ -2,7 +2,7 @@
 // with the cost it estimates for each occurrence. Every number comes from the transcripts (ADR 0002).
 
 import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
-import type { SessionFacts, ToolCall, UserPrompt } from "@/Shared/Protocols/SessionProtocol.js";
+import type { ApiError, SessionFacts, ToolCall, UserPrompt } from "@/Shared/Protocols/SessionProtocol.js";
 import type { Occurrence, SignalOptions, SignalType, StepCost } from "@/Shared/Protocols/SignalProtocol.js";
 import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
 import { HashUtil } from "@/Shared/Utils/HashUtil.js";
@@ -48,6 +48,7 @@ export class SignalDetectorService {
     this.detectRepeatedReads(session, index);
     this.detectSubagentRereads(session, index);
     this.detectCorrectionsAndInterruptions(session, index);
+    this.detectApiErrors(session, index);
   }
 
   /** Greedy clustering of prompts by word-set similarity; a cluster seen in enough sessions is a repeated request. */
@@ -143,6 +144,26 @@ export class SignalDetectorService {
         const group = this.collector.add(signalId, "tool_error", `${call.key} error: ${errorHead}`, occurrence);
         group.details.tool = call.key;
         group.details.error = errorHead;
+      }
+    }
+  }
+
+  /** Failed model API requests: a wrong model name or expired credentials are harness problems. */
+  private detectApiErrors(session: SessionFacts, index: SessionIndex): void {
+    for (const apiError of session.apiErrors) {
+      const isSubagent = !SessionUtil.isMainThread(apiError.thread);
+      const piece = isSubagent
+        ? this.attribution.pieceIdFor("agent", apiError.thread.agentType)
+        : AttributionService.MAIN_PIECE;
+      const title = `Model API error: ${apiError.code}`;
+      const group = this.collector.add(`api_error:${apiError.code}`, "api_error", title, {
+        session,
+        ref: apiError.ref,
+        pieces: [piece],
+        ...this.apiErrorCost(apiError, index),
+      });
+      if (apiError.model) {
+        this.collector.count(group, "models", RedactUtil.redact(apiError.model));
       }
     }
   }
@@ -266,6 +287,20 @@ export class SignalDetectorService {
       activeMs: Math.min(this.options.idleMs, elapsedMs),
       usage: reaction?.usage ?? TokenUsageUtil.zero(),
       model: reaction?.model,
+    };
+  }
+
+  /** Wait until the thread got a real answer after the failed request (retries and fallbacks). */
+  private apiErrorCost(apiError: ApiError, index: SessionIndex): StepCost {
+    const failedAtMs = apiError.occurredAtMs ?? 0;
+    const answer = (index.threadIdToMessages.get(apiError.thread.id) ?? []).find(
+      (message) => message.model !== undefined && (message.sentAtMs ?? 0) > failedAtMs,
+    );
+    const elapsedMs = answer?.sentAtMs === undefined ? 0 : answer.sentAtMs - failedAtMs;
+    return {
+      activeMs: Math.min(this.options.idleMs, Math.max(0, elapsedMs)),
+      usage: TokenUsageUtil.zero(),
+      model: answer?.model,
     };
   }
 

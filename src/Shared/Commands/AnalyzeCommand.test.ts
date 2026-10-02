@@ -1,7 +1,8 @@
 // Integration test: runs the command end to end against a fake Claude Code home, the only
 // provider today. Shared logic is exercised through a real provider on purpose.
 
-import { rmSync } from "node:fs";
+import { rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ClaudeCodeFixtureUtil, type Fixture } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.js";
 import type { Signal } from "@/Shared/Protocols/SignalProtocol.js";
@@ -157,5 +158,56 @@ describe("AnalyzeCommand on cases seen in real sessions", () => {
     expect(analysis.totals.unpricedModels).toEqual(["glm-5.2"]);
     const usageWithGlm = analysis.usage.find((usage) => usage.models.includes("glm-5.2"));
     expect(usageWithGlm).toBeDefined();
+  });
+});
+
+describe("AnalyzeCommand on data Claude Code computes itself", () => {
+  let reportFixture: Fixture;
+  let restoreReportEnv: () => void;
+
+  beforeAll(() => {
+    restoreEnv();
+    reportFixture = ClaudeCodeFixtureUtil.makeFixture();
+    const agentFile = join(reportFixture.projectDir, ".claude", "agents", "migrations-writer.md");
+    writeFileSync(agentFile, "---\nname: migrations-writer\ndescription: Writes migrations\nmodel: glm-5.3\n---\nWrite it.\n");
+    ClaudeCodeFixtureUtil.writeProviderReportSession(reportFixture, "rep1", "2026-09-22T10:00:00.000Z");
+    ClaudeCodeFixtureUtil.writeProviderReportSession(reportFixture, "rep2", "2026-09-23T10:00:00.000Z");
+    restoreReportEnv = ClaudeCodeFixtureUtil.useFixtureEnv(reportFixture);
+  });
+
+  afterAll(() => {
+    restoreReportEnv();
+    restoreEnv = ClaudeCodeFixtureUtil.useFixtureEnv(fixture);
+    rmSync(reportFixture.root, { recursive: true, force: true });
+  });
+
+  async function analyzeReport() {
+    return command.run({ projectDir: reportFixture.projectDir, dataDir: reportFixture.dataDir });
+  }
+
+  it("reports repeated model API errors with the failing model and the subagent that hit them", async () => {
+    const analysis = await analyzeReport();
+    const apiError = signalById(analysis.signals, "api_error:model_not_found");
+    expect(apiError).toMatchObject({ occurrences: 4, sessions: 2, pieces: ["agent:migrations-writer"] });
+    expect(apiError.details.models).toEqual([{ value: "glm-5.3", count: 4 }]);
+    expect(apiError.cost.activeMinutes).toBeGreaterThan(0);
+  });
+
+  it("shows the provider's own cost and turn time next to the estimates", async () => {
+    const analysis = await analyzeReport();
+    expect(analysis.totals.reportedByProvider).toEqual({
+      costUsd: 4,
+      sessionsWithCost: 2,
+      isCostPartial: true,
+      turnMinutes: 4,
+      turns: 4,
+    });
+  });
+
+  it("attributes a subagent's calls and tokens to the skill it was running", async () => {
+    const analysis = await analyzeReport();
+    const skillUsage = analysis.usage.find((usage) => usage.piece === "skill:db-migrations");
+    expect(skillUsage).toMatchObject({ toolCalls: 2, sessions: 2 });
+    expect(skillUsage?.tokens).toBeGreaterThan(0);
   });
 });

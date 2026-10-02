@@ -1,4 +1,11 @@
-import type { Analysis, AnalysisTotals, CompactAnalysis, CostSummary, SessionTotals } from "@/Shared/Protocols/AnalysisProtocol.js";
+import type {
+  Analysis,
+  AnalysisTotals,
+  CompactAnalysis,
+  CostSummary,
+  ReportedTotals,
+  SessionTotals,
+} from "@/Shared/Protocols/AnalysisProtocol.js";
 import type { AnalyzeOptions } from "@/Shared/Protocols/CommandProtocol.js";
 import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.js";
 import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.js";
@@ -35,6 +42,7 @@ const WASTE_SIGNAL_TYPES = new Set<SignalType>([
   "hook_blocked",
   "repeated_read",
   "subagent_reread",
+  "api_error",
 ]);
 const CORRECTION_SIGNAL_TYPES = new Set<SignalType>(["user_correction", "interruption"]);
 const COST_METHOD
@@ -187,10 +195,26 @@ export class AnalysisService {
       ...this.sessionTotals(sessions),
       lostToFailures: this.sumSignalCosts(signals, WASTE_SIGNAL_TYPES),
       inCorrectedOrInterruptedTurns: this.sumSignalCosts(signals, CORRECTION_SIGNAL_TYPES),
+      reportedByProvider: this.reportedTotals(sessions),
       isEstimated: true,
       unpricedModels: this.unpricedModels(sessions),
       method: COST_METHOD,
       idleMinutes: this.context.config.idleMinutes,
+    };
+  }
+
+  private reportedTotals(sessions: SessionFacts[]): ReportedTotals {
+    const sessionsWithCost = sessions.filter((session) => session.reported.costUsd !== undefined);
+    const turns = sessions.flatMap((session) => session.reported.turns);
+    const turnMs = turns.reduce((total, turn) => total + turn.durationMs, 0);
+    return {
+      costUsd: sessionsWithCost.length
+        ? NumberUtil.round(sessionsWithCost.reduce((total, session) => total + (session.reported.costUsd ?? 0), 0))
+        : undefined,
+      sessionsWithCost: sessionsWithCost.length,
+      isCostPartial: sessionsWithCost.some((session) => session.reported.isCostPartial),
+      turnMinutes: turns.length ? TimeUtil.msToMinutes(turnMs) : undefined,
+      turns: turns.length,
     };
   }
 

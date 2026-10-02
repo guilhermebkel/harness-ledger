@@ -50,6 +50,10 @@ _Avoid_: duration, wall time
 
 ### Analysis
 
+**Reported figure**:
+A number the provider computed itself (its cost for a session, how long a turn took), kept next to the script's estimates and never added to them.
+_Avoid_: actual cost, real time
+
 **Signal**:
 A pattern extracted deterministically from sessions, such as a failing command or a file read several times, with counts, cost and evidence. Signals are facts, not judgments.
 _Avoid_: issue, problem, insight

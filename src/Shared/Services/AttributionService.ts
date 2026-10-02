@@ -49,7 +49,9 @@ export class AttributionService {
       }));
     for (const call of session.tools) {
       if (!SessionUtil.isMainThread(call.thread)) {
-        index.toolCallIdToPieces.set(call.id, [this.pieceIdFor("agent", call.thread.agentType)]);
+        const agentPiece = this.pieceIdFor("agent", call.thread.agentType);
+        const skillPieces = call.skillInUse ? [this.pieceIdFor("skill", call.skillInUse)] : [];
+        index.toolCallIdToPieces.set(call.id, [agentPiece, ...skillPieces]);
       } else if (call.ref.file === session.file) {
         mainEvents.push({
           line: call.ref.line,
@@ -90,8 +92,10 @@ export class AttributionService {
       if (!call) {
         continue;
       }
-      if (call.skill) {
-        currentTurnPieces = CollectionUtil.unique([...currentTurnPieces, this.pieceIdFor("skill", call.skill)]);
+      // The skill the provider says was running wins over the one inferred from the turn.
+      const skillName = call.skillInUse ?? call.skill;
+      if (skillName) {
+        currentTurnPieces = CollectionUtil.unique([...currentTurnPieces, this.pieceIdFor("skill", skillName)]);
         lastTurnPieces = currentTurnPieces;
       }
       if (call.subagentType) {

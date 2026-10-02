@@ -230,7 +230,9 @@ var AttributionService = class _AttributionService {
     }));
     for (const call of session.tools) {
       if (!SessionUtil.isMainThread(call.thread)) {
-        index.toolCallIdToPieces.set(call.id, [this.pieceIdFor("agent", call.thread.agentType)]);
+        const agentPiece = this.pieceIdFor("agent", call.thread.agentType);
+        const skillPieces = call.skillInUse ? [this.pieceIdFor("skill", call.skillInUse)] : [];
+        index.toolCallIdToPieces.set(call.id, [agentPiece, ...skillPieces]);
       } else if (call.ref.file === session.file) {
         mainEvents.push({
           line: call.ref.line,
@@ -268,8 +270,9 @@ var AttributionService = class _AttributionService {
       if (!call) {
         continue;
       }
-      if (call.skill) {
-        currentTurnPieces = CollectionUtil.unique([...currentTurnPieces, this.pieceIdFor("skill", call.skill)]);
+      const skillName = call.skillInUse ?? call.skill;
+      if (skillName) {
+        currentTurnPieces = CollectionUtil.unique([...currentTurnPieces, this.pieceIdFor("skill", skillName)]);
         lastTurnPieces = currentTurnPieces;
       }
       if (call.subagentType) {
@@ -572,6 +575,7 @@ var SignalDetectorService = class {
     this.detectRepeatedReads(session, index);
     this.detectSubagentRereads(session, index);
     this.detectCorrectionsAndInterruptions(session, index);
+    this.detectApiErrors(session, index);
   }
   /** Greedy clustering of prompts by word-set similarity; a cluster seen in enough sessions is a repeated request. */
   detectRepeatedRequests(sessions) {
@@ -663,6 +667,23 @@ var SignalDetectorService = class {
         const group = this.collector.add(signalId, "tool_error", `${call.key} error: ${errorHead}`, occurrence);
         group.details.tool = call.key;
         group.details.error = errorHead;
+      }
+    }
+  }
+  /** Failed model API requests: a wrong model name or expired credentials are harness problems. */
+  detectApiErrors(session, index) {
+    for (const apiError of session.apiErrors) {
+      const isSubagent = !SessionUtil.isMainThread(apiError.thread);
+      const piece = isSubagent ? this.attribution.pieceIdFor("agent", apiError.thread.agentType) : AttributionService.MAIN_PIECE;
+      const title = `Model API error: ${apiError.code}`;
+      const group = this.collector.add(`api_error:${apiError.code}`, "api_error", title, {
+        session,
+        ref: apiError.ref,
+        pieces: [piece],
+        ...this.apiErrorCost(apiError, index)
+      });
+      if (apiError.model) {
+        this.collector.count(group, "models", RedactUtil.redact(apiError.model));
       }
     }
   }
@@ -774,6 +795,19 @@ var SignalDetectorService = class {
       model: reaction?.model
     };
   }
+  /** Wait until the thread got a real answer after the failed request (retries and fallbacks). */
+  apiErrorCost(apiError, index) {
+    const failedAtMs = apiError.occurredAtMs ?? 0;
+    const answer = (index.threadIdToMessages.get(apiError.thread.id) ?? []).find(
+      (message) => message.model !== void 0 && (message.sentAtMs ?? 0) > failedAtMs
+    );
+    const elapsedMs = answer?.sentAtMs === void 0 ? 0 : answer.sentAtMs - failedAtMs;
+    return {
+      activeMs: Math.min(this.options.idleMs, Math.max(0, elapsedMs)),
+      usage: TokenUsageUtil.zero(),
+      model: answer?.model
+    };
+  }
   /** Cost of an unnecessary read: its duration and the tokens it added to the context. */
   readCost(read, index) {
     const durationMs = (read.result?.returnedAtMs ?? 0) - (read.calledAtMs ?? 0);
@@ -853,6 +887,7 @@ var SignalService = class _SignalService {
     tool_error: (occurrences, sessions, options) => occurrences >= options.thresholds.minFailures || sessions >= options.thresholds.minFailureSessions,
     permission_denied: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     hook_blocked: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
+    api_error: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     user_correction: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     interruption: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     repeated_read: (occurrences, _sessions, options) => occurrences >= options.thresholds.minExtraReads,
@@ -1129,12 +1164,16 @@ var UsageService = class {
       agentTotals.activeMs += threadFacts.activeMs;
     }
     for (const message of session.messages) {
-      const piece = SessionUtil.isMainThread(message.thread) ? AttributionService.MAIN_PIECE : `agent:${message.thread.agentType}`;
-      const totals = this.totalsOf(pieceToTotals, piece);
-      totals.usage = TokenUsageUtil.add(totals.usage, message.usage);
-      totals.usd += this.costService.costUsd(message.usage, message.model);
-      if (message.model) {
-        totals.models.add(message.model);
+      const threadPiece = SessionUtil.isMainThread(message.thread) ? AttributionService.MAIN_PIECE : `agent:${message.thread.agentType}`;
+      const skillPieces = message.skillInUse ? [this.attribution.pieceIdFor("skill", message.skillInUse)] : [];
+      for (const piece of [threadPiece, ...skillPieces]) {
+        const totals = this.totalsOf(pieceToTotals, piece);
+        totals.usage = TokenUsageUtil.add(totals.usage, message.usage);
+        totals.usd += this.costService.costUsd(message.usage, message.model);
+        totals.sessionIds.add(session.sessionId);
+        if (message.model) {
+          totals.models.add(message.model);
+        }
       }
     }
     for (const call of session.tools) {
@@ -1419,7 +1458,8 @@ var WASTE_SIGNAL_TYPES = /* @__PURE__ */ new Set([
   "permission_denied",
   "hook_blocked",
   "repeated_read",
-  "subagent_reread"
+  "subagent_reread",
+  "api_error"
 ]);
 var CORRECTION_SIGNAL_TYPES = /* @__PURE__ */ new Set(["user_correction", "interruption"]);
 var COST_METHOD = "Active time sums gaps between transcript events up to the idle threshold; subagent time is reported per agent and not added to session time. Failure cost = time until the agent reacted + tokens of the reaction turn. Correction cost = the corrected turn (upper bound). Categories can overlap.";
@@ -1554,10 +1594,23 @@ var AnalysisService = class _AnalysisService {
       ...this.sessionTotals(sessions),
       lostToFailures: this.sumSignalCosts(signals, WASTE_SIGNAL_TYPES),
       inCorrectedOrInterruptedTurns: this.sumSignalCosts(signals, CORRECTION_SIGNAL_TYPES),
+      reportedByProvider: this.reportedTotals(sessions),
       isEstimated: true,
       unpricedModels: this.unpricedModels(sessions),
       method: COST_METHOD,
       idleMinutes: this.context.config.idleMinutes
+    };
+  }
+  reportedTotals(sessions) {
+    const sessionsWithCost = sessions.filter((session) => session.reported.costUsd !== void 0);
+    const turns = sessions.flatMap((session) => session.reported.turns);
+    const turnMs = turns.reduce((total, turn) => total + turn.durationMs, 0);
+    return {
+      costUsd: sessionsWithCost.length ? NumberUtil.round(sessionsWithCost.reduce((total, session) => total + (session.reported.costUsd ?? 0), 0)) : void 0,
+      sessionsWithCost: sessionsWithCost.length,
+      isCostPartial: sessionsWithCost.some((session) => session.reported.isCostPartial),
+      turnMinutes: turns.length ? TimeUtil.msToMinutes(turnMs) : void 0,
+      turns: turns.length
     };
   }
   unpricedModels(sessions) {
@@ -2309,7 +2362,7 @@ var UNKNOWN_SUBAGENT_TYPE2 = "subagent";
 var DEFAULT_SUBAGENT_TYPE = "general-purpose";
 var MAX_PROMPT_CHARS = 2e3;
 var MAX_SUMMARY_CHARS = 160;
-var SUBAGENT_TYPE_KEYS = ["agentType", "agent_type", "subagentType", "subagent_type"];
+var SUBAGENT_TYPE_KEYS = ["agentType", "agent_type", "subagentType", "subagent_type", "attributionAgent"];
 var TIMED_LINE_TYPES = /* @__PURE__ */ new Set(["user", "assistant", "attachment", "system"]);
 var READ_TOOLS = /* @__PURE__ */ new Set(["Read", "NotebookRead"]);
 var EDIT_TOOLS = /* @__PURE__ */ new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
@@ -2317,6 +2370,8 @@ var SEARCH_TOOLS = /* @__PURE__ */ new Set(["Grep", "Glob", "WebSearch", "WebFet
 var DELEGATION_TOOLS = /* @__PURE__ */ new Set(["Task", "Agent"]);
 var HUMAN_ORIGIN = "human";
 var SYNTHETIC_MODEL = "<synthetic>";
+var MODEL_IN_ERROR = /\bmodel \(([^)\s]{1,80})\)/i;
+var UNKNOWN_API_ERROR = "unknown";
 var ClaudeCodeSessionService = class {
   constructor(homeDir) {
     this.homeDir = homeDir;
@@ -2357,6 +2412,11 @@ var ClaudeCodeSessionService = class {
       prompts: [],
       tools: [],
       messages: [],
+      apiErrors: [],
+      reported: {
+        isCostPartial: false,
+        turns: []
+      },
       files: [transcript.file, ...transcript.subagentFiles.map((subagentFile) => subagentFile.file)],
       unparsedLines: 0
     };
@@ -2370,7 +2430,9 @@ var ClaudeCodeSessionService = class {
       messageIdToMessage: /* @__PURE__ */ new Map(),
       delegationCallIdToAgentId: /* @__PURE__ */ new Map(),
       threadIdToFirstPromptHash: /* @__PURE__ */ new Map(),
-      threadIdToDeclaredType: /* @__PURE__ */ new Map()
+      threadIdToDeclaredType: /* @__PURE__ */ new Map(),
+      threadIdToLastModel: /* @__PURE__ */ new Map(),
+      runStartToCostUsd: /* @__PURE__ */ new Map()
     };
     await this.readTranscript(context, transcript.file, true);
     for (const subagentFile of transcript.subagentFiles) {
@@ -2515,6 +2577,14 @@ var ClaudeCodeSessionService = class {
       this.handleAttachment(context, line);
       return;
     }
+    if (lineType === "cost-state") {
+      this.handleCostState(context, line);
+      return;
+    }
+    if (lineType === "system") {
+      this.handleSystemLine(context, line, isMainFile);
+      return;
+    }
     const message = GuardUtil.asRecord(record.message);
     if (!message) {
       return;
@@ -2556,17 +2626,26 @@ var ClaudeCodeSessionService = class {
     const messageId = GuardUtil.asString(message.id) ?? `${context.currentFile}:${line.lineNumber}`;
     const usage = this.readUsage(GuardUtil.asRecord(message.usage));
     const toEvidence = this.evidenceFactory(context, line);
+    const model = this.readModel(message);
+    const skillInUse = GuardUtil.asString(line.record.attributionSkill);
+    if (model) {
+      context.threadIdToLastModel.set(line.thread.id, model);
+    }
+    if (line.record.isApiErrorMessage === true) {
+      this.handleApiError(context, line, message);
+    }
     const existing = context.messageIdToMessage.get(messageId);
     if (existing) {
       existing.usage = this.maxUsage(existing.usage, usage);
     } else {
       context.messageIdToMessage.set(messageId, {
         id: messageId,
-        model: this.readModel(message),
+        model,
         usage,
         thread: line.thread,
         sentAtMs: line.occurredAtMs,
-        ref: toEvidence()
+        ref: toEvidence(),
+        skillInUse
       });
     }
     for (const block of GuardUtil.asArray(message.content).map((item) => GuardUtil.asRecord(item))) {
@@ -2579,7 +2658,8 @@ var ClaudeCodeSessionService = class {
         toEvidence,
         calledAtMs: line.occurredAtMs,
         messageId,
-        projectDir: context.projectDir
+        projectDir: context.projectDir,
+        skillInUse
       });
       context.toolUseIdToPendingCall.set(toolUseId, call);
       context.facts.tools.push(call);
@@ -2621,6 +2701,49 @@ var ClaudeCodeSessionService = class {
     if (textParts.length) {
       this.handlePrompt(context, line, textParts.join("\n"));
     }
+  }
+  handleApiError(context, line, message) {
+    const status = GuardUtil.asNumber(line.record.apiErrorStatus);
+    const recordedCode = GuardUtil.asString(line.record.error);
+    const hasUsefulCode = recordedCode !== void 0 && recordedCode !== UNKNOWN_API_ERROR;
+    const statusCode = status === void 0 ? UNKNOWN_API_ERROR : `http_${status}`;
+    const text = this.messageText(message);
+    context.facts.apiErrors.push({
+      status,
+      code: hasUsefulCode ? recordedCode : statusCode,
+      model: MODEL_IN_ERROR.exec(text)?.[1] ?? context.threadIdToLastModel.get(line.thread.id),
+      thread: line.thread,
+      ref: this.evidenceFactory(context, line)(text),
+      occurredAtMs: line.occurredAtMs
+    });
+  }
+  /** Claude Code's own running cost; the last line of each run holds that run's total. */
+  handleCostState(context, line) {
+    const costUsd = GuardUtil.asNumber(line.record.totalCostUSD);
+    if (costUsd === void 0) {
+      return;
+    }
+    const runStart = String(GuardUtil.asNumber(line.record.startTime) ?? "");
+    context.runStartToCostUsd.set(runStart, costUsd);
+    const reported = context.facts.reported;
+    reported.costUsd = [...context.runStartToCostUsd.values()].reduce((total, runCost) => total + runCost, 0);
+    reported.isCostPartial ||= line.record.hasUnknownModelCost === true;
+  }
+  handleSystemLine(context, line, isMainFile) {
+    const durationMs = GuardUtil.asNumber(line.record.durationMs);
+    const isMainTurn = isMainFile && line.record.isSidechain !== true;
+    if (line.record.subtype === "turn_duration" && isMainTurn && durationMs !== void 0) {
+      context.facts.reported.turns.push({
+        durationMs,
+        endedAtMs: line.occurredAtMs
+      });
+    }
+  }
+  messageText(message) {
+    if (typeof message.content === "string") {
+      return message.content;
+    }
+    return GuardUtil.asArray(message.content).map((item) => GuardUtil.asString(GuardUtil.asRecord(item)?.text) ?? "").join("\n");
   }
   /**
    * A prompt the person typed while the agent was busy is written as a `queued_command` attachment,
@@ -2721,7 +2844,8 @@ var ClaudeCodeSessionService = class {
       thread: callContext.thread,
       ref: callContext.toEvidence(description.summary),
       calledAtMs: callContext.calledAtMs,
-      messageId: callContext.messageId
+      messageId: callContext.messageId,
+      skillInUse: callContext.skillInUse
     };
   }
   describeToolCall(name, input, projectDir) {
@@ -2925,7 +3049,7 @@ var StoreService = class _StoreService {
     this.root = root;
   }
   /** Bump when the parser's output shape changes, so cached facts are re-parsed. */
-  static FACTS_VERSION = 3;
+  static FACTS_VERSION = 4;
   static forProject(projectDir, dataDir) {
     return new _StoreService(dataDir ?? join5(projectDir, DATA_DIR_NAME));
   }
