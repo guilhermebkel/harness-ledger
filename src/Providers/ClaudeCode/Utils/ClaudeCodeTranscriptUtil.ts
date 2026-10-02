@@ -1,8 +1,8 @@
 // Text conventions of Claude Code transcripts: blocks the harness injects into user messages,
 // and the wording of interruptions, permission denials and hook blocks in tool results.
 
-import type { ToolResultKind } from "../../../Shared/Protocols/SessionProtocol.js";
-import type { CleanPrompt } from "../../../Shared/Protocols/UtilProtocol.js";
+import type { ToolResultKind } from "@/Shared/Protocols/SessionProtocol.js";
+import type { CleanPrompt } from "@/Shared/Protocols/UtilProtocol.js";
 
 const HARNESS_INJECTED_BLOCKS
   = /<(system-reminder|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|bash-input|bash-stdout|bash-stderr|user-prompt-submit-hook)>[\s\S]*?<\/\1>/g;

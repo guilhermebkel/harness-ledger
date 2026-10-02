@@ -1,6 +1,6 @@
-import type { CommonOptions, InventoryResult } from "../Protocols/CommandProtocol.js";
-import { ContextService } from "../Services/ContextService.js";
-import { InventoryService } from "../Services/InventoryService.js";
+import type { CommonOptions, InventoryResult } from "@/Shared/Protocols/CommandProtocol.js";
+import { ContextService } from "@/Shared/Services/ContextService.js";
+import { InventoryService } from "@/Shared/Services/InventoryService.js";
 
 /** `imh inventory`: maps the active harness; a dated snapshot is kept only when something changed. */
 export class InventoryCommand {

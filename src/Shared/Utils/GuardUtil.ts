@@ -1,4 +1,4 @@
-import type { UnknownRecord } from "../Protocols/UtilProtocol.js";
+import type { UnknownRecord } from "@/Shared/Protocols/UtilProtocol.js";
 
 /** Narrowing for data from outside the program (transcripts, settings, stdin): it is `unknown` until it passes here. */
 export class GuardUtil {

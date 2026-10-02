@@ -2,12 +2,12 @@
 // change, which also differ in tasks. It reports deltas and refuses to call a winner when
 // either side has too few sessions.
 
-import type { CompareResult, CompareVerdict, SideMetrics } from "../Protocols/AnalysisProtocol.js";
-import type { Config } from "../Protocols/ConfigProtocol.js";
-import type { PieceKind } from "../Protocols/HarnessProtocol.js";
-import type { SessionFacts } from "../Protocols/SessionProtocol.js";
-import { NumberUtil } from "../Utils/NumberUtil.js";
-import { TimeUtil } from "../Utils/TimeUtil.js";
+import type { CompareResult, CompareVerdict, SideMetrics } from "@/Shared/Protocols/AnalysisProtocol.js";
+import type { Config } from "@/Shared/Protocols/ConfigProtocol.js";
+import type { PieceKind } from "@/Shared/Protocols/HarnessProtocol.js";
+import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.js";
+import { NumberUtil } from "@/Shared/Utils/NumberUtil.js";
+import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
 import { AttributionService } from "./AttributionService.js";
 import { SignalService } from "./SignalService.js";
 import { UsageService } from "./UsageService.js";

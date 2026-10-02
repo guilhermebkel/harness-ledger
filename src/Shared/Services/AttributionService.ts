@@ -2,10 +2,10 @@
 // subagent; main-thread steps after a skill or slash command (until the next prompt) belong
 // to that skill or command.
 
-import type { AttributedKind, SessionIndex } from "../Protocols/AnalysisProtocol.js";
-import type { AssistantMessage, SessionFacts, ToolCall, UserPrompt } from "../Protocols/SessionProtocol.js";
-import { CollectionUtil } from "../Utils/CollectionUtil.js";
-import { SessionUtil } from "../Utils/SessionUtil.js";
+import type { AttributedKind, SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
+import type { AssistantMessage, SessionFacts, ToolCall, UserPrompt } from "@/Shared/Protocols/SessionProtocol.js";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
+import { SessionUtil } from "@/Shared/Utils/SessionUtil.js";
 
 const UNKNOWN_SUBAGENT_TYPE = "subagent";
 

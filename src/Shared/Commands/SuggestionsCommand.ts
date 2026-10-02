@@ -2,10 +2,10 @@ import type {
   AddSuggestionsOptions,
   ListSuggestionsOptions,
   SetSuggestionStatusOptions,
-} from "../Protocols/CommandProtocol.js";
-import type { AddSuggestionsResult, Suggestion } from "../Protocols/SuggestionProtocol.js";
-import { ContextService } from "../Services/ContextService.js";
-import { SuggestionService } from "../Services/SuggestionService.js";
+} from "@/Shared/Protocols/CommandProtocol.js";
+import type { AddSuggestionsResult, Suggestion } from "@/Shared/Protocols/SuggestionProtocol.js";
+import { ContextService } from "@/Shared/Services/ContextService.js";
+import { SuggestionService } from "@/Shared/Services/SuggestionService.js";
 
 /** `imh suggestions list|add|set`: suggestion state, so the same problem is never suggested twice. */
 export class SuggestionsCommand {

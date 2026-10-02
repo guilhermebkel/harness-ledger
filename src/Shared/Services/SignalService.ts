@@ -1,8 +1,8 @@
 // Deterministic pattern extraction (ADR 0002). Every number comes from the transcripts;
 // the skill turns these signals into classified findings.
 
-import type { HarnessPiece, Inventory, PieceKind } from "../Protocols/HarnessProtocol.js";
-import type { EvidenceRef, SessionFacts } from "../Protocols/SessionProtocol.js";
+import type { HarnessPiece, Inventory, PieceKind } from "@/Shared/Protocols/HarnessProtocol.js";
+import type { EvidenceRef, SessionFacts } from "@/Shared/Protocols/SessionProtocol.js";
 import type {
   CountedDetail,
   CountedValue,
@@ -14,12 +14,12 @@ import type {
   SignalDetails,
   SignalOptions,
   SignalType,
-} from "../Protocols/SignalProtocol.js";
-import { CollectionUtil } from "../Utils/CollectionUtil.js";
-import { NumberUtil } from "../Utils/NumberUtil.js";
-import { SessionUtil } from "../Utils/SessionUtil.js";
-import { TimeUtil } from "../Utils/TimeUtil.js";
-import { TokenUsageUtil } from "../Utils/TokenUsageUtil.js";
+} from "@/Shared/Protocols/SignalProtocol.js";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
+import { NumberUtil } from "@/Shared/Utils/NumberUtil.js";
+import { SessionUtil } from "@/Shared/Utils/SessionUtil.js";
+import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
+import { TokenUsageUtil } from "@/Shared/Utils/TokenUsageUtil.js";
 import { AttributionService } from "./AttributionService.js";
 import { CostService } from "./CostService.js";
 import { OccurrenceCollectorService } from "./OccurrenceCollectorService.js";

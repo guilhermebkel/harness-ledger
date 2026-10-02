@@ -2,7 +2,7 @@
 
 import { rmSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ClaudeCodeFixtureUtil, type Fixture } from "../../Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.js";
+import { ClaudeCodeFixtureUtil, type Fixture } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.js";
 import { CompareCommand } from "./CompareCommand.js";
 
 const command = new CompareCommand();

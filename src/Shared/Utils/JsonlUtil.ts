@@ -1,6 +1,6 @@
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
-import type { JsonLineHandlers } from "../Protocols/UtilProtocol.js";
+import type { JsonLineHandlers } from "@/Shared/Protocols/UtilProtocol.js";
 import { GuardUtil } from "./GuardUtil.js";
 
 export class JsonlUtil {

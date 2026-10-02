@@ -1,7 +1,7 @@
-import type { CompactAnalysis } from "../Protocols/AnalysisProtocol.js";
-import type { AnalyzeOptions } from "../Protocols/CommandProtocol.js";
-import { AnalysisService } from "../Services/AnalysisService.js";
-import { ContextService } from "../Services/ContextService.js";
+import type { CompactAnalysis } from "@/Shared/Protocols/AnalysisProtocol.js";
+import type { AnalyzeOptions } from "@/Shared/Protocols/CommandProtocol.js";
+import { AnalysisService } from "@/Shared/Services/AnalysisService.js";
+import { ContextService } from "@/Shared/Services/ContextService.js";
 
 /** `imh analyze`: maps the harness, reads the sessions and extracts signals. */
 export class AnalyzeCommand {

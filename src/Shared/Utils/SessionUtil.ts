@@ -1,4 +1,4 @@
-import type { ThreadRef } from "../Protocols/SessionProtocol.js";
+import type { ThreadRef } from "@/Shared/Protocols/SessionProtocol.js";
 
 export class SessionUtil {
   /** Thread id (and agent type) of a session's main thread. */

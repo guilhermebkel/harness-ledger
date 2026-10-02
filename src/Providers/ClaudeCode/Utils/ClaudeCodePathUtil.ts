@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { EnvUtil } from "../../../Shared/Utils/EnvUtil.js";
+import { EnvUtil } from "@/Shared/Utils/EnvUtil.js";
 
 export class ClaudeCodePathUtil {
   /** Claude Code's config directory. `IMH_CLAUDE_HOME` exists for tests. */

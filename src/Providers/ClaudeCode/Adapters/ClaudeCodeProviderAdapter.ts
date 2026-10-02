@@ -1,5 +1,5 @@
-import { BaseProviderAdapter } from "../../../Shared/Adapters/BaseProviderAdapter.js";
-import type { Inventory } from "../../../Shared/Protocols/HarnessProtocol.js";
+import { BaseProviderAdapter } from "@/Shared/Adapters/BaseProviderAdapter.js";
+import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.js";
 import type {
   DiscoverOptions,
   InventoryOptions,
@@ -7,11 +7,11 @@ import type {
   ProviderPaths,
   ProviderType,
   TranscriptFile,
-} from "../../../Shared/Protocols/ProviderProtocol.js";
-import type { SessionFacts } from "../../../Shared/Protocols/SessionProtocol.js";
-import { ClaudeCodeInventoryService } from "../Services/ClaudeCodeInventoryService.js";
-import { ClaudeCodeSessionService } from "../Services/ClaudeCodeSessionService.js";
-import { ClaudeCodePathUtil } from "../Utils/ClaudeCodePathUtil.js";
+} from "@/Shared/Protocols/ProviderProtocol.js";
+import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.js";
+import { ClaudeCodeInventoryService } from "@/Providers/ClaudeCode/Services/ClaudeCodeInventoryService.js";
+import { ClaudeCodeSessionService } from "@/Providers/ClaudeCode/Services/ClaudeCodeSessionService.js";
+import { ClaudeCodePathUtil } from "@/Providers/ClaudeCode/Utils/ClaudeCodePathUtil.js";
 
 /** Claude Code: transcripts in `~/.claude/projects/`, harness in CLAUDE.md, `.claude/`, `.mcp.json` and plugins. */
 export class ClaudeCodeProviderAdapter extends BaseProviderAdapter {

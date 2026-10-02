@@ -1,11 +1,11 @@
 import { resolve } from "node:path";
-import type { BaseProviderAdapter } from "../Adapters/BaseProviderAdapter.js";
-import { ProviderModule } from "../Modules/ProviderModule.js";
-import type { LoadResult, Period } from "../Protocols/AnalysisProtocol.js";
-import type { CommonOptions } from "../Protocols/CommandProtocol.js";
-import type { Config } from "../Protocols/ConfigProtocol.js";
-import type { Inventory } from "../Protocols/HarnessProtocol.js";
-import { TimeUtil } from "../Utils/TimeUtil.js";
+import type { BaseProviderAdapter } from "@/Shared/Adapters/BaseProviderAdapter.js";
+import { ProviderModule } from "@/Shared/Modules/ProviderModule.js";
+import type { LoadResult, Period } from "@/Shared/Protocols/AnalysisProtocol.js";
+import type { CommonOptions } from "@/Shared/Protocols/CommandProtocol.js";
+import type { Config } from "@/Shared/Protocols/ConfigProtocol.js";
+import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.js";
+import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
 import { ConfigService } from "./ConfigService.js";
 import { SessionLoaderService } from "./SessionLoaderService.js";
 import { StoreService } from "./StoreService.js";

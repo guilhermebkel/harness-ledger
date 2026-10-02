@@ -1,4 +1,4 @@
-import type { Inventory } from "../Protocols/HarnessProtocol.js";
+import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.js";
 import type {
   DiscoverOptions,
   InventoryOptions,
@@ -6,8 +6,8 @@ import type {
   ProviderPaths,
   ProviderType,
   TranscriptFile,
-} from "../Protocols/ProviderProtocol.js";
-import type { SessionFacts } from "../Protocols/SessionProtocol.js";
+} from "@/Shared/Protocols/ProviderProtocol.js";
+import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.js";
 
 /**
  * What every provider (an agentic coding tool such as Claude Code) must offer. Each provider

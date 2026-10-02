@@ -4,9 +4,9 @@ import type {
   NewSuggestion,
   Suggestion,
   SuggestionStatus,
-} from "../Protocols/SuggestionProtocol.js";
-import { GuardUtil } from "../Utils/GuardUtil.js";
-import { HashUtil } from "../Utils/HashUtil.js";
+} from "@/Shared/Protocols/SuggestionProtocol.js";
+import { GuardUtil } from "@/Shared/Utils/GuardUtil.js";
+import { HashUtil } from "@/Shared/Utils/HashUtil.js";
 import type { StoreService } from "./StoreService.js";
 
 const SUGGESTION_ID_HASH_CHARS = 8;

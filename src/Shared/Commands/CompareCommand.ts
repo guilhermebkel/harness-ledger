@@ -1,8 +1,8 @@
-import type { ChangePoint, CompareResult } from "../Protocols/AnalysisProtocol.js";
-import type { CompareOptions } from "../Protocols/CommandProtocol.js";
-import { CompareService } from "../Services/CompareService.js";
-import { ContextService } from "../Services/ContextService.js";
-import { TimeUtil } from "../Utils/TimeUtil.js";
+import type { ChangePoint, CompareResult } from "@/Shared/Protocols/AnalysisProtocol.js";
+import type { CompareOptions } from "@/Shared/Protocols/CommandProtocol.js";
+import { CompareService } from "@/Shared/Services/CompareService.js";
+import { ContextService } from "@/Shared/Services/ContextService.js";
+import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
 
 /** `imh compare --piece <id>`: before/after metrics for one piece. */
 export class CompareCommand {

@@ -4,6 +4,9 @@ import stylistic from "@stylistic/eslint-plugin";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
+// Imports go through the `@/` alias (tsconfig `paths`), never up the tree with `../`.
+const NO_PARENT_IMPORTS = { group: ["../*", "../**"], message: "Import from \"@/...\" instead of a relative parent path." };
+
 const BOOLEAN_PREFIXES = ["is", "has", "should", "can", "must", "was", "did"];
 
 export default tseslint.config(
@@ -76,6 +79,7 @@ export default tseslint.config(
       "@typescript-eslint/no-floating-promises": "error",
 
       // Boundaries
+      "no-restricted-imports": ["error", { patterns: [NO_PARENT_IMPORTS] }],
       "no-restricted-properties": ["error", { object: "process", property: "env", message: "Read environment variables through EnvUtil (src/Shared/Utils/EnvUtil.ts)." }],
 
       // Formatting
@@ -95,7 +99,7 @@ export default tseslint.config(
     ignores: ["src/Shared/Modules/ProviderModule.ts", "src/Shared/**/*.test.ts"],
     rules: {
       "no-restricted-imports": ["error", {
-        patterns: [{ group: ["**/Providers/**"], message: "Shared code must not import a provider. Go through ProviderModule (ADR 0008)." }],
+        patterns: [NO_PARENT_IMPORTS, { group: ["@/Providers/**", "**/Providers/**"], message: "Shared code must not import a provider. Go through ProviderModule (ADR 0008)." }],
       }],
     },
   },
@@ -104,7 +108,7 @@ export default tseslint.config(
     files: ["src/Providers/ClaudeCode/**/*.ts"],
     rules: {
       "no-restricted-imports": ["error", {
-        patterns: [{ group: ["**/Providers/*/**", "!**/Providers/ClaudeCode/**"], message: "A provider must not import another provider (ADR 0008)." }],
+        patterns: [NO_PARENT_IMPORTS, { group: ["@/Providers/*/**", "**/Providers/*/**", "!@/Providers/ClaudeCode/**", "!**/Providers/ClaudeCode/**"], message: "A provider must not import another provider (ADR 0008)." }],
       }],
     },
   },

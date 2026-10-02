@@ -3,17 +3,17 @@
 
 import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
-import { AnalyzeCommand } from "../Commands/AnalyzeCommand.js";
-import { CompareCommand } from "../Commands/CompareCommand.js";
-import { EvidenceCommand } from "../Commands/EvidenceCommand.js";
-import { InventoryCommand } from "../Commands/InventoryCommand.js";
-import { StatusCommand } from "../Commands/StatusCommand.js";
-import { SuggestionsCommand } from "../Commands/SuggestionsCommand.js";
-import type { CommonOptions } from "../Protocols/CommandProtocol.js";
-import type { ProviderType } from "../Protocols/ProviderProtocol.js";
-import { SuggestionService } from "../Services/SuggestionService.js";
-import { GuardUtil } from "../Utils/GuardUtil.js";
-import { VersionUtil } from "../Utils/VersionUtil.js";
+import { AnalyzeCommand } from "@/Shared/Commands/AnalyzeCommand.js";
+import { CompareCommand } from "@/Shared/Commands/CompareCommand.js";
+import { EvidenceCommand } from "@/Shared/Commands/EvidenceCommand.js";
+import { InventoryCommand } from "@/Shared/Commands/InventoryCommand.js";
+import { StatusCommand } from "@/Shared/Commands/StatusCommand.js";
+import { SuggestionsCommand } from "@/Shared/Commands/SuggestionsCommand.js";
+import type { CommonOptions } from "@/Shared/Protocols/CommandProtocol.js";
+import type { ProviderType } from "@/Shared/Protocols/ProviderProtocol.js";
+import { SuggestionService } from "@/Shared/Services/SuggestionService.js";
+import { GuardUtil } from "@/Shared/Utils/GuardUtil.js";
+import { VersionUtil } from "@/Shared/Utils/VersionUtil.js";
 import { ProviderModule } from "./ProviderModule.js";
 
 const MIN_NODE_MAJOR = 20;

@@ -1,5 +1,5 @@
-import type { PriceTable } from "../Protocols/ConfigProtocol.js";
-import type { TokenUsage } from "../Protocols/SessionProtocol.js";
+import type { PriceTable } from "@/Shared/Protocols/ConfigProtocol.js";
+import type { TokenUsage } from "@/Shared/Protocols/SessionProtocol.js";
 
 const DEFAULT_FAMILY = "default";
 const TOKENS_PER_MILLION = 1_000_000;

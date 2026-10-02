@@ -2,8 +2,8 @@
 
 import { rmSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ClaudeCodeFixtureUtil, type Fixture } from "../../Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.js";
-import { SuggestionService } from "../Services/SuggestionService.js";
+import { ClaudeCodeFixtureUtil, type Fixture } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.js";
+import { SuggestionService } from "@/Shared/Services/SuggestionService.js";
 import { AnalyzeCommand } from "./AnalyzeCommand.js";
 import { SuggestionsCommand } from "./SuggestionsCommand.js";
 

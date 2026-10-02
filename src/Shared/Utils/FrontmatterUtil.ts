@@ -2,7 +2,7 @@
 // block and flow lists, and folded or literal text. Enough to read names and descriptions without
 // a YAML dependency (ADR 0004).
 
-import type { Frontmatter, FrontmatterValue } from "../Protocols/UtilProtocol.js";
+import type { Frontmatter, FrontmatterValue } from "@/Shared/Protocols/UtilProtocol.js";
 
 type BlockMode = "list" | "text" | undefined;
 

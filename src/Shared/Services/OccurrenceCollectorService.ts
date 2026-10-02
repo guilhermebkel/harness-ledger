@@ -3,7 +3,7 @@ import type {
   Occurrence,
   OccurrenceGroup,
   SignalType,
-} from "../Protocols/SignalProtocol.js";
+} from "@/Shared/Protocols/SignalProtocol.js";
 
 /** Collects occurrences of patterns into groups by signal id, before they become signals. */
 export class OccurrenceCollectorService {

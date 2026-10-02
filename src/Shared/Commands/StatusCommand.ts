@@ -1,7 +1,7 @@
-import type { CommonOptions, StatusResult } from "../Protocols/CommandProtocol.js";
-import { ContextService } from "../Services/ContextService.js";
-import { CollectionUtil } from "../Utils/CollectionUtil.js";
-import { VersionUtil } from "../Utils/VersionUtil.js";
+import type { CommonOptions, StatusResult } from "@/Shared/Protocols/CommandProtocol.js";
+import { ContextService } from "@/Shared/Services/ContextService.js";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
+import { VersionUtil } from "@/Shared/Utils/VersionUtil.js";
 
 /** `imh status`: how much history exists, what the harness holds and how the tool is configured. */
 export class StatusCommand {

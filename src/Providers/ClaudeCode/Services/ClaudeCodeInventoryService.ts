@@ -4,22 +4,22 @@
 
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
-import type { HarnessPiece, Inventory, PieceKind, PieceScope } from "../../../Shared/Protocols/HarnessProtocol.js";
-import type { InventoryOptions } from "../../../Shared/Protocols/ProviderProtocol.js";
-import type { GitChangeDates, UnknownRecord } from "../../../Shared/Protocols/UtilProtocol.js";
-import { FrontmatterUtil } from "../../../Shared/Utils/FrontmatterUtil.js";
-import { GitUtil } from "../../../Shared/Utils/GitUtil.js";
-import { GuardUtil } from "../../../Shared/Utils/GuardUtil.js";
-import { HashUtil } from "../../../Shared/Utils/HashUtil.js";
-import { NumberUtil } from "../../../Shared/Utils/NumberUtil.js";
-import { PathUtil } from "../../../Shared/Utils/PathUtil.js";
+import type { HarnessPiece, Inventory, PieceKind, PieceScope } from "@/Shared/Protocols/HarnessProtocol.js";
+import type { InventoryOptions } from "@/Shared/Protocols/ProviderProtocol.js";
+import type { GitChangeDates, UnknownRecord } from "@/Shared/Protocols/UtilProtocol.js";
+import { FrontmatterUtil } from "@/Shared/Utils/FrontmatterUtil.js";
+import { GitUtil } from "@/Shared/Utils/GitUtil.js";
+import { GuardUtil } from "@/Shared/Utils/GuardUtil.js";
+import { HashUtil } from "@/Shared/Utils/HashUtil.js";
+import { NumberUtil } from "@/Shared/Utils/NumberUtil.js";
+import { PathUtil } from "@/Shared/Utils/PathUtil.js";
 import type {
   ComponentOptions,
   FileChange,
   FilePiece,
   SettingsFile,
   SettingsSummary,
-} from "../Protocols/ClaudeCodeProtocol.js";
+} from "@/Providers/ClaudeCode/Protocols/ClaudeCodeProtocol.js";
 
 const DEFAULT_RETENTION_DAYS = 30;
 const MAX_DESCRIPTION_CHARS = 300;

@@ -1,4 +1,4 @@
-import type { CompactPiece, HarnessPiece, Inventory, InventoryChange } from "../Protocols/HarnessProtocol.js";
+import type { CompactPiece, HarnessPiece, Inventory, InventoryChange } from "@/Shared/Protocols/HarnessProtocol.js";
 
 /** Operations on inventories that don't depend on the provider that produced them. */
 export class InventoryService {

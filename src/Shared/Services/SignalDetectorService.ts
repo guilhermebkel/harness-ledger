@@ -1,17 +1,17 @@
 // Detectors over session facts. Each one adds occurrences of one kind of pattern to the collector,
 // with the cost it estimates for each occurrence. Every number comes from the transcripts (ADR 0002).
 
-import type { SessionIndex } from "../Protocols/AnalysisProtocol.js";
-import type { SessionFacts, ToolCall, UserPrompt } from "../Protocols/SessionProtocol.js";
-import type { Occurrence, SignalOptions, SignalType, StepCost } from "../Protocols/SignalProtocol.js";
-import { CollectionUtil } from "../Utils/CollectionUtil.js";
-import { HashUtil } from "../Utils/HashUtil.js";
-import { NormalizeUtil } from "../Utils/NormalizeUtil.js";
-import { NumberUtil } from "../Utils/NumberUtil.js";
-import { RedactUtil } from "../Utils/RedactUtil.js";
-import { SessionUtil } from "../Utils/SessionUtil.js";
-import { TimeUtil } from "../Utils/TimeUtil.js";
-import { TokenUsageUtil } from "../Utils/TokenUsageUtil.js";
+import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
+import type { SessionFacts, ToolCall, UserPrompt } from "@/Shared/Protocols/SessionProtocol.js";
+import type { Occurrence, SignalOptions, SignalType, StepCost } from "@/Shared/Protocols/SignalProtocol.js";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
+import { HashUtil } from "@/Shared/Utils/HashUtil.js";
+import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.js";
+import { NumberUtil } from "@/Shared/Utils/NumberUtil.js";
+import { RedactUtil } from "@/Shared/Utils/RedactUtil.js";
+import { SessionUtil } from "@/Shared/Utils/SessionUtil.js";
+import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
+import { TokenUsageUtil } from "@/Shared/Utils/TokenUsageUtil.js";
 import { AttributionService } from "./AttributionService.js";
 import type { OccurrenceCollectorService } from "./OccurrenceCollectorService.js";
 

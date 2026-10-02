@@ -3,10 +3,10 @@
 
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import type { Inventory, PieceKind } from "../Protocols/HarnessProtocol.js";
-import type { Mention } from "../Protocols/SignalProtocol.js";
-import { PathUtil } from "../Utils/PathUtil.js";
-import { RedactUtil } from "../Utils/RedactUtil.js";
+import type { Inventory, PieceKind } from "@/Shared/Protocols/HarnessProtocol.js";
+import type { Mention } from "@/Shared/Protocols/SignalProtocol.js";
+import { PathUtil } from "@/Shared/Utils/PathUtil.js";
+import { RedactUtil } from "@/Shared/Utils/RedactUtil.js";
 
 const DEFAULT_MAX_MENTIONS = 8;
 const MIN_TERM_CHARS = 3;

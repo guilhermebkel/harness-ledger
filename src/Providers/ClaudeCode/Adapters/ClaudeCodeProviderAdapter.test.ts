@@ -1,7 +1,7 @@
 import { rmSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { SessionFacts, ToolCall } from "../../../Shared/Protocols/SessionProtocol.js";
-import { ClaudeCodeFixtureUtil, type Fixture } from "../Utils/ClaudeCodeFixtureUtil.js";
+import type { SessionFacts, ToolCall } from "@/Shared/Protocols/SessionProtocol.js";
+import { ClaudeCodeFixtureUtil, type Fixture } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.js";
 import { ClaudeCodeProviderAdapter } from "./ClaudeCodeProviderAdapter.js";
 
 const { FAKE_SECRETS } = ClaudeCodeFixtureUtil;

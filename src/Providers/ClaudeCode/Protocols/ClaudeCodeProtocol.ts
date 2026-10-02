@@ -1,8 +1,8 @@
 // Types used only inside the Claude Code provider.
 
-import type { ModifiedSource, PieceKind, PieceScope, Retention } from "../../../Shared/Protocols/HarnessProtocol.js";
-import type { EvidenceRef, SessionFacts, ThreadRef, ToolCall, AssistantMessage } from "../../../Shared/Protocols/SessionProtocol.js";
-import type { UnknownRecord } from "../../../Shared/Protocols/UtilProtocol.js";
+import type { ModifiedSource, PieceKind, PieceScope, Retention } from "@/Shared/Protocols/HarnessProtocol.js";
+import type { EvidenceRef, SessionFacts, ThreadRef, ToolCall, AssistantMessage } from "@/Shared/Protocols/SessionProtocol.js";
+import type { UnknownRecord } from "@/Shared/Protocols/UtilProtocol.js";
 
 export interface ClaudeCodeParseContext {
   facts: SessionFacts;
