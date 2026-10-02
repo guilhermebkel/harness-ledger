@@ -15,7 +15,7 @@ Every finding gets exactly one class. The class decides the kind of fix.
 
 ### Typical mapping from signals
 
-These are starting points, not rules; read the piece before deciding.
+These are starting points, not rules; read the piece and what it loads (skill files, preloaded skills, instruction files for `main`) before deciding.
 
 | Signal type | Usually |
 | --- | --- |
@@ -41,6 +41,7 @@ These are starting points, not rules; read the piece before deciding.
 5. **Self-contained text.** Text proposed for a subagent or skill describes the condition and the action in that piece's own terms. It never refers to who calls it, to another file's step numbers, or to this report.
 6. **Coupling is a finding.** If a piece only works because another piece says something specific (a subagent that relies on the main instructions mentioning a path), report the coupling as a structure change.
 7. **Cheapest adequate fix.** Prefer deleting or tightening over adding. Prefer a hook or script over a longer prompt. Prefer moving rarely-needed detail out of always-loaded instructions.
+8. **Conflicts are a finding.** When two pieces give different instructions for the same thing (CLAUDE.md says one command, a skill or a preloaded skill says another), class it as Partial or outdated instruction. The fix keeps the instruction in the piece that does the work and removes or aligns the other; quote both lines.
 
 ## Report format
 

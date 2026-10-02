@@ -13,6 +13,8 @@ export class InventoryService {
       isEditable: piece.isEditable,
       model: piece.model,
       description: piece.description?.slice(0, InventoryService.MAX_COMPACT_DESCRIPTION_CHARS),
+      files: piece.files,
+      preloadedSkills: piece.preloadedSkills,
     };
   }
 

@@ -1,4 +1,5 @@
-import { rmSync } from "node:fs";
+import { rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { SessionFacts, ToolCall } from "@/Shared/Protocols/SessionProtocol.js";
 import { ClaudeCodeFixtureUtil, type Fixture } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.js";
@@ -141,6 +142,24 @@ describe("takeInventory", () => {
     const serialized = JSON.stringify(inventory);
     expect(serialized).not.toContain(FAKE_SECRETS.githubToken);
     expect(serialized).not.toContain(FAKE_SECRETS.anthropicKey);
+  });
+
+  it("lists a skill's other files and the skills an agent preloads", async () => {
+    const inventory = await adapter.takeInventory({ projectDir: fixture.projectDir, isProjectOnly: true });
+    const pieceById = new Map(inventory.pieces.map((piece) => [piece.id, piece]));
+    expect(pieceById.get("skill:changelog")?.files).toEqual(["references/format.md"]);
+    expect(pieceById.get("agent:docs-writer")?.preloadedSkills).toEqual(["changelog"]);
+  });
+
+  it("changes a skill's hash when only one of its reference files changes", async () => {
+    const hashOf = async (): Promise<string | undefined> => {
+      const inventory = await adapter.takeInventory({ projectDir: fixture.projectDir, isProjectOnly: true });
+      return inventory.pieces.find((piece) => piece.id === "skill:changelog")?.hash;
+    };
+    const hashBefore = await hashOf();
+    const referenceFile = join(fixture.projectDir, ".claude", "skills", "changelog", "references", "format.md");
+    writeFileSync(referenceFile, "# Entry format\n\nOne line per change.\n");
+    expect(await hashOf()).not.toBe(hashBefore);
   });
 
   it("can leave out user-level pieces", async () => {

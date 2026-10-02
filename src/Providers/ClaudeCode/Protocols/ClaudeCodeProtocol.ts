@@ -61,6 +61,8 @@ export interface FilePiece {
   name: string;
   scope: PieceScope;
   plugin?: string;
+  /** Other files of the piece (a skill folder's references and scripts); they count toward its hash. */
+  extraFiles?: string[];
 }
 
 export interface ComponentOptions {

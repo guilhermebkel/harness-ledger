@@ -1385,7 +1385,9 @@ var InventoryService = class _InventoryService {
       modifiedAt: piece.modifiedAt,
       isEditable: piece.isEditable,
       model: piece.model,
-      description: piece.description?.slice(0, _InventoryService.MAX_COMPACT_DESCRIPTION_CHARS)
+      description: piece.description?.slice(0, _InventoryService.MAX_COMPACT_DESCRIPTION_CHARS),
+      files: piece.files,
+      preloadedSkills: piece.preloadedSkills
     };
   }
   static MAX_COMPACT_DESCRIPTION_CHARS = 120;
@@ -1696,7 +1698,7 @@ var BaseProviderAdapter = class {
 
 // src/Providers/ClaudeCode/Services/ClaudeCodeInventoryService.ts
 import { readdir, readFile as readFile2, realpath, stat } from "node:fs/promises";
-import { basename, join as join2, relative } from "node:path";
+import { basename, dirname, join as join2, relative } from "node:path";
 
 // src/Shared/Utils/FrontmatterUtil.ts
 var BLOCK_TEXT_MARKERS = /* @__PURE__ */ new Set(["|", ">", "|-", ">-"]);
@@ -1863,6 +1865,10 @@ var DEFAULT_RETENTION_DAYS = 30;
 var MAX_DESCRIPTION_CHARS = 300;
 var MAX_COMPONENT_DEPTH = 4;
 var HARNESS_PATHS = ["CLAUDE.md", "CLAUDE.local.md", ".claude", ".mcp.json"];
+var MAX_SKILL_FILES = 50;
+var MAX_SKILL_FOLDER_DEPTH = 3;
+var MAX_HASHED_FILE_BYTES = 1e6;
+var SKIPPED_FOLDERS = /* @__PURE__ */ new Set(["node_modules", ".git", "__pycache__", ".venv"]);
 var InventoryBuilder = class {
   constructor(projectDir, gitChangeDates) {
     this.projectDir = projectDir;
@@ -1899,6 +1905,14 @@ var InventoryBuilder = class {
       modifiedSource: "mtime"
     } : {};
   }
+  /** A file's path and content, so renaming or editing a reference changes the skill's hash. */
+  async fileHash(file) {
+    const fileStat = await stat(file).catch(() => void 0);
+    const isHashable = fileStat !== void 0 && fileStat.size <= MAX_HASHED_FILE_BYTES;
+    const content = isHashable ? await readFile2(file).catch(() => Buffer.alloc(0)) : Buffer.from(`${fileStat?.size ?? 0}`);
+    return HashUtil.sha(`${relative(this.projectDir, file)}
+${content.toString("base64")}`);
+  }
   /** Same name in two scopes (a user and a project skill, say): keep both and disambiguate the id. */
   uniqueId(kind, name, scope) {
     const baseId = `${kind}:${name}`;
@@ -1912,19 +1926,28 @@ var InventoryBuilder = class {
       return;
     }
     const { data } = FrontmatterUtil.parse(text);
+    const extraFiles = filePiece.extraFiles ?? [];
+    const extraHashes = await Promise.all(extraFiles.map(async (extraFile) => this.fileHash(extraFile)));
+    const changes = await Promise.all(
+      [filePiece.file, ...extraFiles].map(async (pieceFile) => this.changeOf(pieceFile, filePiece.scope))
+    );
+    const latestChange = changes.filter((change) => change.modifiedAt !== void 0).sort((left, right) => (right.modifiedAt ?? "").localeCompare(left.modifiedAt ?? ""))[0];
+    const pieceFolder = dirname(filePiece.file);
     this.pieces.push({
       id: this.uniqueId(filePiece.kind, filePiece.name, filePiece.scope),
       kind: filePiece.kind,
       name: filePiece.name,
       scope: filePiece.scope,
       path: this.displayPath(filePiece.file, filePiece.scope),
-      hash: HashUtil.sha(text),
+      hash: extraFiles.length ? HashUtil.sha([text, ...extraHashes].join("\n")) : HashUtil.sha(text),
       bytes: Buffer.byteLength(text),
       approxTokens: NumberUtil.approxTokens(text),
       description: FrontmatterUtil.asText(data.description)?.slice(0, MAX_DESCRIPTION_CHARS),
       model: FrontmatterUtil.asText(data.model),
       tools: FrontmatterUtil.asList(data.tools ?? data["allowed-tools"]),
-      ...await this.changeOf(filePiece.file, filePiece.scope),
+      ...latestChange,
+      files: extraFiles.length ? extraFiles.map((extraFile) => relative(pieceFolder, extraFile)) : void 0,
+      preloadedSkills: filePiece.kind === "agent" ? FrontmatterUtil.asList(data.skills) : void 0,
       isEditable: filePiece.scope !== "plugin" && filePiece.scope !== "managed",
       plugin: filePiece.plugin
     });
@@ -2007,7 +2030,8 @@ var ClaudeCodeInventoryService = class {
         kind: "skill",
         name: `${prefix}${declaredName ?? skillDir}`,
         scope,
-        plugin
+        plugin,
+        extraFiles: await this.skillFolderFiles(join2(baseDir, "skills", skillDir))
       });
     }
     const rootSkill = join2(baseDir, "SKILL.md");
@@ -2050,6 +2074,24 @@ var ClaudeCodeInventoryService = class {
   /** `agents/review/security.md` → `review:security`, the way Claude Code names nested components. */
   nameFromPath(baseDir, file) {
     return relative(baseDir, file).replace(/\.md$/, "").replace(/[\\/]/g, ":");
+  }
+  /** Everything in a skill's folder besides SKILL.md, sorted, so the agent knows what to read. */
+  async skillFolderFiles(dir, depth = 0) {
+    if (depth > MAX_SKILL_FOLDER_DEPTH) {
+      return [];
+    }
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+    const files = [];
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+      const entryPath = join2(dir, entry.name);
+      const isHidden = entry.name.startsWith(".");
+      if (entry.isDirectory() && !isHidden && !SKIPPED_FOLDERS.has(entry.name)) {
+        files.push(...await this.skillFolderFiles(entryPath, depth + 1));
+      } else if (entry.isFile() && !isHidden && !(depth === 0 && entry.name === "SKILL.md")) {
+        files.push(entryPath);
+      }
+    }
+    return files.slice(0, MAX_SKILL_FILES);
   }
   async listMarkdownFiles(dir, depth = 0) {
     if (depth > MAX_COMPONENT_DEPTH) {
@@ -3073,7 +3115,7 @@ import { cpus } from "node:os";
 
 // src/Shared/Services/StoreService.ts
 import { mkdir, readFile as readFile4, rename, writeFile } from "node:fs/promises";
-import { dirname, join as join5 } from "node:path";
+import { dirname as dirname2, join as join5 } from "node:path";
 var DATA_DIR_NAME = ".imh";
 var JSON_INDENT = 2;
 var FACTS_CACHE_FILE = "cache/facts.json";
@@ -3099,7 +3141,7 @@ var StoreService = class _StoreService {
   /** Writes atomically (temp file + rename), so a crash never leaves a half-written file. */
   async writeJson(relativePath, value, shouldIndent = true) {
     const file = join5(this.root, relativePath);
-    await mkdir(dirname(file), { recursive: true });
+    await mkdir(dirname2(file), { recursive: true });
     const temporaryFile = `${file}.${process.pid}.tmp`;
     await writeFile(temporaryFile, JSON.stringify(value, null, shouldIndent ? JSON_INDENT : 0));
     await rename(temporaryFile, file);

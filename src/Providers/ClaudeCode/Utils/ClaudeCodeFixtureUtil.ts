@@ -242,12 +242,14 @@ export class ClaudeCodeFixtureUtil {
     );
     writeFileSync(
       join(projectDir, ".claude", "agents", "docs-writer.md"),
-      "---\nname: docs-writer\ndescription: Writes docs\n---\nWrite docs.\n",
+      "---\nname: docs-writer\ndescription: Writes docs\nskills: changelog\n---\nWrite docs.\n",
     );
     writeFileSync(
       join(projectDir, ".claude", "skills", "changelog", "SKILL.md"),
       "---\nname: changelog\ndescription: Generates changelog entries\n---\nSteps...\n",
     );
+    mkdirSync(join(projectDir, ".claude", "skills", "changelog", "references"), { recursive: true });
+    writeFileSync(join(projectDir, ".claude", "skills", "changelog", "references", "format.md"), "# Entry format\n");
     const guardHook = {
       matcher: "Bash",
       hooks: [{ type: "command", command: `./scripts/guard.sh --token ${FAKE_SECRETS.anthropicKey}` }],

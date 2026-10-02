@@ -50,7 +50,12 @@ Before any flow, read `references/findings.md` in this skill's folder (`${CLAUDE
 2. Tell the user in one line what was analyzed: sessions, period, and how much history exists (`history`). If `history.transcriptsAvailable` is small or `history.oldestAt` is close to `retentionDays` ago, say that older sessions were already deleted by the agent's retention setting. Never change that setting.
 3. If `analyzed.sessions` is 0, say so, suggest a wider period or `--all-projects`, and stop.
 4. Go through `signals` in order. For each one worth reporting:
-   - Read the harness piece it points to (paths are in `inventory.pieces`), so you know what the piece says today.
+   - Read what shapes that behavior today, not only the piece the signal names (paths are in `inventory.pieces`):
+     - `main`: the instruction files (`instructions:*` pieces), since they guide the main thread.
+     - A skill: its `SKILL.md` and, from its `files`, the references or scripts the failing step uses. The change often belongs there.
+     - An agent: its file and the skills in its `preloadedSkills`.
+     - A command: its file and the skill it runs, if any.
+   - Before writing a change, look in what you read for other instructions about the same thing. If two pieces disagree, the conflict is the finding (see rule 8 in the reference).
    - Use `details.mentions` when present: a failure the harness already has an instruction for is **Rule exists, but is ignored**.
    - If you need more evidence, run `evidence <signal-id>`. Don't read whole transcripts; if you must check one step, read only the cited line (`sed -n '<line>p' <file> | cut -c1-2000`).
    - If `changedAfterEvidence` is set, the piece changed after the newest evidence: report it under "Changed since this evidence", not as a new suggestion.

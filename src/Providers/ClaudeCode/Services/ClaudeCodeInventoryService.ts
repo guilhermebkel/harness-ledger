@@ -3,7 +3,7 @@
 // shapes (ADR 0007): env values, headers and arguments are hashed to detect changes but never stored.
 
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
-import { basename, join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import type { HarnessPiece, Inventory, PieceKind, PieceScope } from "@/Shared/Protocols/HarnessProtocol.js";
 import type { InventoryOptions } from "@/Shared/Protocols/ProviderProtocol.js";
 import type { GitChangeDates, UnknownRecord } from "@/Shared/Protocols/UtilProtocol.js";
@@ -25,6 +25,11 @@ const DEFAULT_RETENTION_DAYS = 30;
 const MAX_DESCRIPTION_CHARS = 300;
 const MAX_COMPONENT_DEPTH = 4;
 const HARNESS_PATHS = ["CLAUDE.md", "CLAUDE.local.md", ".claude", ".mcp.json"];
+const MAX_SKILL_FILES = 50;
+const MAX_SKILL_FOLDER_DEPTH = 3;
+/** Larger files are listed but not hashed, to keep the inventory fast. */
+const MAX_HASHED_FILE_BYTES = 1_000_000;
+const SKIPPED_FOLDERS = new Set(["node_modules", ".git", "__pycache__", ".venv"]);
 
 /** Collects pieces for one inventory, skipping files already seen (e.g. when the project is the home directory). */
 class InventoryBuilder {
@@ -70,6 +75,14 @@ class InventoryBuilder {
       : {};
   }
 
+  /** A file's path and content, so renaming or editing a reference changes the skill's hash. */
+  private async fileHash(file: string): Promise<string> {
+    const fileStat = await stat(file).catch(() => undefined);
+    const isHashable = fileStat !== undefined && fileStat.size <= MAX_HASHED_FILE_BYTES;
+    const content = isHashable ? await readFile(file).catch(() => Buffer.alloc(0)) : Buffer.from(`${fileStat?.size ?? 0}`);
+    return HashUtil.sha(`${relative(this.projectDir, file)}\n${content.toString("base64")}`);
+  }
+
   /** Same name in two scopes (a user and a project skill, say): keep both and disambiguate the id. */
   uniqueId(kind: PieceKind, name: string, scope: PieceScope): string {
     const baseId = `${kind}:${name}`;
@@ -84,19 +97,30 @@ class InventoryBuilder {
       return;
     }
     const { data } = FrontmatterUtil.parse(text);
+    const extraFiles = filePiece.extraFiles ?? [];
+    const extraHashes = await Promise.all(extraFiles.map(async (extraFile) => this.fileHash(extraFile)));
+    const changes = await Promise.all(
+      [filePiece.file, ...extraFiles].map(async (pieceFile) => this.changeOf(pieceFile, filePiece.scope)),
+    );
+    const latestChange = changes
+      .filter((change) => change.modifiedAt !== undefined)
+      .sort((left, right) => (right.modifiedAt ?? "").localeCompare(left.modifiedAt ?? ""))[0];
+    const pieceFolder = dirname(filePiece.file);
     this.pieces.push({
       id: this.uniqueId(filePiece.kind, filePiece.name, filePiece.scope),
       kind: filePiece.kind,
       name: filePiece.name,
       scope: filePiece.scope,
       path: this.displayPath(filePiece.file, filePiece.scope),
-      hash: HashUtil.sha(text),
+      hash: extraFiles.length ? HashUtil.sha([text, ...extraHashes].join("\n")) : HashUtil.sha(text),
       bytes: Buffer.byteLength(text),
       approxTokens: NumberUtil.approxTokens(text),
       description: FrontmatterUtil.asText(data.description)?.slice(0, MAX_DESCRIPTION_CHARS),
       model: FrontmatterUtil.asText(data.model),
       tools: FrontmatterUtil.asList(data.tools ?? data["allowed-tools"]),
-      ...(await this.changeOf(filePiece.file, filePiece.scope)),
+      ...latestChange,
+      files: extraFiles.length ? extraFiles.map((extraFile) => relative(pieceFolder, extraFile)) : undefined,
+      preloadedSkills: filePiece.kind === "agent" ? FrontmatterUtil.asList(data.skills) : undefined,
       isEditable: filePiece.scope !== "plugin" && filePiece.scope !== "managed",
       plugin: filePiece.plugin,
     });
@@ -191,6 +215,7 @@ export class ClaudeCodeInventoryService {
         name: `${prefix}${declaredName ?? skillDir}`,
         scope,
         plugin,
+        extraFiles: await this.skillFolderFiles(join(baseDir, "skills", skillDir)),
       });
     }
     const rootSkill = join(baseDir, "SKILL.md");
@@ -235,6 +260,25 @@ export class ClaudeCodeInventoryService {
   /** `agents/review/security.md` → `review:security`, the way Claude Code names nested components. */
   private nameFromPath(baseDir: string, file: string): string {
     return relative(baseDir, file).replace(/\.md$/, "").replace(/[\\/]/g, ":");
+  }
+
+  /** Everything in a skill's folder besides SKILL.md, sorted, so the agent knows what to read. */
+  private async skillFolderFiles(dir: string, depth = 0): Promise<string[]> {
+    if (depth > MAX_SKILL_FOLDER_DEPTH) {
+      return [];
+    }
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+    const files: string[] = [];
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+      const entryPath = join(dir, entry.name);
+      const isHidden = entry.name.startsWith(".");
+      if (entry.isDirectory() && !isHidden && !SKIPPED_FOLDERS.has(entry.name)) {
+        files.push(...(await this.skillFolderFiles(entryPath, depth + 1)));
+      } else if (entry.isFile() && !isHidden && !(depth === 0 && entry.name === "SKILL.md")) {
+        files.push(entryPath);
+      }
+    }
+    return files.slice(0, MAX_SKILL_FILES);
   }
 
   private async listMarkdownFiles(dir: string, depth = 0): Promise<string[]> {

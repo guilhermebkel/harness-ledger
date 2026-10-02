@@ -28,6 +28,10 @@ export interface HarnessPiece {
   isEditable: boolean;
   /** Plugin id for pieces that come from a plugin. */
   plugin?: string;
+  /** Other files that belong to the piece (a skill's references and scripts), relative to `path`'s folder. */
+  files?: string[];
+  /** Skills an agent loads when it starts, by name. */
+  preloadedSkills?: string[];
 }
 
 export interface Retention {
@@ -54,7 +58,16 @@ export interface InventoryChange {
   change: PieceChangeKind;
 }
 
-type CompactPieceFields = "id" | "scope" | "path" | "modifiedAt" | "isEditable" | "model" | "description";
+type CompactPieceFields
+  = | "id"
+    | "scope"
+    | "path"
+    | "modifiedAt"
+    | "isEditable"
+    | "model"
+    | "description"
+    | "files"
+    | "preloadedSkills";
 
 /** Enough to identify and locate a piece, without hashes and sizes. */
 export interface CompactPiece extends Pick<HarnessPiece, CompactPieceFields> {
