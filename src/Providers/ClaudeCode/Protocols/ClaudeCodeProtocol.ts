@@ -75,3 +75,11 @@ export interface SettingsSummary {
   pluginIdToIsEnabled: Map<string, boolean>;
   retention: Retention;
 }
+
+/** What the result line says about a tool result, besides its text. */
+export interface ClaudeCodeResultSignals {
+  isMarkedError: boolean;
+  wasInterrupted: boolean;
+  /** `toolDenialKind`, e.g. "user-rejected" or "automode-blocked". */
+  denialKind?: string;
+}

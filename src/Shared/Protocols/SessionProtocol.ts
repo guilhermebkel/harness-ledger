@@ -30,7 +30,7 @@ export interface TokenUsage {
   cacheWrite: number;
 }
 
-export type ToolResultKind = "ok" | "error" | "permission_denied" | "interrupted" | "hook_blocked";
+export type ToolResultKind = "ok" | "error" | "permission_denied" | "user_rejected" | "interrupted" | "hook_blocked";
 
 export interface ToolResult {
   isError: boolean;

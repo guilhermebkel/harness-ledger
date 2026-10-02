@@ -57,6 +57,46 @@ var NumberUtil = class {
   }
 };
 
+// src/Shared/Utils/RedactUtil.ts
+var MASK = "[REDACTED]";
+var DEFAULT_EXCERPT_CHARS = 200;
+var SECRET_PATTERNS = [
+  [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(-----END [A-Z ]*PRIVATE KEY-----|$)/g, MASK],
+  [/\bsk-(?:ant-|proj-|live-|test-)?[A-Za-z0-9_-]{16,}/g, MASK],
+  [/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/g, MASK],
+  [/\bgithub_pat_[A-Za-z0-9_]{20,}/g, MASK],
+  [/\bglpat-[A-Za-z0-9_-]{16,}/g, MASK],
+  [/\bxox[abposr]-[A-Za-z0-9-]{10,}/g, MASK],
+  [/\bAKIA[0-9A-Z]{16}\b/g, MASK],
+  [/\bAIza[0-9A-Za-z_-]{30,}/g, MASK],
+  [/\b(?:rk|pk|sk)_(?:live|test)_[A-Za-z0-9]{16,}/g, MASK],
+  [/\bnpm_[A-Za-z0-9]{30,}/g, MASK],
+  [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, MASK],
+  [/\b(Bearer|Basic|Token)\s+[A-Za-z0-9._~+/=-]{12,}/gi, `$1 ${MASK}`],
+  [/([a-z][a-z0-9+.-]*:\/\/)[^\s:/@]+:[^\s@/]+@/gi, `$1${MASK}@`]
+];
+var SENSITIVE_ASSIGNMENT = /((?:["']?)[A-Za-z0-9_.-]*(?:pass(?:word|wd)?|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|credential|auth)[A-Za-z0-9_.-]*["']?\s*[:=]\s*)(["']?)([^\s"',;&]{4,})\2/gi;
+var RedactUtil = class _RedactUtil {
+  static redact(text) {
+    if (!text) {
+      return text;
+    }
+    let redacted = text;
+    for (const [pattern, replacement] of SECRET_PATTERNS) {
+      redacted = redacted.replace(pattern, replacement);
+    }
+    return redacted.replace(
+      SENSITIVE_ASSIGNMENT,
+      (_match, keyPart, quote) => `${keyPart}${quote}${MASK}${quote}`
+    );
+  }
+  /** Redacts and collapses to a single line of at most `maxChars`. */
+  static excerpt(text, maxChars = DEFAULT_EXCERPT_CHARS) {
+    const oneLine = _RedactUtil.redact(text).replace(/\s+/g, " ").trim();
+    return oneLine.length > maxChars ? `${oneLine.slice(0, maxChars - 1)}\u2026` : oneLine;
+  }
+};
+
 // src/Shared/Utils/SessionUtil.ts
 var SessionUtil = class _SessionUtil {
   /** Thread id (and agent type) of a session's main thread. */
@@ -256,6 +296,7 @@ var DEFAULT_FAMILY = "default";
 var TOKENS_PER_MILLION = 1e6;
 var CACHE_READ_INPUT_RATIO = 0.1;
 var CACHE_WRITE_INPUT_RATIO = 1.25;
+var DEFAULT_PRICED_VENDOR = "claude";
 var CostService = class _CostService {
   constructor(prices) {
     this.prices = prices;
@@ -279,16 +320,32 @@ var CostService = class _CostService {
       output: 15
     }
   };
+  /**
+   * The price-table key for a model: a listed family it contains, "default" for an unnamed model or an
+   * unlisted Claude model, and undefined for anything else, which is left unpriced rather than guessed.
+   * Add a key to `prices` in .imh/config.json (e.g. "glm") to price other models.
+   */
   modelFamily(model) {
     const normalizedModel = model?.toLowerCase();
     if (!normalizedModel) {
       return DEFAULT_FAMILY;
     }
     const family = Object.keys(this.prices).find((key) => key !== DEFAULT_FAMILY && normalizedModel.includes(key));
-    return family ?? DEFAULT_FAMILY;
+    if (family) {
+      return family;
+    }
+    return normalizedModel.includes(DEFAULT_PRICED_VENDOR) ? DEFAULT_FAMILY : void 0;
   }
+  isPriced(model) {
+    return this.modelFamily(model) !== void 0;
+  }
+  /** 0 for an unpriced model; callers report those models so the gap is visible. */
   costUsd(usage, model) {
-    const price = this.prices[this.modelFamily(model)] ?? this.prices[DEFAULT_FAMILY] ?? _CostService.DEFAULT_PRICES[DEFAULT_FAMILY];
+    const family = this.modelFamily(model);
+    if (family === void 0) {
+      return 0;
+    }
+    const price = this.prices[family] ?? this.prices[DEFAULT_FAMILY] ?? _CostService.DEFAULT_PRICES[DEFAULT_FAMILY];
     if (!price) {
       return 0;
     }
@@ -336,46 +393,6 @@ var HashUtil = class {
   }
 };
 
-// src/Shared/Utils/RedactUtil.ts
-var MASK = "[REDACTED]";
-var DEFAULT_EXCERPT_CHARS = 200;
-var SECRET_PATTERNS = [
-  [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(-----END [A-Z ]*PRIVATE KEY-----|$)/g, MASK],
-  [/\bsk-(?:ant-|proj-|live-|test-)?[A-Za-z0-9_-]{16,}/g, MASK],
-  [/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/g, MASK],
-  [/\bgithub_pat_[A-Za-z0-9_]{20,}/g, MASK],
-  [/\bglpat-[A-Za-z0-9_-]{16,}/g, MASK],
-  [/\bxox[abposr]-[A-Za-z0-9-]{10,}/g, MASK],
-  [/\bAKIA[0-9A-Z]{16}\b/g, MASK],
-  [/\bAIza[0-9A-Za-z_-]{30,}/g, MASK],
-  [/\b(?:rk|pk|sk)_(?:live|test)_[A-Za-z0-9]{16,}/g, MASK],
-  [/\bnpm_[A-Za-z0-9]{30,}/g, MASK],
-  [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, MASK],
-  [/\b(Bearer|Basic|Token)\s+[A-Za-z0-9._~+/=-]{12,}/gi, `$1 ${MASK}`],
-  [/([a-z][a-z0-9+.-]*:\/\/)[^\s:/@]+:[^\s@/]+@/gi, `$1${MASK}@`]
-];
-var SENSITIVE_ASSIGNMENT = /((?:["']?)[A-Za-z0-9_.-]*(?:pass(?:word|wd)?|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|credential|auth)[A-Za-z0-9_.-]*["']?\s*[:=]\s*)(["']?)([^\s"',;&]{4,})\2/gi;
-var RedactUtil = class _RedactUtil {
-  static redact(text) {
-    if (!text) {
-      return text;
-    }
-    let redacted = text;
-    for (const [pattern, replacement] of SECRET_PATTERNS) {
-      redacted = redacted.replace(pattern, replacement);
-    }
-    return redacted.replace(
-      SENSITIVE_ASSIGNMENT,
-      (_match, keyPart, quote) => `${keyPart}${quote}${MASK}${quote}`
-    );
-  }
-  /** Redacts and collapses to a single line of at most `maxChars`. */
-  static excerpt(text, maxChars = DEFAULT_EXCERPT_CHARS) {
-    const oneLine = _RedactUtil.redact(text).replace(/\s+/g, " ").trim();
-    return oneLine.length > maxChars ? `${oneLine.slice(0, maxChars - 1)}\u2026` : oneLine;
-  }
-};
-
 // src/Shared/Utils/NormalizeUtil.ts
 var COMMAND_WRAPPERS = /* @__PURE__ */ new Set(["sudo", "time", "nohup", "env", "command", "exec", "timeout"]);
 var NAVIGATION_COMMAND = /^(cd|pushd|popd|export|source|\.|set)\b/;
@@ -420,7 +437,17 @@ var PROGRAMS_WITH_SUBCOMMAND = /* @__PURE__ */ new Set([
 ]);
 var RUNNER_SUBCOMMANDS = /* @__PURE__ */ new Set(["run", "exec", "x", "dlx", "-m"]);
 var MAX_SUBCOMMAND_CHARS = 30;
+var PROGRAM_TO_GLOBAL_OPTIONS = {
+  git: {
+    withValue: /* @__PURE__ */ new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace"]),
+    prefixes: ["--no-", "--git-dir=", "--work-tree=", "--namespace=", "--exec-path", "--bare", "--paginate"]
+  }
+};
 var ERROR_LINES_TO_SCAN = 8;
+var WARNING_LINE = /^(warning\b|npm warn\b)|\b\w*Warning:|^\s*warnings\.warn\(/i;
+var PYTHON_TRACEBACK = "Traceback (most recent call last):";
+var OPTION_WITH_VALUE_TOKENS = 2;
+var PYTHON_EXCEPTION_LINE = /^[\w.]+(Error|Exception|Exit|Interrupt)\b/;
 var MAX_ERROR_KEY_CHARS = 160;
 var ERROR_LOOKING_LINE = /error|fail|denied|not found|no such|invalid|cannot|can't|unable|exception|refused|timed? ?out|"reason"/i;
 var CORRECTION_PREFIX_CHARS = 80;
@@ -449,7 +476,7 @@ var NormalizeUtil = class _NormalizeUtil {
     const keyParts = [program];
     const hasSubcommand = PROGRAMS_WITH_SUBCOMMAND.has(program) || program.startsWith("python");
     if (hasSubcommand) {
-      const [subcommand, target] = tokens.slice(programIndex + 1);
+      const [subcommand, target] = _NormalizeUtil.withoutGlobalOptions(program, tokens.slice(programIndex + 1));
       if (subcommand && (_NormalizeUtil.isPlainWord(subcommand) || subcommand === "-m")) {
         keyParts.push(subcommand);
         if (RUNNER_SUBCOMMANDS.has(subcommand) && target && _NormalizeUtil.isPlainWord(target)) {
@@ -462,8 +489,9 @@ var NormalizeUtil = class _NormalizeUtil {
   /** The first meaningful line of an error, normalized so the same error groups across sessions. */
   static errorKey(text) {
     const lines = text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !/^exit code \d+$/i.test(line) && !/^<\/?[\w-]+\s*\/?>$/.test(line));
-    const errorLine = lines.slice(0, ERROR_LINES_TO_SCAN).find((line) => ERROR_LOOKING_LINE.test(line));
-    const head = errorLine ?? lines[0] ?? text.trim();
+    const nonWarningLines = lines.filter((line) => !WARNING_LINE.test(line));
+    const errorLine = _NormalizeUtil.pythonException(lines) ?? nonWarningLines.slice(0, ERROR_LINES_TO_SCAN).find((line) => ERROR_LOOKING_LINE.test(line));
+    const head = errorLine ?? nonWarningLines[0] ?? lines[0] ?? text.trim();
     const structuredReason = /"reason"\s*:\s*"([^"]{1,60})"/.exec(head)?.[1];
     const errorText = structuredReason ? `reason: ${structuredReason}` : head;
     return RedactUtil.redact(errorText).replace(/(["'`]).{1,200}?\1/g, "'\u2026'").replace(/(?:[A-Za-z]:)?[~.]?\/[\w@.+-]+(?:\/[\w@.+-]+)*/g, "<path>").replace(/\b\d+(\.\d+)*\b/g, "N").replace(/\s+/g, " ").slice(0, MAX_ERROR_KEY_CHARS).trim();
@@ -488,6 +516,32 @@ var NormalizeUtil = class _NormalizeUtil {
       }
     }
     return sharedCount / (left.size + right.size - sharedCount);
+  }
+  /** A Python traceback ends with the exception that was raised; everything above it is the stack. */
+  static pythonException(lines) {
+    const tracebackIndex = lines.findIndex((line) => line.startsWith(PYTHON_TRACEBACK));
+    if (tracebackIndex === -1) {
+      return void 0;
+    }
+    return lines.slice(tracebackIndex + 1).reverse().find((line) => PYTHON_EXCEPTION_LINE.test(line));
+  }
+  static withoutGlobalOptions(program, argumentTokens) {
+    const globalOptions = PROGRAM_TO_GLOBAL_OPTIONS[program];
+    if (!globalOptions) {
+      return argumentTokens;
+    }
+    let index = 0;
+    while (index < argumentTokens.length) {
+      const token = argumentTokens[index] ?? "";
+      if (globalOptions.withValue.has(token)) {
+        index += OPTION_WITH_VALUE_TOKENS;
+      } else if (globalOptions.prefixes.some((prefix) => token.startsWith(prefix))) {
+        index += 1;
+      } else {
+        break;
+      }
+    }
+    return argumentTokens.slice(index);
   }
   static isPlainWord(token) {
     return /^[a-z][\w:.@-]*$/i.test(token) && token.length <= MAX_SUBCOMMAND_CHARS && !token.includes("/");
@@ -580,9 +634,20 @@ var SignalDetectorService = class {
         ...this.reactionCost(call, index)
       };
       const errorHead = result.errorHead ?? "error";
-      if (result.kind === "permission_denied") {
+      if (result.kind === "user_rejected") {
+        const attributedTo = occurrence.pieces.join(",");
+        const title = `User corrected the agent (${attributedTo})`;
+        this.collector.add(`user_correction:${attributedTo}`, "user_correction", title, {
+          ...occurrence,
+          ref: {
+            ...occurrence.ref,
+            excerpt: `rejected ${call.summary} \u2192 ${result.ref.excerpt ?? ""}`.slice(0, MAX_FAILURE_EXCERPT_CHARS)
+          }
+        });
+      } else if (result.kind === "permission_denied") {
         const title = `Permission denied for ${call.key}`;
-        this.collector.add(`permission_denied:${call.key}`, "permission_denied", title, occurrence);
+        const group = this.collector.add(`permission_denied:${call.key}`, "permission_denied", title, occurrence);
+        this.collector.count(group, "errors", errorHead);
       } else if (result.kind === "hook_blocked") {
         this.collector.add(`hook_blocked:${call.key}`, "hook_blocked", `Hook blocked ${call.key}`, occurrence);
       } else if (call.category === "shell") {
@@ -1490,9 +1555,15 @@ var AnalysisService = class _AnalysisService {
       lostToFailures: this.sumSignalCosts(signals, WASTE_SIGNAL_TYPES),
       inCorrectedOrInterruptedTurns: this.sumSignalCosts(signals, CORRECTION_SIGNAL_TYPES),
       isEstimated: true,
+      unpricedModels: this.unpricedModels(sessions),
       method: COST_METHOD,
       idleMinutes: this.context.config.idleMinutes
     };
+  }
+  unpricedModels(sessions) {
+    const costService = new CostService(this.context.config.prices);
+    const models = sessions.flatMap((session) => session.messages.map((message) => message.model)).filter((model) => model !== void 0 && !costService.isPriced(model));
+    return CollectionUtil.unique(models).map((model) => RedactUtil.redact(model)).sort();
   }
   sessionTotals(sessions) {
     const costService = new CostService(this.context.config.prices);
@@ -2177,7 +2248,13 @@ var ClaudeCodePathUtil = class {
 // src/Providers/ClaudeCode/Utils/ClaudeCodeTranscriptUtil.ts
 var HARNESS_INJECTED_BLOCKS = /<(system-reminder|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|bash-input|bash-stdout|bash-stderr|user-prompt-submit-hook)>[\s\S]*?<\/\1>/g;
 var INTERRUPTION_PREFIX = "[Request interrupted by user";
-var PERMISSION_DENIED = /(permission (?:to use .+ )?(?:has been |was )?denied|doesn'?t want to proceed with this tool use|tool use was rejected|denied by (?:the )?(?:user|permission|auto[- ]mode)|requires approval|not allowed by your permission settings)/i;
+var PERMISSION_DENIED = /(permission to use .+ (?:has been|was) denied|permission for this action was denied|denied by (?:the )?(?:claude code )?(?:permission|auto[- ]mode)|requires approval|not allowed by your permission settings)/i;
+var USER_REJECTED = /(doesn'?t want to proceed with this tool use|tool use was rejected|denied by (?:the )?user)/i;
+var DENIAL_KIND_TO_RESULT_KIND = {
+  "user-rejected": "user_rejected",
+  "automode-blocked": "permission_denied",
+  "automode-unavailable": "permission_denied"
+};
 var HOOK_BLOCKED = /(hook (?:error|blocked|denied)|blocked by (?:a |the )?(?:\w+ )?hook|PreToolUse:\w+ hook)/i;
 var COMPACTION_CAVEAT = /^Caveat: The messages below were generated/i;
 var RESULT_HEAD_CHARS = 600;
@@ -2200,12 +2277,19 @@ var ClaudeCodeTranscriptUtil = class _ClaudeCodeTranscriptUtil {
   static isCompactionCaveat(text) {
     return COMPACTION_CAVEAT.test(text);
   }
-  static classifyResult(text, isMarkedError, wasInterrupted) {
+  static classifyResult(text, signals) {
+    const { isMarkedError, wasInterrupted, denialKind } = signals;
     const head = text.slice(0, RESULT_HEAD_CHARS);
     if (_ClaudeCodeTranscriptUtil.isInterruption(text)) {
       return "interrupted";
     }
-    if (PERMISSION_DENIED.test(head)) {
+    if (denialKind !== void 0) {
+      return DENIAL_KIND_TO_RESULT_KIND[denialKind] ?? "permission_denied";
+    }
+    if (isMarkedError && USER_REJECTED.test(head)) {
+      return "user_rejected";
+    }
+    if (isMarkedError && PERMISSION_DENIED.test(head)) {
       return "permission_denied";
     }
     if (isMarkedError && HOOK_BLOCKED.test(head)) {
@@ -2231,6 +2315,8 @@ var READ_TOOLS = /* @__PURE__ */ new Set(["Read", "NotebookRead"]);
 var EDIT_TOOLS = /* @__PURE__ */ new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 var SEARCH_TOOLS = /* @__PURE__ */ new Set(["Grep", "Glob", "WebSearch", "WebFetch", "ToolSearch"]);
 var DELEGATION_TOOLS = /* @__PURE__ */ new Set(["Task", "Agent"]);
+var HUMAN_ORIGIN = "human";
+var SYNTHETIC_MODEL = "<synthetic>";
 var ClaudeCodeSessionService = class {
   constructor(homeDir) {
     this.homeDir = homeDir;
@@ -2425,6 +2511,10 @@ var ClaudeCodeSessionService = class {
       eventsAtMs.push(line.occurredAtMs);
       context.threadIdToEventsAtMs.set(line.thread.id, eventsAtMs);
     }
+    if (lineType === "attachment") {
+      this.handleAttachment(context, line);
+      return;
+    }
     const message = GuardUtil.asRecord(record.message);
     if (!message) {
       return;
@@ -2472,7 +2562,7 @@ var ClaudeCodeSessionService = class {
     } else {
       context.messageIdToMessage.set(messageId, {
         id: messageId,
-        model: GuardUtil.asString(message.model),
+        model: this.readModel(message),
         usage,
         thread: line.thread,
         sentAtMs: line.occurredAtMs,
@@ -2532,6 +2622,20 @@ var ClaudeCodeSessionService = class {
       this.handlePrompt(context, line, textParts.join("\n"));
     }
   }
+  /**
+   * A prompt the person typed while the agent was busy is written as a `queued_command` attachment,
+   * never as a user line. Other queued commands (finished background tasks, messages from other
+   * sessions) are not the person's words.
+   */
+  handleAttachment(context, line) {
+    const attachment = GuardUtil.asRecord(line.record.attachment);
+    const prompt = GuardUtil.asString(attachment?.prompt);
+    const originKind = GuardUtil.asString(GuardUtil.asRecord(attachment?.origin)?.kind) ?? HUMAN_ORIGIN;
+    const isQueuedHumanPrompt = attachment?.type === "queued_command" && attachment.commandMode === "prompt" && attachment.isMeta !== true && originKind === HUMAN_ORIGIN;
+    if (isQueuedHumanPrompt && prompt !== void 0) {
+      this.handlePrompt(context, line, prompt);
+    }
+  }
   handlePrompt(context, line, rawText) {
     const threadId = line.thread.id;
     if (!context.threadIdToFirstPromptHash.has(threadId)) {
@@ -2571,7 +2675,11 @@ var ClaudeCodeSessionService = class {
     }
     const text = this.resultText(block.content);
     const wasInterrupted = toolUseResult?.interrupted === true;
-    const kind = ClaudeCodeTranscriptUtil.classifyResult(text, block.is_error === true, wasInterrupted);
+    const kind = ClaudeCodeTranscriptUtil.classifyResult(text, {
+      isMarkedError: block.is_error === true,
+      wasInterrupted,
+      denialKind: GuardUtil.asString(line.record.toolDenialKind)
+    });
     const isError = kind !== "ok";
     const toEvidence = this.evidenceFactory(context, line);
     call.result = {
@@ -2585,6 +2693,10 @@ var ClaudeCodeSessionService = class {
       },
       returnedAtMs: line.occurredAtMs
     };
+  }
+  readModel(message) {
+    const model = GuardUtil.asString(message.model);
+    return model === SYNTHETIC_MODEL ? void 0 : model;
   }
   resultText(content) {
     if (typeof content === "string") {

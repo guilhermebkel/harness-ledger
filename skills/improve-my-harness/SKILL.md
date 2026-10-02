@@ -91,7 +91,7 @@ Only when the user explicitly asks for a specific suggestion. Then:
 ## Hard rules
 
 - Every finding cites its evidence: session id (first 8 characters), transcript line and thread. No evidence, no finding.
-- Numbers come only from the script. Time and cost are always labeled as estimates. Never sum categories the script marks as overlapping.
+- Numbers come only from the script. Time and cost are always labeled as estimates. If `totals.unpricedModels` is not empty, say that those models' cost is not included. Never sum categories the script marks as overlapping.
 - Never show secret values. The script redacts excerpts; if you read a transcript line yourself, don't copy credentials, tokens, keys or personal data into the report, suggestions or commits. If you notice an exposed secret, tell the user privately in one line and don't turn it into a suggestion.
 - Stay in scope: unrelated bugs or code issues you notice in transcripts are not harness findings. Mention them in one line at most, outside the suggestion list.
 - Don't apply anything without explicit confirmation for that specific suggestion.

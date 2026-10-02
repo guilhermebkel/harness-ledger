@@ -148,3 +148,54 @@ describe("takeInventory", () => {
     expect(inventory.pieces.some((piece) => piece.scope === "user")).toBe(false);
   });
 });
+
+describe("parseSession on cases seen in real sessions", () => {
+  let realFacts: SessionFacts;
+
+  beforeAll(async () => {
+    ClaudeCodeFixtureUtil.writeRealCasesSession(fixture, "real1", "2026-09-20T10:00:00.000Z");
+    const transcripts = await adapter.discoverTranscripts({ projectDir: fixture.projectDir });
+    const transcript = transcripts.find((candidate) => candidate.sessionId === "real1");
+    realFacts = await adapter.parseSession(transcript!, { idleMs: 5 * 60_000, projectDir: fixture.projectDir });
+  });
+
+  function realCall(name: string, key?: string): ToolCall {
+    const call = realFacts.tools.find(
+      (candidate) => candidate.name === name && (key === undefined || candidate.key === key),
+    );
+    if (!call) {
+      throw new Error(`Missing ${name} ${key ?? ""}`);
+    }
+    return call;
+  }
+
+  it("tells a rejected plan apart from a permission denial", () => {
+    expect(realCall("ExitPlanMode").result?.kind).toBe("user_rejected");
+  });
+
+  it("reads auto-mode classifier blocks as permission denials", () => {
+    expect(realCall("Bash", "cat").result?.kind).toBe("permission_denied");
+  });
+
+  it("keys a Python failure by its exception, not the warning printed before it", () => {
+    expect(realCall("Bash", "python3 report.py").result?.errorHead).toBe("ModuleNotFoundError: No module named '…'");
+  });
+
+  it("keys git by its subcommand even after -C and skips git warnings", () => {
+    const gitCall = realCall("Bash", "git stash");
+    expect(gitCall.result?.errorHead).toBe("error: '…' is not a stash reference");
+  });
+
+  it("reads prompts typed while the agent was busy, but not task notifications", () => {
+    const promptTexts = realFacts.prompts.map((prompt) => prompt.text);
+    expect(promptTexts).toContain("não, usa a fila que já existe");
+    expect(promptTexts.some((text) => text.includes("Background task finished"))).toBe(false);
+    expect(realFacts.prompts.find((prompt) => prompt.text.startsWith("não"))?.isCorrection).toBe(true);
+  });
+
+  it("keeps the model of every message except Claude Code's synthetic API-error messages", () => {
+    const models = realFacts.messages.map((message) => message.model);
+    expect(models).toContain("glm-5.2");
+    expect(models).not.toContain("<synthetic>");
+  });
+});

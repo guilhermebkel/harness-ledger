@@ -6,6 +6,8 @@ const TOKENS_PER_MILLION = 1_000_000;
 /** Cache pricing relative to the input price, used when a table doesn't set it. */
 const CACHE_READ_INPUT_RATIO = 0.1;
 const CACHE_WRITE_INPUT_RATIO = 1.25;
+/** Unlisted models from this vendor fall back to the default price; anything else (e.g. a model behind a proxy) is unpriced. */
+const DEFAULT_PRICED_VENDOR = "claude";
 
 /** Turns token usage into estimated USD with a price table. Every cost it returns is an estimate. */
 export class CostService {
@@ -31,17 +33,34 @@ export class CostService {
 
   constructor(private readonly prices: PriceTable) {}
 
-  modelFamily(model: string | undefined): string {
+  /**
+   * The price-table key for a model: a listed family it contains, "default" for an unnamed model or an
+   * unlisted Claude model, and undefined for anything else, which is left unpriced rather than guessed.
+   * Add a key to `prices` in .imh/config.json (e.g. "glm") to price other models.
+   */
+  modelFamily(model: string | undefined): string | undefined {
     const normalizedModel = model?.toLowerCase();
     if (!normalizedModel) {
       return DEFAULT_FAMILY;
     }
     const family = Object.keys(this.prices).find((key) => key !== DEFAULT_FAMILY && normalizedModel.includes(key));
-    return family ?? DEFAULT_FAMILY;
+    if (family) {
+      return family;
+    }
+    return normalizedModel.includes(DEFAULT_PRICED_VENDOR) ? DEFAULT_FAMILY : undefined;
   }
 
+  isPriced(model: string | undefined): boolean {
+    return this.modelFamily(model) !== undefined;
+  }
+
+  /** 0 for an unpriced model; callers report those models so the gap is visible. */
   costUsd(usage: TokenUsage, model: string | undefined): number {
-    const price = this.prices[this.modelFamily(model)]
+    const family = this.modelFamily(model);
+    if (family === undefined) {
+      return 0;
+    }
+    const price = this.prices[family]
       ?? this.prices[DEFAULT_FAMILY]
       ?? CostService.DEFAULT_PRICES[DEFAULT_FAMILY];
     if (!price) {

@@ -46,3 +46,17 @@ describe("request similarity", () => {
     expect(NormalizeUtil.jaccard(request, NormalizeUtil.wordSet("Fix the failing login test"))).toBeLessThan(0.2);
   });
 });
+
+describe("keys for cases seen in real sessions", () => {
+  it.each([
+    ["git -C ../api stash pop", "git stash"],
+    ["git -c core.pager=cat --no-pager log -5", "git log"],
+    ["git --git-dir=.bare worktree list", "git worktree"],
+  ])("%s → %s", (command, expectedKey) => {
+    expect(NormalizeUtil.commandKey(command)).toBe(expectedKey);
+  });
+
+  it("skips warnings printed before the error", () => {
+    expect(NormalizeUtil.errorKey("npm WARN deprecated x@1.0.0\nnpm ERR! code E404")).toBe("npm ERR! code E404");
+  });
+});

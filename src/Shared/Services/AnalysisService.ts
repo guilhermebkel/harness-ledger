@@ -6,6 +6,7 @@ import type { Signal, SignalType } from "@/Shared/Protocols/SignalProtocol.js";
 import type { Suggestion } from "@/Shared/Protocols/SuggestionProtocol.js";
 import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
 import { NumberUtil } from "@/Shared/Utils/NumberUtil.js";
+import { RedactUtil } from "@/Shared/Utils/RedactUtil.js";
 import { SessionUtil } from "@/Shared/Utils/SessionUtil.js";
 import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
 import { TokenUsageUtil } from "@/Shared/Utils/TokenUsageUtil.js";
@@ -187,9 +188,18 @@ export class AnalysisService {
       lostToFailures: this.sumSignalCosts(signals, WASTE_SIGNAL_TYPES),
       inCorrectedOrInterruptedTurns: this.sumSignalCosts(signals, CORRECTION_SIGNAL_TYPES),
       isEstimated: true,
+      unpricedModels: this.unpricedModels(sessions),
       method: COST_METHOD,
       idleMinutes: this.context.config.idleMinutes,
     };
+  }
+
+  private unpricedModels(sessions: SessionFacts[]): string[] {
+    const costService = new CostService(this.context.config.prices);
+    const models = sessions
+      .flatMap((session) => session.messages.map((message) => message.model))
+      .filter((model): model is string => model !== undefined && !costService.isPriced(model));
+    return CollectionUtil.unique(models).map((model) => RedactUtil.redact(model)).sort();
   }
 
   private sessionTotals(sessions: SessionFacts[]): SessionTotals {

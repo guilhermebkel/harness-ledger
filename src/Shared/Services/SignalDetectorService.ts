@@ -113,9 +113,21 @@ export class SignalDetectorService {
         ...this.reactionCost(call, index),
       };
       const errorHead = result.errorHead ?? "error";
-      if (result.kind === "permission_denied") {
+      if (result.kind === "user_rejected") {
+        // The person said no to the call (a plan, a command): that is a correction of the turn, not a failure.
+        const attributedTo = occurrence.pieces.join(",");
+        const title = `User corrected the agent (${attributedTo})`;
+        this.collector.add(`user_correction:${attributedTo}`, "user_correction", title, {
+          ...occurrence,
+          ref: {
+            ...occurrence.ref,
+            excerpt: `rejected ${call.summary} → ${result.ref.excerpt ?? ""}`.slice(0, MAX_FAILURE_EXCERPT_CHARS),
+          },
+        });
+      } else if (result.kind === "permission_denied") {
         const title = `Permission denied for ${call.key}`;
-        this.collector.add(`permission_denied:${call.key}`, "permission_denied", title, occurrence);
+        const group = this.collector.add(`permission_denied:${call.key}`, "permission_denied", title, occurrence);
+        this.collector.count(group, "errors", errorHead);
       } else if (result.kind === "hook_blocked") {
         this.collector.add(`hook_blocked:${call.key}`, "hook_blocked", `Hook blocked ${call.key}`, occurrence);
       } else if (call.category === "shell") {

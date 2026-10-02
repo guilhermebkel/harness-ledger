@@ -12,8 +12,23 @@ const PROGRAMS_WITH_SUBCOMMAND = new Set([
 /** Subcommands that take the real target as the next word (`npm run test`, `python -m pytest`). */
 const RUNNER_SUBCOMMANDS = new Set(["run", "exec", "x", "dlx", "-m"]);
 const MAX_SUBCOMMAND_CHARS = 30;
+/** Options that come before the subcommand (`git -C repo status`); the ones in the map take a value. */
+const PROGRAM_TO_GLOBAL_OPTIONS: Record<string, {
+  withValue: Set<string>; prefixes: string[];
+}> = {
+  git: {
+    withValue: new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace"]),
+    prefixes: ["--no-", "--git-dir=", "--work-tree=", "--namespace=", "--exec-path", "--bare", "--paginate"],
+  },
+};
 
 const ERROR_LINES_TO_SCAN = 8;
+/** Warnings printed before the real error (`FutureWarning:`, `warning:`, `npm WARN`). */
+const WARNING_LINE = /^(warning\b|npm warn\b)|\b\w*Warning:|^\s*warnings\.warn\(/i;
+const PYTHON_TRACEBACK = "Traceback (most recent call last):";
+/** An option and its value, e.g. `-C repo`. */
+const OPTION_WITH_VALUE_TOKENS = 2;
+const PYTHON_EXCEPTION_LINE = /^[\w.]+(Error|Exception|Exit|Interrupt)\b/;
 const MAX_ERROR_KEY_CHARS = 160;
 const ERROR_LOOKING_LINE
   = /error|fail|denied|not found|no such|invalid|cannot|can't|unable|exception|refused|timed? ?out|"reason"/i;
@@ -56,7 +71,7 @@ export class NormalizeUtil {
     const keyParts = [program];
     const hasSubcommand = PROGRAMS_WITH_SUBCOMMAND.has(program) || program.startsWith("python");
     if (hasSubcommand) {
-      const [subcommand, target] = tokens.slice(programIndex + 1);
+      const [subcommand, target] = NormalizeUtil.withoutGlobalOptions(program, tokens.slice(programIndex + 1));
       if (subcommand && (NormalizeUtil.isPlainWord(subcommand) || subcommand === "-m")) {
         keyParts.push(subcommand);
         if (RUNNER_SUBCOMMANDS.has(subcommand) && target && NormalizeUtil.isPlainWord(target)) {
@@ -73,9 +88,11 @@ export class NormalizeUtil {
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter((line) => line && !/^exit code \d+$/i.test(line) && !/^<\/?[\w-]+\s*\/?>$/.test(line));
-    // Tools prepend banners and notices to errors; the line that reads like an error is the useful one.
-    const errorLine = lines.slice(0, ERROR_LINES_TO_SCAN).find((line) => ERROR_LOOKING_LINE.test(line));
-    const head = errorLine ?? lines[0] ?? text.trim();
+    // Tools prepend banners, notices and warnings to errors; the line that reads like an error is the useful one.
+    const nonWarningLines = lines.filter((line) => !WARNING_LINE.test(line));
+    const errorLine = NormalizeUtil.pythonException(lines)
+      ?? nonWarningLines.slice(0, ERROR_LINES_TO_SCAN).find((line) => ERROR_LOOKING_LINE.test(line));
+    const head = errorLine ?? nonWarningLines[0] ?? lines[0] ?? text.trim();
     const structuredReason = /"reason"\s*:\s*"([^"]{1,60})"/.exec(head)?.[1];
     const errorText = structuredReason ? `reason: ${structuredReason}` : head;
     return RedactUtil.redact(errorText)
@@ -116,6 +133,34 @@ export class NormalizeUtil {
       }
     }
     return sharedCount / (left.size + right.size - sharedCount);
+  }
+
+  /** A Python traceback ends with the exception that was raised; everything above it is the stack. */
+  private static pythonException(lines: string[]): string | undefined {
+    const tracebackIndex = lines.findIndex((line) => line.startsWith(PYTHON_TRACEBACK));
+    if (tracebackIndex === -1) {
+      return undefined;
+    }
+    return lines.slice(tracebackIndex + 1).reverse().find((line) => PYTHON_EXCEPTION_LINE.test(line));
+  }
+
+  private static withoutGlobalOptions(program: string, argumentTokens: string[]): string[] {
+    const globalOptions = PROGRAM_TO_GLOBAL_OPTIONS[program];
+    if (!globalOptions) {
+      return argumentTokens;
+    }
+    let index = 0;
+    while (index < argumentTokens.length) {
+      const token = argumentTokens[index] ?? "";
+      if (globalOptions.withValue.has(token)) {
+        index += OPTION_WITH_VALUE_TOKENS;
+      } else if (globalOptions.prefixes.some((prefix) => token.startsWith(prefix))) {
+        index += 1;
+      } else {
+        break;
+      }
+    }
+    return argumentTokens.slice(index);
   }
 
   private static isPlainWord(token: string): boolean {

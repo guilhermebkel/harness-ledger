@@ -76,6 +76,8 @@ export interface AnalysisTotals extends SessionTotals {
   lostToFailures: CostSummary;
   inCorrectedOrInterruptedTurns: CostSummary;
   isEstimated: true;
+  /** Models with no price in the table; their tokens are counted but their cost is 0. */
+  unpricedModels: string[];
   method: string;
   idleMinutes: number;
 }

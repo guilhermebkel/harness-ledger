@@ -22,11 +22,11 @@ These are starting points, not rules; read the piece before deciding.
 | `failed_command` with `recoveredWith` and `mentions` | Rule exists, but is ignored |
 | `failed_command` with `recoveredWith`, no mentions | Missing instruction, or a script/hook if it repeats a lot |
 | `failed_command` / `tool_error` without recovery | Partial instruction, or out of scope if it's a tool/plugin problem |
-| `permission_denied` | Missing instruction (the agent keeps trying something not allowed) or a permission rule the user may want; ask, never widen permissions on your own |
+| `permission_denied` | Missing instruction (the agent keeps trying something not allowed) or a permission rule the user may want; ask, never widen permissions on your own. `errors` holds the reason, e.g. the auto-mode classifier's category |
 | `hook_blocked` | Rule exists, but is ignored — the hook works; the instruction or subagent should stop trying |
 | `repeated_read` | Missing instruction in that subagent/skill, or a structure change (pass the content, or a script that extracts what's needed) |
 | `subagent_reread` | Structure change: pass what the main thread already knows when delegating |
-| `user_correction`, `interruption` | Read the excerpt: the class depends on what was corrected; attributed pieces are where the turn ran |
+| `user_correction`, `interruption` | Read the excerpt: the class depends on what was corrected; attributed pieces are where the turn ran. Excerpts starting with `rejected` are calls the user turned down (often a plan), with their feedback |
 | `repeated_request` | Structure change: a skill or command (draft it) |
 | `unused_piece` | Structure change: remove, or improve its description if it should have triggered. Partial when it was added during the period |
 | `large_piece` | Structure change when `isLoadedEveryTurn` is true and the content is only needed sometimes |

@@ -46,6 +46,9 @@ const READ_TOOLS = new Set(["Read", "NotebookRead"]);
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 const SEARCH_TOOLS = new Set(["Grep", "Glob", "WebSearch", "WebFetch", "ToolSearch"]);
 const DELEGATION_TOOLS = new Set(["Task", "Agent"]);
+const HUMAN_ORIGIN = "human";
+/** Claude Code writes API errors and "no response" notices as assistant messages from this pseudo-model. */
+const SYNTHETIC_MODEL = "<synthetic>";
 
 export class ClaudeCodeSessionService {
   constructor(private readonly homeDir: string) {}
@@ -266,6 +269,10 @@ export class ClaudeCodeSessionService {
       eventsAtMs.push(line.occurredAtMs);
       context.threadIdToEventsAtMs.set(line.thread.id, eventsAtMs);
     }
+    if (lineType === "attachment") {
+      this.handleAttachment(context, line);
+      return;
+    }
     const message = GuardUtil.asRecord(record.message);
     if (!message) {
       return;
@@ -321,7 +328,7 @@ export class ClaudeCodeSessionService {
     } else {
       context.messageIdToMessage.set(messageId, {
         id: messageId,
-        model: GuardUtil.asString(message.model),
+        model: this.readModel(message),
         usage,
         thread: line.thread,
         sentAtMs: line.occurredAtMs,
@@ -389,6 +396,24 @@ export class ClaudeCodeSessionService {
     }
   }
 
+  /**
+   * A prompt the person typed while the agent was busy is written as a `queued_command` attachment,
+   * never as a user line. Other queued commands (finished background tasks, messages from other
+   * sessions) are not the person's words.
+   */
+  private handleAttachment(context: ClaudeCodeParseContext, line: ClaudeCodeTranscriptLine): void {
+    const attachment = GuardUtil.asRecord(line.record.attachment);
+    const prompt = GuardUtil.asString(attachment?.prompt);
+    const originKind = GuardUtil.asString(GuardUtil.asRecord(attachment?.origin)?.kind) ?? HUMAN_ORIGIN;
+    const isQueuedHumanPrompt = attachment?.type === "queued_command"
+      && attachment.commandMode === "prompt"
+      && attachment.isMeta !== true
+      && originKind === HUMAN_ORIGIN;
+    if (isQueuedHumanPrompt && prompt !== undefined) {
+      this.handlePrompt(context, line, prompt);
+    }
+  }
+
   private handlePrompt(context: ClaudeCodeParseContext, line: ClaudeCodeTranscriptLine, rawText: string): void {
     const threadId = line.thread.id;
     if (!context.threadIdToFirstPromptHash.has(threadId)) {
@@ -436,7 +461,11 @@ export class ClaudeCodeSessionService {
     }
     const text = this.resultText(block.content);
     const wasInterrupted = toolUseResult?.interrupted === true;
-    const kind = ClaudeCodeTranscriptUtil.classifyResult(text, block.is_error === true, wasInterrupted);
+    const kind = ClaudeCodeTranscriptUtil.classifyResult(text, {
+      isMarkedError: block.is_error === true,
+      wasInterrupted,
+      denialKind: GuardUtil.asString(line.record.toolDenialKind),
+    });
     const isError = kind !== "ok";
     const toEvidence = this.evidenceFactory(context, line);
     call.result = {
@@ -450,6 +479,11 @@ export class ClaudeCodeSessionService {
       },
       returnedAtMs: line.occurredAtMs,
     };
+  }
+
+  private readModel(message: UnknownRecord): string | undefined {
+    const model = GuardUtil.asString(message.model);
+    return model === SYNTHETIC_MODEL ? undefined : model;
   }
 
   private resultText(content: unknown): string {

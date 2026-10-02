@@ -51,6 +51,8 @@ export interface ResultOptions {
   isError?: boolean;
   secondsLater?: number;
   toolUseResult?: unknown;
+  /** `toolDenialKind` on the result line, e.g. "user-rejected" or "automode-blocked". */
+  denialKind?: string;
 }
 
 /** Fluent builder for one transcript file. */
@@ -117,6 +119,7 @@ export class ClaudeCodeTranscriptBuilder {
       ...this.lineBase("user", resultOptions.secondsLater ?? 2),
       message: { role: "user", content: [block] },
       ...(resultOptions.toolUseResult ? { toolUseResult: resultOptions.toolUseResult } : {}),
+      ...(resultOptions.denialKind ? { toolDenialKind: resultOptions.denialKind } : {}),
     });
     return this;
   }
@@ -130,6 +133,26 @@ export class ClaudeCodeTranscriptBuilder {
       usage: DEFAULT_TEXT_USAGE,
     };
     this.lines.push({ ...this.lineBase("assistant", secondsLater), message });
+    return this;
+  }
+
+  /** A prompt sent while the agent was busy: Claude Code writes it as a `queued_command` attachment. */
+  queued(prompt: string, commandMode: "prompt" | "task-notification", originKind = "human", secondsLater = 5): this {
+    this.lines.push({
+      ...this.lineBase("attachment", secondsLater),
+      attachment: { type: "queued_command", commandMode, prompt, origin: { kind: originKind } },
+    });
+    return this;
+  }
+
+  /** An API error, which Claude Code writes as an assistant message from the "<synthetic>" model. */
+  apiError(text: string, secondsLater = 3): this {
+    const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+    this.lines.push({
+      ...this.lineBase("assistant", secondsLater),
+      isApiErrorMessage: true,
+      message: { id: `msg_${ClaudeCodeFixtureUtil.nextUuid()}`, role: "assistant", model: "<synthetic>", content: [{ type: "text", text }], usage },
+    });
     return this;
   }
 
@@ -342,6 +365,66 @@ export class ClaudeCodeFixtureUtil {
       .user("run the tests")
       .tool(`task_${sessionId}`, "Task", { subagent_type: "test-runner", prompt: delegationPrompt })
       .result(`task_${sessionId}`, "ok", { secondsLater: 30, toolUseResult: { agentId } })
+      .write(ClaudeCodeFixtureUtil.sessionPath(fixture, sessionId));
+  }
+
+  /**
+   * Cases seen in real sessions (content is synthetic):
+   * - the person rejects a plan (ExitPlanMode) with feedback;
+   * - the auto-mode classifier blocks reading credentials, twice;
+   * - a Python script fails with a FutureWarning printed before the traceback;
+   * - `git -C <dir> stash pop` fails after a git warning line;
+   * - a correction typed while the agent was busy (queued), next to a background-task notification;
+   * - a model behind a proxy with no known price, and an API error message.
+   */
+  static writeRealCasesSession(fixture: Fixture, sessionId: string, startedAt: string): void {
+    new ClaudeCodeTranscriptBuilder(sessionId, fixture.projectDir, startedAt)
+      .user("Add a retry to the billing job")
+      .tool(`plan_${sessionId}`, "ExitPlanMode", { plan: "1. Add a new queue\n2. Retry there" })
+      .result(
+        `plan_${sessionId}`,
+        "The user doesn't want to proceed with this tool use. The tool use was rejected. The user said: use the existing queue",
+        { isError: true, denialKind: "user-rejected" },
+      )
+      .tool(`env_${sessionId}`, "Bash", { command: "cat .env.local" })
+      .result(
+        `env_${sessionId}`,
+        "Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Credential Exploration].",
+        { isError: true, denialKind: "automode-blocked" },
+      )
+      .tool(`aws_${sessionId}`, "Bash", { command: "cat ~/.aws/credentials" })
+      .result(
+        `aws_${sessionId}`,
+        "Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Credential Exploration].",
+        { isError: true, denialKind: "automode-blocked" },
+      )
+      .tool(`py_${sessionId}`, "Bash", { command: "cd jobs && python3 report.py --month 9" })
+      .result(
+        `py_${sessionId}`,
+        [
+          "Exit code 1",
+          "/usr/lib/python3/site-packages/google/api_core/_python_version_support.py:266: FutureWarning: "
+          + "Python 3.10 will stop being supported. Please upgrade.",
+          "  warnings.warn(message, FutureWarning)",
+          "Traceback (most recent call last):",
+          "  File \"/work/jobs/report.py\", line 3, in <module>",
+          "    import pandas",
+          "ModuleNotFoundError: No module named 'pandas'",
+        ].join("\n"),
+        { isError: true },
+      )
+      .tool(`git_${sessionId}`, "Bash", { command: "git -C ../billing-api stash pop" })
+      .result(
+        `git_${sessionId}`,
+        "Exit code 1\nwarning: ignoring dangling symref refs/remotes/origin/HEAD\nerror: 'stash@{0}' is not a stash reference",
+        { isError: true },
+      )
+      .queued("Background task finished: lint", "task-notification", "task-notification")
+      .queued("não, usa a fila que já existe", "prompt")
+      .tool(`glm_${sessionId}`, "Read", { file_path: join(fixture.projectDir, "jobs/billing.ts") }, { model: "glm-5.2" })
+      .result(`glm_${sessionId}`, "export const billing = 1;")
+      .apiError("API Error: 404 model_not_found")
+      .say("Done.")
       .write(ClaudeCodeFixtureUtil.sessionPath(fixture, sessionId));
   }
 

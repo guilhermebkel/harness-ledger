@@ -105,3 +105,57 @@ describe("AnalyzeCommand", () => {
     expect(analysis.analyzed.sessions).toBe(3);
   });
 });
+
+describe("AnalyzeCommand on cases seen in real sessions", () => {
+  let realFixture: Fixture;
+  let restoreRealEnv: () => void;
+
+  beforeAll(() => {
+    restoreEnv();
+    realFixture = ClaudeCodeFixtureUtil.makeFixture();
+    ClaudeCodeFixtureUtil.writeHarness(realFixture);
+    ClaudeCodeFixtureUtil.writeRealCasesSession(realFixture, "real1", "2026-09-20T10:00:00.000Z");
+    ClaudeCodeFixtureUtil.writeRealCasesSession(realFixture, "real2", "2026-09-21T10:00:00.000Z");
+    restoreRealEnv = ClaudeCodeFixtureUtil.useFixtureEnv(realFixture);
+  });
+
+  afterAll(() => {
+    restoreRealEnv();
+    restoreEnv = ClaudeCodeFixtureUtil.useFixtureEnv(fixture);
+    rmSync(realFixture.root, { recursive: true, force: true });
+  });
+
+  async function analyzeReal() {
+    return command.run({ projectDir: realFixture.projectDir, dataDir: realFixture.dataDir });
+  }
+
+  it("counts rejected plans and queued pushback as corrections, not permission problems", async () => {
+    const analysis = await analyzeReal();
+    expect(analysis.signals.some((signal) => signal.id === "permission_denied:ExitPlanMode")).toBe(false);
+    const correction = signalById(analysis.signals, "user_correction:main");
+    expect(correction).toMatchObject({ occurrences: 4, sessions: 2 });
+    expect(correction.evidence.some((evidence) => evidence.excerpt?.startsWith("rejected"))).toBe(true);
+  });
+
+  it("reports auto-mode blocks as permission denials with the classifier's reason", async () => {
+    const analysis = await analyzeReal();
+    const denied = signalById(analysis.signals, "permission_denied:cat");
+    expect(denied.occurrences).toBe(4);
+    expect(denied.details.errors?.[0]?.value).toContain("Credential Exploration");
+    expect(analysis.signals.some((signal) => signal.id === "failed_command:cat")).toBe(false);
+  });
+
+  it("groups failing commands by what actually failed", async () => {
+    const analysis = await analyzeReal();
+    const python = signalById(analysis.signals, "failed_command:python3 report.py");
+    expect(python.details.errors).toEqual([{ value: "ModuleNotFoundError: No module named '…'", count: 2 }]);
+    expect(signalById(analysis.signals, "failed_command:git stash").sessions).toBe(2);
+  });
+
+  it("leaves models without a known price unpriced and says which", async () => {
+    const analysis = await analyzeReal();
+    expect(analysis.totals.unpricedModels).toEqual(["glm-5.2"]);
+    const usageWithGlm = analysis.usage.find((usage) => usage.models.includes("glm-5.2"));
+    expect(usageWithGlm).toBeDefined();
+  });
+});
