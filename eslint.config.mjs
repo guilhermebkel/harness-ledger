@@ -41,12 +41,16 @@ export default tseslint.config(
         // Keys of external formats (JSON from agents, CLI flags, snake_case ids such as signal types) keep their spelling.
         { selector: ["objectLiteralProperty", "objectLiteralMethod", "typeProperty"], modifiers: ["requiresQuotes"], format: null },
         { selector: ["objectLiteralProperty", "objectLiteralMethod"], format: null, filter: { regex: "^[a-z]+(_[a-z]+)+$", match: true } },
+        // Class constants (`static readonly MAIN_PIECE`) read like module constants.
+        { selector: "classProperty", modifiers: ["static", "readonly"], format: ["UPPER_CASE", "camelCase"] },
         // Build-time constants injected by esbuild's `define`.
         { selector: "variable", format: null, filter: { regex: "^__[A-Z_]+__$", match: true } },
       ],
 
       // TypeScript
       "@typescript-eslint/no-explicit-any": "error",
+      // Utils are classes with static methods only (docs/code-standards.md, "Architecture").
+      "@typescript-eslint/no-extraneous-class": ["error", { allowStaticOnly: true }],
       "@typescript-eslint/switch-exhaustiveness-check": ["error", { requireDefaultForNonUnion: true, considerDefaultExhaustiveForUnions: true }],
       "@typescript-eslint/consistent-type-definitions": ["error", "interface"],
       "@typescript-eslint/restrict-template-expressions": ["error", { allowNumber: true }],
@@ -72,7 +76,7 @@ export default tseslint.config(
       "@typescript-eslint/no-floating-promises": "error",
 
       // Boundaries
-      "no-restricted-properties": ["error", { object: "process", property: "env", message: "Read environment variables through src/core/env.ts." }],
+      "no-restricted-properties": ["error", { object: "process", property: "env", message: "Read environment variables through EnvUtil (src/Shared/Utils/EnvUtil.ts)." }],
 
       // Formatting
       "@stylistic/max-len": ["error", { code: 120, ignoreUrls: true, ignoreStrings: true, ignoreTemplateLiterals: true, ignoreRegExpLiterals: true, ignoreComments: true }],
@@ -82,11 +86,30 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/core/env.ts"],
+    files: ["src/Shared/Utils/EnvUtil.ts"],
     rules: { "no-restricted-properties": "off" },
   },
   {
-    files: ["test/**/*.ts"],
+    // Shared code never knows a provider (ADR 0008). ProviderModule is the one bridge.
+    files: ["src/Shared/**/*.ts"],
+    ignores: ["src/Shared/Modules/ProviderModule.ts", "src/Shared/**/*.test.ts"],
+    rules: {
+      "no-restricted-imports": ["error", {
+        patterns: [{ group: ["**/Providers/**"], message: "Shared code must not import a provider. Go through ProviderModule (ADR 0008)." }],
+      }],
+    },
+  },
+  {
+    // A provider never reaches into another provider.
+    files: ["src/Providers/ClaudeCode/**/*.ts"],
+    rules: {
+      "no-restricted-imports": ["error", {
+        patterns: [{ group: ["**/Providers/*/**", "!**/Providers/ClaudeCode/**"], message: "A provider must not import another provider (ADR 0008)." }],
+      }],
+    },
+  },
+  {
+    files: ["src/**/*.test.ts", "src/Providers/*/Utils/*FixtureUtil.ts"],
     rules: {
       "@typescript-eslint/no-magic-numbers": "off",
       "no-restricted-properties": "off",

@@ -1,5 +1,8 @@
 name: CI
 
+# Shared checks for every change: types, lint, tests and a fresh dist/. Provider-specific
+# checks live in their own workflow (claude-code.yml).
+
 on:
   push:
     branches: [master]

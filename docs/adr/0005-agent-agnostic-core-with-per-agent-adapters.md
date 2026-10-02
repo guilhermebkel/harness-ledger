@@ -6,3 +6,5 @@ Claude Code ships first, but Codex and Cursor are planned. Everything after pars
 
 - Signal rules, usage, before/after and suggestions are written once.
 - Piece ids and suggestion wording must stay generic in the core; agent-specific vocabulary ("CLAUDE.md", "Cursor rule") belongs in adapters and in the skill's output.
+
+- The folder layout that enforces this split is in ADR 0008.

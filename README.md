@@ -123,13 +123,13 @@ This project applies the ideas behind *Test-Driven Prompting* (CBSoft 2026): def
 
 ## Contributing
 
-Issues and PRs are welcome. For larger changes, please open an issue first to discuss the approach. Adding support for a new agent means writing two adapters — a session reader and a harness mapper — on top of the shared core.
+Issues and PRs are welcome. For larger changes, please open an issue first to discuss the approach. Adding support for a new agentic tool (a provider) means a new `src/Providers/<Provider>/` folder whose adapter extends `BaseProviderAdapter`, one entry in `ProviderModule`, and one CI workflow; see ADR 0008.
 
 ### Development
 
 ```bash
 pnpm install
-pnpm test         # unit and end-to-end tests on synthetic transcripts
+pnpm test         # tests next to the code, end to end on synthetic transcripts
 pnpm lint         # ESLint (typescript-eslint + stylistic); see docs/code-standards.md
 pnpm build        # bundles src/ into dist/imh.mjs (committed, so the plugin needs no install step)
 pnpm check        # typecheck + lint + tests + build + fails if dist/ is out of date
@@ -144,7 +144,7 @@ node dist/imh.mjs --help
 
 Vocabulary is in [`GLOSSARY.md`](GLOSSARY.md) and design decisions in [`docs/adr/`](docs/adr/).
 
-Layout: `src/adapters/<agent>/` reads one agent's sessions and harness; `src/analysis/` extracts signals, usage and before/after on the shared model in `src/core/types.ts`; `skills/improve-my-harness/` is what the agent reads.
+Layout: `src/Providers/<Provider>/` reads one tool's sessions and harness into the shared model; `src/Shared/` (commands, services, protocols, utils) extracts signals, usage and before/after without knowing which tool produced them; `skills/improve-my-harness/` is what the agent reads. Before committing, run `pnpm lint` and `pnpm typecheck`.
 
 ## License
 

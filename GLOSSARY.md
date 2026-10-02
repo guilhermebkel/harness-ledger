@@ -6,6 +6,10 @@ Analyzes the setup around a coding agent, using the sessions the agent already s
 
 ### The harness
 
+**Provider**:
+The agentic coding tool whose sessions and harness are read, such as Claude Code (later Codex or Cursor). Each provider has its own adapter in `src/Providers/`.
+_Avoid_: agent (the model doing the work), IDE, client
+
 **Harness**:
 Everything around the coding agent that shapes how it works in a project: instructions, skills, subagents, commands, hooks, MCP servers, plugins and settings.
 _Avoid_: setup, config, scaffold, agent config
