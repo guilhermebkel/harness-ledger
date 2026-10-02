@@ -1230,6 +1230,7 @@ var UsageService = class {
 // src/Shared/Services/CompareService.ts
 var MAX_SIDE_SIGNALS = 10;
 var DELTA_DIGITS = 3;
+var RELATIVE_CHANGE_DIGITS = 2;
 var GLOBAL_PIECE_PREFIXES = ["instructions:", "hook:", "settings:"];
 var CompareService = class _CompareService {
   constructor(config, idleMs) {
@@ -1259,6 +1260,7 @@ var CompareService = class _CompareService {
       "Time and cost are estimates; idle gaps are excluded."
     ];
     const hasEnoughData = before.sessions >= minSessions && after.sessions >= minSessions;
+    const moves = hasEnoughData ? this.significantMoves(before, after) : [];
     if (!hasEnoughData) {
       caveats.push(
         `Need at least ${minSessions} sessions using ${piece} on each side (before: ${before.sessions}, after: ${after.sessions}).`
@@ -1271,7 +1273,8 @@ var CompareService = class _CompareService {
       minSessions,
       before,
       after,
-      verdict: hasEnoughData ? this.verdictOf(before, after) : "insufficient_data",
+      verdict: hasEnoughData ? this.verdictOf(moves) : "insufficient_data",
+      moves,
       deltas: {
         errorRate: this.difference(before.errorRate, after.errorRate),
         correctionsPerSession: this.difference(before.correctionsPerSession, after.correctionsPerSession),
@@ -1285,20 +1288,34 @@ var CompareService = class _CompareService {
       caveats
     };
   }
-  /** Lower is better for every tracked metric; a verdict needs all significant moves in one direction. */
-  verdictOf(before, after) {
-    const significantMoves = [
-      this.relativeChange(before.errorRate, after.errorRate),
-      this.relativeChange(before.correctionsPerSession, after.correctionsPerSession),
-      this.relativeChange(before.perInvocation?.usd, after.perInvocation?.usd)
-    ].filter((change) => Math.abs(change) >= this.config.minRelativeChange);
-    if (!significantMoves.length) {
+  /**
+   * Time counts as much as money: a change that keeps the cost but makes the work faster is an improvement.
+   * Lower is better for every metric.
+   */
+  significantMoves(before, after) {
+    const metricToValues = {
+      errorRate: [before.errorRate, after.errorRate],
+      correctionsPerSession: [before.correctionsPerSession, after.correctionsPerSession],
+      activeMinutesPerInvocation: [before.perInvocation?.activeMinutes, after.perInvocation?.activeMinutes],
+      usdPerInvocation: [before.perInvocation?.usd, after.perInvocation?.usd]
+    };
+    return Object.entries(metricToValues).map(([metric, [beforeValue, afterValue]]) => {
+      const relativeChange = this.relativeChange(beforeValue, afterValue);
+      return {
+        metric,
+        relativeChange: NumberUtil.round(relativeChange, RELATIVE_CHANGE_DIGITS),
+        direction: relativeChange < 0 ? "better" : "worse"
+      };
+    }).filter((move) => Math.abs(move.relativeChange) >= this.config.minRelativeChange);
+  }
+  verdictOf(moves) {
+    if (!moves.length) {
       return "no_clear_change";
     }
-    if (significantMoves.every((change) => change < 0)) {
+    if (moves.every((move) => move.direction === "better")) {
       return "improved";
     }
-    return significantMoves.every((change) => change > 0) ? "worse" : "no_clear_change";
+    return moves.every((move) => move.direction === "worse") ? "worse" : "mixed";
   }
   /** Usage of a global piece is the usage of the main thread. */
   usagePieceOf(piece) {
