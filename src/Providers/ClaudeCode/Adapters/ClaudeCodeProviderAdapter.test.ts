@@ -193,6 +193,19 @@ describe("parseSession on cases seen in real sessions", () => {
     expect(realFacts.prompts.find((prompt) => prompt.text.startsWith("não"))?.isCorrection).toBe(true);
   });
 
+  it("never reads a background-task notification as something the person typed", () => {
+    expect(realFacts.prompts.some((prompt) => prompt.text.includes("lint done"))).toBe(false);
+  });
+
+  it("keys a shell loop by the command inside it", () => {
+    expect(realFacts.tools.some((call) => call.key === "python3 -m py_compile")).toBe(true);
+  });
+
+  it("writes paths outside the project from ~, without the user's home folder", () => {
+    const homeRead = realFacts.tools.find((call) => call.filePath?.endsWith("review/SKILL.md"));
+    expect(homeRead?.filePath).toBe("~/.claude/skills/review/SKILL.md");
+  });
+
   it("keeps the model of every message except Claude Code's synthetic API-error messages", () => {
     const models = realFacts.messages.map((message) => message.model);
     expect(models).toContain("glm-5.2");

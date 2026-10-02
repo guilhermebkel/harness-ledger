@@ -6,7 +6,7 @@ import type { CleanPrompt } from "@/Shared/Protocols/UtilProtocol.js";
 import type { ClaudeCodeResultSignals } from "@/Providers/ClaudeCode/Protocols/ClaudeCodeProtocol.js";
 
 const HARNESS_INJECTED_BLOCKS
-  = /<(system-reminder|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|bash-input|bash-stdout|bash-stderr|user-prompt-submit-hook)>[\s\S]*?<\/\1>/g;
+  = /<(system-reminder|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|bash-input|bash-stdout|bash-stderr|user-prompt-submit-hook|task-notification)>[\s\S]*?<\/\1>/g;
 const INTERRUPTION_PREFIX = "[Request interrupted by user";
 const PERMISSION_DENIED
   = /(permission to use .+ (?:has been|was) denied|permission for this action was denied|denied by (?:the )?(?:claude code )?(?:permission|auto[- ]mode)|requires approval|not allowed by your permission settings)/i;

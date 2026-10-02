@@ -1,7 +1,9 @@
 import { RedactUtil } from "./RedactUtil.js";
 
-const COMMAND_WRAPPERS = new Set(["sudo", "time", "nohup", "env", "command", "exec", "timeout"]);
-const NAVIGATION_COMMAND = /^(cd|pushd|popd|export|source|\.|set)\b/;
+/** Words that run the next word as the command, including shell keywords (`do pnpm test`, `then make`). */
+const COMMAND_WRAPPERS = new Set(["sudo", "time", "nohup", "env", "command", "exec", "timeout", "do", "then", "else"]);
+/** Segments that set up the shell rather than do the work: navigation, variables and loop or condition headers. */
+const NAVIGATION_COMMAND = /^(cd|pushd|popd|export|source|\.|set|for|while|until|if|elif|done|fi|esac)\b/;
 const ENV_ASSIGNMENT = /^[A-Z_][A-Z0-9_]*=/;
 /** Programs whose subcommand is part of what the command means (`git push`, `npm test`). */
 const PROGRAMS_WITH_SUBCOMMAND = new Set([

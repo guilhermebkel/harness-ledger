@@ -39,7 +39,7 @@ export interface SignalDetails {
   recoveredWith?: CountedValue[];
   /** failed_command: where the harness already mentions the failing or the working command. */
   mentions?: Mention[];
-  /** subagent_reread: files re-read. */
+  /** subagent_reread and repeated_read: files re-read, most re-read first. */
   files?: CountedValue[];
   /** tool_error */
   tool?: string;

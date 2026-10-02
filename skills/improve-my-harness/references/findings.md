@@ -25,7 +25,7 @@ These are starting points, not rules; read the piece before deciding.
 | `permission_denied` | Missing instruction (the agent keeps trying something not allowed) or a permission rule the user may want; ask, never widen permissions on your own. `errors` holds the reason, e.g. the auto-mode classifier's category |
 | `api_error` | Structure change: a model name that doesn't exist, expired credentials or a proxy failing. `details.models` names the model; check the `model:` of the attributed agent or the settings |
 | `hook_blocked` | Rule exists, but is ignored — the hook works; the instruction or subagent should stop trying |
-| `repeated_read` | Missing instruction in that subagent/skill, or a structure change (pass the content, or a script that extracts what's needed) |
+| `repeated_read` | Missing instruction in that subagent/skill, or a structure change (pass the content, or a script that extracts what's needed). One signal per agent; `details.files` lists the files it re-read |
 | `subagent_reread` | Structure change: pass what the main thread already knows when delegating |
 | `user_correction`, `interruption` | Read the excerpt: the class depends on what was corrected; attributed pieces are where the turn ran. Excerpts starting with `rejected` are calls the user turned down (often a plan), with their feedback |
 | `repeated_request` | Structure change: a skill or command (draft it) |

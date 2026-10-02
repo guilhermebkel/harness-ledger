@@ -3,7 +3,7 @@
 // content-block line, and subagent transcripts in <session>/subagents/.
 
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { ClaudeCodePathUtil } from "./ClaudeCodePathUtil.js";
 
@@ -142,6 +142,17 @@ export class ClaudeCodeTranscriptBuilder {
       usage: DEFAULT_TEXT_USAGE,
     };
     this.lines.push({ ...this.lineBase("assistant", secondsLater), message });
+    return this;
+  }
+
+  /** A user line written by Claude Code rather than the person, e.g. a background-task notification. */
+  systemUser(text: string, originKind: string, secondsLater = 5): this {
+    this.lines.push({
+      ...this.lineBase("user", secondsLater),
+      origin: { kind: originKind },
+      promptSource: "system",
+      message: { role: "user", content: text },
+    });
     return this;
   }
 
@@ -440,6 +451,11 @@ export class ClaudeCodeFixtureUtil {
         { isError: true },
       )
       .queued("Background task finished: lint", "task-notification", "task-notification")
+      .systemUser("<task-notification><status>completed</status><summary>lint done</summary></task-notification>", "task-notification")
+      .tool(`loop_${sessionId}`, "Bash", { command: "for f in jobs/*.py; do python3 -m py_compile $f; done" })
+      .result(`loop_${sessionId}`, "")
+      .tool(`home_${sessionId}`, "Read", { file_path: join(homedir(), ".claude", "skills", "review", "SKILL.md") })
+      .result(`home_${sessionId}`, "---\nname: review\n---")
       .queued("não, usa a fila que já existe", "prompt")
       .tool(`glm_${sessionId}`, "Read", { file_path: join(fixture.projectDir, "jobs/billing.ts") }, { model: "glm-5.2" })
       .result(`glm_${sessionId}`, "export const billing = 1;")

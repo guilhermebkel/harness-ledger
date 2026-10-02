@@ -397,8 +397,8 @@ var HashUtil = class {
 };
 
 // src/Shared/Utils/NormalizeUtil.ts
-var COMMAND_WRAPPERS = /* @__PURE__ */ new Set(["sudo", "time", "nohup", "env", "command", "exec", "timeout"]);
-var NAVIGATION_COMMAND = /^(cd|pushd|popd|export|source|\.|set)\b/;
+var COMMAND_WRAPPERS = /* @__PURE__ */ new Set(["sudo", "time", "nohup", "env", "command", "exec", "timeout", "do", "then", "else"]);
+var NAVIGATION_COMMAND = /^(cd|pushd|popd|export|source|\.|set|for|while|until|if|elif|done|fi|esac)\b/;
 var ENV_ASSIGNMENT = /^[A-Z_][A-Z0-9_]*=/;
 var PROGRAMS_WITH_SUBCOMMAND = /* @__PURE__ */ new Set([
   "npm",
@@ -705,13 +705,14 @@ var SignalDetectorService = class {
       const agentType = firstRead.thread.agentType;
       const filePath = firstRead.filePath ?? "";
       for (const read of extraReads) {
-        const title = `Re-reads ${filePath} (${agentType})`;
-        this.collector.add(`repeated_read:${agentType}:${filePath}`, "repeated_read", title, {
+        const title = `${agentType} re-reads files it already read`;
+        const group = this.collector.add(`repeated_read:${agentType}`, "repeated_read", title, {
           session,
           ref: read.ref,
           pieces: index.toolCallIdToPieces.get(read.id) ?? [AttributionService.MAIN_PIECE],
           ...this.readCost(read, index)
         });
+        this.collector.count(group, "files", filePath);
       }
     }
   }
@@ -2316,7 +2317,7 @@ var ClaudeCodePathUtil = class {
 };
 
 // src/Providers/ClaudeCode/Utils/ClaudeCodeTranscriptUtil.ts
-var HARNESS_INJECTED_BLOCKS = /<(system-reminder|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|bash-input|bash-stdout|bash-stderr|user-prompt-submit-hook)>[\s\S]*?<\/\1>/g;
+var HARNESS_INJECTED_BLOCKS = /<(system-reminder|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|bash-input|bash-stdout|bash-stderr|user-prompt-submit-hook|task-notification)>[\s\S]*?<\/\1>/g;
 var INTERRUPTION_PREFIX = "[Request interrupted by user";
 var PERMISSION_DENIED = /(permission to use .+ (?:has been|was) denied|permission for this action was denied|denied by (?:the )?(?:claude code )?(?:permission|auto[- ]mode)|requires approval|not allowed by your permission settings)/i;
 var USER_REJECTED = /(doesn'?t want to proceed with this tool use|tool use was rejected|denied by (?:the )?user)/i;
@@ -2781,7 +2782,8 @@ var ClaudeCodeSessionService = class {
     if (!context.threadIdToFirstPromptHash.has(threadId)) {
       context.threadIdToFirstPromptHash.set(threadId, HashUtil.sha(rawText.trim()));
     }
-    const isHarnessGenerated = line.record.isMeta === true || line.record.isCompactSummary === true || line.record.isVisibleInTranscriptOnly === true;
+    const originKind = GuardUtil.asString(GuardUtil.asRecord(line.record.origin)?.kind);
+    const isHarnessGenerated = line.record.isMeta === true || line.record.isCompactSummary === true || line.record.isVisibleInTranscriptOnly === true || originKind !== void 0 && originKind !== HUMAN_ORIGIN;
     if (isHarnessGenerated || !SessionUtil.isMainThread(line.thread)) {
       return;
     }
@@ -2923,8 +2925,8 @@ var ClaudeCodeSessionService = class {
     };
   }
   toProjectRelative(filePath, projectDir) {
-    const isInsideProject = projectDir !== void 0 && isAbsolute2(filePath) && filePath.startsWith(projectDir);
-    return isInsideProject ? relative2(projectDir, filePath) || "." : filePath;
+    const isInsideProject = projectDir !== void 0 && isAbsolute2(filePath) && (filePath === projectDir || filePath.startsWith(`${projectDir}/`));
+    return isInsideProject ? relative2(projectDir, filePath) || "." : PathUtil.tildify(filePath);
   }
 };
 

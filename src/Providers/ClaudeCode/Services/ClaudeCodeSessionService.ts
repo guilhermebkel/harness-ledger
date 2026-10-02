@@ -22,6 +22,7 @@ import { GuardUtil } from "@/Shared/Utils/GuardUtil.js";
 import { HashUtil } from "@/Shared/Utils/HashUtil.js";
 import { JsonlUtil } from "@/Shared/Utils/JsonlUtil.js";
 import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.js";
+import { PathUtil } from "@/Shared/Utils/PathUtil.js";
 import { RedactUtil } from "@/Shared/Utils/RedactUtil.js";
 import { SessionUtil } from "@/Shared/Utils/SessionUtil.js";
 import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
@@ -505,9 +506,12 @@ export class ClaudeCodeSessionService {
     if (!context.threadIdToFirstPromptHash.has(threadId)) {
       context.threadIdToFirstPromptHash.set(threadId, HashUtil.sha(rawText.trim()));
     }
+    // Recent versions say where a user line came from; background-task notifications are not the person.
+    const originKind = GuardUtil.asString(GuardUtil.asRecord(line.record.origin)?.kind);
     const isHarnessGenerated = line.record.isMeta === true
       || line.record.isCompactSummary === true
-      || line.record.isVisibleInTranscriptOnly === true;
+      || line.record.isVisibleInTranscriptOnly === true
+      || (originKind !== undefined && originKind !== HUMAN_ORIGIN);
     // A subagent's "user" turn is the delegation prompt, not something the person typed.
     if (isHarnessGenerated || !SessionUtil.isMainThread(line.thread)) {
       return;
@@ -663,7 +667,10 @@ export class ClaudeCodeSessionService {
   }
 
   private toProjectRelative(filePath: string, projectDir?: string): string {
-    const isInsideProject = projectDir !== undefined && isAbsolute(filePath) && filePath.startsWith(projectDir);
-    return isInsideProject ? relative(projectDir, filePath) || "." : filePath;
+    const isInsideProject = projectDir !== undefined
+      && isAbsolute(filePath)
+      && (filePath === projectDir || filePath.startsWith(`${projectDir}/`));
+    // Outside the project, the home folder (and the user name in it) is replaced by "~".
+    return isInsideProject ? relative(projectDir, filePath) || "." : PathUtil.tildify(filePath);
   }
 }

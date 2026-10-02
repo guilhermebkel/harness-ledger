@@ -59,12 +59,15 @@ describe("AnalyzeCommand", () => {
     expect(signalIds).toEqual(
       expect.arrayContaining([
         "subagent_reread:code-reviewer",
-        "repeated_read:code-reviewer:src/auth.ts",
+        "repeated_read:code-reviewer",
         "permission_denied:rm",
       ]),
     );
     expect(analysis.signals.find((signal) => signal.type === "repeated_request")?.sessions).toBe(3);
     expect(signalById(analysis.signals, "permission_denied:rm").pieces).toEqual(["skill:changelog"]);
+    expect(signalById(analysis.signals, "repeated_read:code-reviewer").details.files).toEqual([
+      { value: "src/auth.ts", count: 3 },
+    ]);
   });
 
   it("reports the provider, history, totals and per-piece usage", async () => {

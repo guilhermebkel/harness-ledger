@@ -183,16 +183,18 @@ export class SignalDetectorService {
       if (extraReads.length < thresholds.minExtraReads) {
         continue;
       }
+      // One signal per agent: the finding is "this agent re-reads files"; which files is a detail.
       const agentType = firstRead.thread.agentType;
       const filePath = firstRead.filePath ?? "";
       for (const read of extraReads) {
-        const title = `Re-reads ${filePath} (${agentType})`;
-        this.collector.add(`repeated_read:${agentType}:${filePath}`, "repeated_read", title, {
+        const title = `${agentType} re-reads files it already read`;
+        const group = this.collector.add(`repeated_read:${agentType}`, "repeated_read", title, {
           session,
           ref: read.ref,
           pieces: index.toolCallIdToPieces.get(read.id) ?? [AttributionService.MAIN_PIECE],
           ...this.readCost(read, index),
         });
+        this.collector.count(group, "files", filePath);
       }
     }
   }
