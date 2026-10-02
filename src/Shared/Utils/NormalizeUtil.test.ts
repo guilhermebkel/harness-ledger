@@ -52,6 +52,9 @@ describe("keys for cases seen in real sessions", () => {
     ["git -C ../api stash pop", "git stash"],
     ["git -c core.pager=cat --no-pager log -5", "git log"],
     ["git --git-dir=.bare worktree list", "git worktree"],
+    ["source ~/.nvm/nvm.sh && nvm use 18 && timeout 300 npm run build", "npm run build"],
+    ["cd repo; B=feat/x\ngit checkout -b $B", "git checkout"],
+    ["for f in a b\ndo\n  wc -l $f\ndone", "wc"],
   ])("%s → %s", (command, expectedKey) => {
     expect(NormalizeUtil.commandKey(command)).toBe(expectedKey);
   });

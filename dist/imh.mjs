@@ -40,24 +40,8 @@ var CollectionUtil = class {
   }
 };
 
-// src/Shared/Utils/NumberUtil.ts
-var DECIMAL_BASE = 10;
-var CHARS_PER_TOKEN = 4;
-var NumberUtil = class {
-  static round(value, digits = 2) {
-    const factor = DECIMAL_BASE ** digits;
-    return Math.round(value * factor) / factor;
-  }
-  /** A rough token estimate from text length, good enough to compare sizes. */
-  static approxTokens(text) {
-    return Math.ceil(text.length / CHARS_PER_TOKEN);
-  }
-  static charsToTokens(chars) {
-    return Math.round(chars / CHARS_PER_TOKEN);
-  }
-};
-
 // src/Shared/Utils/RedactUtil.ts
+import { homedir } from "node:os";
 var MASK = "[REDACTED]";
 var DEFAULT_EXCERPT_CHARS = 200;
 var SECRET_PATTERNS = [
@@ -85,15 +69,255 @@ var RedactUtil = class _RedactUtil {
     for (const [pattern, replacement] of SECRET_PATTERNS) {
       redacted = redacted.replace(pattern, replacement);
     }
-    return redacted.replace(
+    const withoutSecrets = redacted.replace(
       SENSITIVE_ASSIGNMENT,
       (_match, keyPart, quote) => `${keyPart}${quote}${MASK}${quote}`
     );
+    return _RedactUtil.withoutHomeFolder(withoutSecrets);
+  }
+  /** The home folder carries the user's name; reports show it as `~`. */
+  static withoutHomeFolder(text) {
+    const home = homedir();
+    const isUsableHome = home.length > 1 && home !== "/";
+    if (!isUsableHome) {
+      return text;
+    }
+    const escapedHome = home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return text.replace(new RegExp(`${escapedHome}(?![\\w.-])`, "g"), "~");
   }
   /** Redacts and collapses to a single line of at most `maxChars`. */
   static excerpt(text, maxChars = DEFAULT_EXCERPT_CHARS) {
     const oneLine = _RedactUtil.redact(text).replace(/\s+/g, " ").trim();
     return oneLine.length > maxChars ? `${oneLine.slice(0, maxChars - 1)}\u2026` : oneLine;
+  }
+};
+
+// src/Shared/Utils/NormalizeUtil.ts
+var EXPLORATION_PROGRAMS = /* @__PURE__ */ new Set([
+  "ls",
+  "cat",
+  "find",
+  "grep",
+  "rg",
+  "sed",
+  "head",
+  "tail",
+  "wc",
+  "echo",
+  "pwd",
+  "tree",
+  "which",
+  "sort",
+  "awk",
+  "cut",
+  "jq",
+  "file",
+  "stat",
+  "du",
+  "diff",
+  "true",
+  "sleep",
+  "less",
+  "printf",
+  "date",
+  "env",
+  "type"
+]);
+var COMMAND_WRAPPERS = /* @__PURE__ */ new Set(["sudo", "time", "nohup", "env", "command", "exec", "timeout", "do", "then", "else"]);
+var NAVIGATION_COMMAND = /^(cd|pushd|popd|export|source|\.|set|for|while|until|if|elif|done|fi|esac|nvm use|conda activate|pyenv shell)\b/;
+var ENV_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+var WRAPPER_ARGUMENT = /^(-\S*|\d+(\.\d+)?[smhd]?)$/;
+var PROGRAMS_WITH_SUBCOMMAND = /* @__PURE__ */ new Set([
+  "npm",
+  "pnpm",
+  "yarn",
+  "bun",
+  "npx",
+  "bunx",
+  "git",
+  "gh",
+  "docker",
+  "kubectl",
+  "helm",
+  "cargo",
+  "go",
+  "make",
+  "pip",
+  "pip3",
+  "uv",
+  "poetry",
+  "dotnet",
+  "mvn",
+  "gradle",
+  "./gradlew",
+  "terraform",
+  "aws",
+  "gcloud",
+  "az",
+  "brew",
+  "apt",
+  "apt-get",
+  "composer",
+  "bundle",
+  "rails",
+  "mix",
+  "deno",
+  "turbo",
+  "nx"
+]);
+var RUNNER_SUBCOMMANDS = /* @__PURE__ */ new Set(["run", "exec", "x", "dlx", "-m"]);
+var MAX_SUBCOMMAND_CHARS = 30;
+var PROGRAM_TO_GLOBAL_OPTIONS = {
+  git: {
+    withValue: /* @__PURE__ */ new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace"]),
+    prefixes: ["--no-", "--git-dir=", "--work-tree=", "--namespace=", "--exec-path", "--bare", "--paginate"]
+  }
+};
+var ERROR_LINES_TO_SCAN = 8;
+var WARNING_LINE = /^(warning\b|npm warn\b)|\b\w*Warning:|^\s*warnings\.warn\(/i;
+var PYTHON_TRACEBACK = "Traceback (most recent call last):";
+var OPTION_WITH_VALUE_TOKENS = 2;
+var PYTHON_EXCEPTION_LINE = /^[\w.]+(Error|Exception|Exit|Interrupt)\b/;
+var MAX_ERROR_KEY_CHARS = 160;
+var ERROR_LOOKING_LINE = /error|fail|denied|not found|no such|invalid|cannot|can't|unable|exception|refused|timed? ?out|"reason"/i;
+var CORRECTION_PREFIX_CHARS = 80;
+var CORRECTION_START = /^(no|nope|não|nao|wrong|errado|actually|na verdade|instead|ao invés|em vez|stop|pare|para de|don'?t|do not|não faça|nao faca|that'?s not|isso não|isso nao|you should|you shouldn'?t|você deveria|voce deveria|why did you|por que você|por que voce|undo|revert|desfaz|desfaça|again|de novo|still (?:not|wrong|failing)|ainda (?:não|nao|está|esta))\b/i;
+var MIN_WORD_CHARS = 3;
+var STOPWORDS = new Set(
+  "the and for with that this from you your are was were can could would should please into have has had not but all any some what when where which who how why its it's our out then than them they there here tamb\xE9m para com que uma umas uns dos das por pelo pela isso isto esse essa este esta voc\xEA voce seu sua nos nas n\xE3o nao mais muito pode poderia favor ser ter tem foi vai fazer faz como quando onde qual quais".split(" ")
+);
+var NormalizeUtil = class _NormalizeUtil {
+  /**
+   * A short grouping key for a shell command, e.g.
+   * `cd app && CI=1 npm run test -- --watch=false` → `npm run test`.
+   */
+  static commandKey(command) {
+    const segments = command.split(/&&|\|\||;|\n/).map((segment) => segment.trim()).filter(Boolean);
+    let tokens = [];
+    let programIndex = -1;
+    for (const segment of segments.filter((candidate) => !NAVIGATION_COMMAND.test(candidate))) {
+      const firstPipelineStage = segment.split(/\s\|\s?/)[0] ?? segment;
+      tokens = firstPipelineStage.match(/"[^"]*"|'[^']*'|\S+/g) ?? [];
+      programIndex = _NormalizeUtil.programIndexOf(tokens);
+      if (programIndex !== -1) {
+        break;
+      }
+    }
+    const programToken = programIndex === -1 ? void 0 : tokens[programIndex];
+    if (!programToken) {
+      return "(empty)";
+    }
+    const isPathToProgram = programToken.includes("/") && !programToken.startsWith("./gradlew");
+    const program = isPathToProgram ? programToken.split("/").pop() ?? programToken : programToken;
+    const keyParts = [program];
+    const hasSubcommand = PROGRAMS_WITH_SUBCOMMAND.has(program) || program.startsWith("python");
+    if (hasSubcommand) {
+      const [subcommand, target] = _NormalizeUtil.withoutGlobalOptions(program, tokens.slice(programIndex + 1));
+      if (subcommand && (_NormalizeUtil.isPlainWord(subcommand) || subcommand === "-m")) {
+        keyParts.push(subcommand);
+        if (RUNNER_SUBCOMMANDS.has(subcommand) && target && _NormalizeUtil.isPlainWord(target)) {
+          keyParts.push(target);
+        }
+      }
+    }
+    return RedactUtil.redact(keyParts.join(" "));
+  }
+  /** True for a command key whose program only reads or prints (`ls`, `cat`, `grep`). */
+  static isExplorationCommand(commandKey) {
+    return EXPLORATION_PROGRAMS.has(commandKey.split(" ")[0] ?? "");
+  }
+  /** The first meaningful line of an error, normalized so the same error groups across sessions. */
+  static errorKey(text) {
+    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !/^exit code \d+$/i.test(line) && !/^<\/?[\w-]+\s*\/?>$/.test(line));
+    const nonWarningLines = lines.filter((line) => !WARNING_LINE.test(line));
+    const errorLine = _NormalizeUtil.pythonException(lines) ?? nonWarningLines.slice(0, ERROR_LINES_TO_SCAN).find((line) => ERROR_LOOKING_LINE.test(line));
+    const head = errorLine ?? nonWarningLines[0] ?? lines[0] ?? text.trim();
+    const structuredReason = /"reason"\s*:\s*"([^"]{1,60})"/.exec(head)?.[1];
+    const errorText = structuredReason ? `reason: ${structuredReason}` : head;
+    return RedactUtil.redact(errorText).replace(/(["'`]).{1,200}?\1/g, "'\u2026'").replace(/(?:[A-Za-z]:)?[~.]?\/[\w@.+-]+(?:\/[\w@.+-]+)*/g, "<path>").replace(/\b\d+(\.\d+)*\b/g, "N").replace(/\s+/g, " ").slice(0, MAX_ERROR_KEY_CHARS).trim();
+  }
+  /** Heuristic (English and Portuguese): the message opens by pushing back on what the agent did. */
+  static isCorrection(text) {
+    return CORRECTION_START.test(text.trim().slice(0, CORRECTION_PREFIX_CHARS));
+  }
+  /** The set of meaningful words in a prompt, used to cluster repeated requests. */
+  static wordSet(text) {
+    const words = text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/https?:\/\/\S+/g, " ").replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((word) => word.length >= MIN_WORD_CHARS && !STOPWORDS.has(word));
+    return new Set(words);
+  }
+  static jaccard(left, right) {
+    if (!left.size || !right.size) {
+      return 0;
+    }
+    let sharedCount = 0;
+    for (const word of left) {
+      if (right.has(word)) {
+        sharedCount++;
+      }
+    }
+    return sharedCount / (left.size + right.size - sharedCount);
+  }
+  /** Skips variable assignments and wrappers (`sudo`, `timeout 300`), with the wrappers' flags and durations. */
+  static programIndexOf(tokens) {
+    let isAfterWrapper = false;
+    for (const [index, token] of tokens.entries()) {
+      const isWrapperArgument = isAfterWrapper && WRAPPER_ARGUMENT.test(token);
+      if (ENV_ASSIGNMENT.test(token) || isWrapperArgument) {
+        continue;
+      }
+      if (COMMAND_WRAPPERS.has(token)) {
+        isAfterWrapper = true;
+        continue;
+      }
+      return index;
+    }
+    return -1;
+  }
+  /** A Python traceback ends with the exception that was raised; everything above it is the stack. */
+  static pythonException(lines) {
+    const tracebackIndex = lines.findIndex((line) => line.startsWith(PYTHON_TRACEBACK));
+    if (tracebackIndex === -1) {
+      return void 0;
+    }
+    return lines.slice(tracebackIndex + 1).reverse().find((line) => PYTHON_EXCEPTION_LINE.test(line));
+  }
+  static withoutGlobalOptions(program, argumentTokens) {
+    const globalOptions = PROGRAM_TO_GLOBAL_OPTIONS[program];
+    if (!globalOptions) {
+      return argumentTokens;
+    }
+    let index = 0;
+    while (index < argumentTokens.length) {
+      const token = argumentTokens[index] ?? "";
+      if (globalOptions.withValue.has(token)) {
+        index += OPTION_WITH_VALUE_TOKENS;
+      } else if (globalOptions.prefixes.some((prefix) => token.startsWith(prefix))) {
+        index += 1;
+      } else {
+        break;
+      }
+    }
+    return argumentTokens.slice(index);
+  }
+  static isPlainWord(token) {
+    return /^[a-z][\w:.@-]*$/i.test(token) && token.length <= MAX_SUBCOMMAND_CHARS && !token.includes("/");
+  }
+};
+
+// src/Shared/Utils/NumberUtil.ts
+var DECIMAL_BASE = 10;
+var CHARS_PER_TOKEN = 4;
+var NumberUtil = class {
+  static round(value, digits = 2) {
+    const factor = DECIMAL_BASE ** digits;
+    return Math.round(value * factor) / factor;
+  }
+  /** A rough token estimate from text length, good enough to compare sizes. */
+  static approxTokens(text) {
+    return Math.ceil(text.length / CHARS_PER_TOKEN);
+  }
+  static charsToTokens(chars) {
+    return Math.round(chars / CHARS_PER_TOKEN);
   }
 };
 
@@ -393,195 +617,6 @@ var HashUtil = class {
   /** A short sha256, enough to detect changes and build stable ids. */
   static sha(text, length = DEFAULT_HASH_CHARS) {
     return createHash("sha256").update(text).digest("hex").slice(0, length);
-  }
-};
-
-// src/Shared/Utils/NormalizeUtil.ts
-var EXPLORATION_PROGRAMS = /* @__PURE__ */ new Set([
-  "ls",
-  "cat",
-  "find",
-  "grep",
-  "rg",
-  "sed",
-  "head",
-  "tail",
-  "wc",
-  "echo",
-  "pwd",
-  "tree",
-  "which",
-  "sort",
-  "awk",
-  "cut",
-  "jq",
-  "file",
-  "stat",
-  "du",
-  "diff",
-  "true",
-  "sleep",
-  "less",
-  "printf",
-  "date",
-  "env",
-  "type"
-]);
-var COMMAND_WRAPPERS = /* @__PURE__ */ new Set(["sudo", "time", "nohup", "env", "command", "exec", "timeout", "do", "then", "else"]);
-var NAVIGATION_COMMAND = /^(cd|pushd|popd|export|source|\.|set|for|while|until|if|elif|done|fi|esac|nvm use|conda activate|pyenv shell)\b/;
-var ENV_ASSIGNMENT = /^[A-Z_][A-Z0-9_]*=/;
-var PROGRAMS_WITH_SUBCOMMAND = /* @__PURE__ */ new Set([
-  "npm",
-  "pnpm",
-  "yarn",
-  "bun",
-  "npx",
-  "bunx",
-  "git",
-  "gh",
-  "docker",
-  "kubectl",
-  "helm",
-  "cargo",
-  "go",
-  "make",
-  "pip",
-  "pip3",
-  "uv",
-  "poetry",
-  "dotnet",
-  "mvn",
-  "gradle",
-  "./gradlew",
-  "terraform",
-  "aws",
-  "gcloud",
-  "az",
-  "brew",
-  "apt",
-  "apt-get",
-  "composer",
-  "bundle",
-  "rails",
-  "mix",
-  "deno",
-  "turbo",
-  "nx"
-]);
-var RUNNER_SUBCOMMANDS = /* @__PURE__ */ new Set(["run", "exec", "x", "dlx", "-m"]);
-var MAX_SUBCOMMAND_CHARS = 30;
-var PROGRAM_TO_GLOBAL_OPTIONS = {
-  git: {
-    withValue: /* @__PURE__ */ new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace"]),
-    prefixes: ["--no-", "--git-dir=", "--work-tree=", "--namespace=", "--exec-path", "--bare", "--paginate"]
-  }
-};
-var ERROR_LINES_TO_SCAN = 8;
-var WARNING_LINE = /^(warning\b|npm warn\b)|\b\w*Warning:|^\s*warnings\.warn\(/i;
-var PYTHON_TRACEBACK = "Traceback (most recent call last):";
-var OPTION_WITH_VALUE_TOKENS = 2;
-var PYTHON_EXCEPTION_LINE = /^[\w.]+(Error|Exception|Exit|Interrupt)\b/;
-var MAX_ERROR_KEY_CHARS = 160;
-var ERROR_LOOKING_LINE = /error|fail|denied|not found|no such|invalid|cannot|can't|unable|exception|refused|timed? ?out|"reason"/i;
-var CORRECTION_PREFIX_CHARS = 80;
-var CORRECTION_START = /^(no|nope|não|nao|wrong|errado|actually|na verdade|instead|ao invés|em vez|stop|pare|para de|don'?t|do not|não faça|nao faca|that'?s not|isso não|isso nao|you should|you shouldn'?t|você deveria|voce deveria|why did you|por que você|por que voce|undo|revert|desfaz|desfaça|again|de novo|still (?:not|wrong|failing)|ainda (?:não|nao|está|esta))\b/i;
-var MIN_WORD_CHARS = 3;
-var STOPWORDS = new Set(
-  "the and for with that this from you your are was were can could would should please into have has had not but all any some what when where which who how why its it's our out then than them they there here tamb\xE9m para com que uma umas uns dos das por pelo pela isso isto esse essa este esta voc\xEA voce seu sua nos nas n\xE3o nao mais muito pode poderia favor ser ter tem foi vai fazer faz como quando onde qual quais".split(" ")
-);
-var NormalizeUtil = class _NormalizeUtil {
-  /**
-   * A short grouping key for a shell command, e.g.
-   * `cd app && CI=1 npm run test -- --watch=false` → `npm run test`.
-   */
-  static commandKey(command) {
-    const segments = command.split(/&&|\|\||;|\n/).map((segment) => segment.trim()).filter(Boolean);
-    const mainSegment = segments.find((segment) => !NAVIGATION_COMMAND.test(segment)) ?? segments[0] ?? command;
-    const firstPipelineStage = mainSegment.split(/\s\|\s?/)[0] ?? mainSegment;
-    const tokens = firstPipelineStage.match(/"[^"]*"|'[^']*'|\S+/g) ?? [];
-    const programIndex = tokens.findIndex((token) => !ENV_ASSIGNMENT.test(token) && !COMMAND_WRAPPERS.has(token));
-    const programToken = programIndex === -1 ? void 0 : tokens[programIndex];
-    if (!programToken) {
-      return "(empty)";
-    }
-    const isPathToProgram = programToken.includes("/") && !programToken.startsWith("./gradlew");
-    const program = isPathToProgram ? programToken.split("/").pop() ?? programToken : programToken;
-    const keyParts = [program];
-    const hasSubcommand = PROGRAMS_WITH_SUBCOMMAND.has(program) || program.startsWith("python");
-    if (hasSubcommand) {
-      const [subcommand, target] = _NormalizeUtil.withoutGlobalOptions(program, tokens.slice(programIndex + 1));
-      if (subcommand && (_NormalizeUtil.isPlainWord(subcommand) || subcommand === "-m")) {
-        keyParts.push(subcommand);
-        if (RUNNER_SUBCOMMANDS.has(subcommand) && target && _NormalizeUtil.isPlainWord(target)) {
-          keyParts.push(target);
-        }
-      }
-    }
-    return RedactUtil.redact(keyParts.join(" "));
-  }
-  /** True for a command key whose program only reads or prints (`ls`, `cat`, `grep`). */
-  static isExplorationCommand(commandKey) {
-    return EXPLORATION_PROGRAMS.has(commandKey.split(" ")[0] ?? "");
-  }
-  /** The first meaningful line of an error, normalized so the same error groups across sessions. */
-  static errorKey(text) {
-    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !/^exit code \d+$/i.test(line) && !/^<\/?[\w-]+\s*\/?>$/.test(line));
-    const nonWarningLines = lines.filter((line) => !WARNING_LINE.test(line));
-    const errorLine = _NormalizeUtil.pythonException(lines) ?? nonWarningLines.slice(0, ERROR_LINES_TO_SCAN).find((line) => ERROR_LOOKING_LINE.test(line));
-    const head = errorLine ?? nonWarningLines[0] ?? lines[0] ?? text.trim();
-    const structuredReason = /"reason"\s*:\s*"([^"]{1,60})"/.exec(head)?.[1];
-    const errorText = structuredReason ? `reason: ${structuredReason}` : head;
-    return RedactUtil.redact(errorText).replace(/(["'`]).{1,200}?\1/g, "'\u2026'").replace(/(?:[A-Za-z]:)?[~.]?\/[\w@.+-]+(?:\/[\w@.+-]+)*/g, "<path>").replace(/\b\d+(\.\d+)*\b/g, "N").replace(/\s+/g, " ").slice(0, MAX_ERROR_KEY_CHARS).trim();
-  }
-  /** Heuristic (English and Portuguese): the message opens by pushing back on what the agent did. */
-  static isCorrection(text) {
-    return CORRECTION_START.test(text.trim().slice(0, CORRECTION_PREFIX_CHARS));
-  }
-  /** The set of meaningful words in a prompt, used to cluster repeated requests. */
-  static wordSet(text) {
-    const words = text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/https?:\/\/\S+/g, " ").replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((word) => word.length >= MIN_WORD_CHARS && !STOPWORDS.has(word));
-    return new Set(words);
-  }
-  static jaccard(left, right) {
-    if (!left.size || !right.size) {
-      return 0;
-    }
-    let sharedCount = 0;
-    for (const word of left) {
-      if (right.has(word)) {
-        sharedCount++;
-      }
-    }
-    return sharedCount / (left.size + right.size - sharedCount);
-  }
-  /** A Python traceback ends with the exception that was raised; everything above it is the stack. */
-  static pythonException(lines) {
-    const tracebackIndex = lines.findIndex((line) => line.startsWith(PYTHON_TRACEBACK));
-    if (tracebackIndex === -1) {
-      return void 0;
-    }
-    return lines.slice(tracebackIndex + 1).reverse().find((line) => PYTHON_EXCEPTION_LINE.test(line));
-  }
-  static withoutGlobalOptions(program, argumentTokens) {
-    const globalOptions = PROGRAM_TO_GLOBAL_OPTIONS[program];
-    if (!globalOptions) {
-      return argumentTokens;
-    }
-    let index = 0;
-    while (index < argumentTokens.length) {
-      const token = argumentTokens[index] ?? "";
-      if (globalOptions.withValue.has(token)) {
-        index += OPTION_WITH_VALUE_TOKENS;
-      } else if (globalOptions.prefixes.some((prefix) => token.startsWith(prefix))) {
-        index += 1;
-      } else {
-        break;
-      }
-    }
-    return argumentTokens.slice(index);
-  }
-  static isPlainWord(token) {
-    return /^[a-z][\w:.@-]*$/i.test(token) && token.length <= MAX_SUBCOMMAND_CHARS && !token.includes("/");
   }
 };
 
@@ -934,13 +969,23 @@ var WorkflowDetectorService = class {
     this.collector = collector;
   }
   detect(sessions, sessionIdToIndex) {
-    const candidates = this.candidatesOf(sessions).filter((candidate) => candidate.sessionIdToCalls.size >= this.options.thresholds.minWorkflowSessions);
+    const thresholds = this.options.thresholds;
+    const candidates = this.candidatesOf(sessions).filter((candidate) => {
+      const isAcrossSessions = candidate.sessionIdToRuns.size >= thresholds.minWorkflowSessions;
+      return isAcrossSessions || this.runCountOf(candidate) >= thresholds.minWorkflowRuns;
+    });
     const sessionIdToSession = new Map(sessions.map((session) => [session.sessionId, session]));
     for (const workflow of this.withoutSubsumed(candidates).slice(0, MAX_WORKFLOW_SIGNALS)) {
       const gram = workflow.steps.join(STEP_SEPARATOR);
-      const title = `Same steps in ${workflow.sessionIdToCalls.size} sessions: ${gram}`;
+      const runCount = this.runCountOf(workflow);
+      const sessionCount = workflow.sessionIdToRuns.size;
+      const title = `Same steps ${runCount} times in ${sessionCount} session${sessionCount === 1 ? "" : "s"}: ${gram}`;
       const signalId = `repeated_workflow:${HashUtil.sha(gram, WORKFLOW_HASH_CHARS)}`;
-      for (const [sessionId, calls] of workflow.sessionIdToCalls) {
+      const runs = [...workflow.sessionIdToRuns.entries()].flatMap(([sessionId, sessionRuns]) => sessionRuns.map((calls) => ({
+        sessionId,
+        calls
+      })));
+      for (const { sessionId, calls } of runs) {
         const session = sessionIdToSession.get(sessionId);
         const index = sessionIdToIndex.get(sessionId);
         const [firstCall] = calls;
@@ -979,11 +1024,15 @@ var WorkflowDetectorService = class {
             const gram = steps.join(STEP_SEPARATOR);
             const candidate = gramToCandidate.get(gram) ?? {
               steps,
-              sessionIdToCalls: /* @__PURE__ */ new Map()
+              sessionIdToRuns: /* @__PURE__ */ new Map()
             };
-            if (!candidate.sessionIdToCalls.has(session.sessionId)) {
-              candidate.sessionIdToCalls.set(session.sessionId, window);
+            const sessionRuns = candidate.sessionIdToRuns.get(session.sessionId) ?? [];
+            const previousRunEnd = sessionRuns.at(-1)?.at(-1)?.calledAtMs ?? Number.NEGATIVE_INFINITY;
+            const isAfterPreviousRun = (window[0]?.calledAtMs ?? 0) > previousRunEnd;
+            if (isAfterPreviousRun) {
+              sessionRuns.push(window);
             }
+            candidate.sessionIdToRuns.set(session.sessionId, sessionRuns);
             gramToCandidate.set(gram, candidate);
           }
         }
@@ -1012,21 +1061,27 @@ var WorkflowDetectorService = class {
   withoutSubsumed(candidates) {
     const longestFirst = [...candidates].sort((left, right) => {
       const lengthDifference = right.steps.length - left.steps.length;
-      return lengthDifference || right.sessionIdToCalls.size - left.sessionIdToCalls.size;
+      return lengthDifference || this.runCountOf(right) - this.runCountOf(left);
     });
     const kept = [];
     for (const candidate of longestFirst) {
       const gram = candidate.steps.join(STEP_SEPARATOR);
       const isCovered = kept.some((keptWorkflow) => {
         const hasCandidateInside = keptWorkflow.steps.join(STEP_SEPARATOR).includes(gram);
-        const minimumSessions = candidate.sessionIdToCalls.size * SUBSUMED_SESSION_RATIO;
-        return hasCandidateInside && keptWorkflow.sessionIdToCalls.size >= minimumSessions;
+        const minimumRuns = this.runCountOf(candidate) * SUBSUMED_SESSION_RATIO;
+        return hasCandidateInside && this.runCountOf(keptWorkflow) >= minimumRuns;
       });
       if (!isCovered) {
         kept.push(candidate);
       }
     }
-    return kept.sort((left, right) => right.sessionIdToCalls.size - left.sessionIdToCalls.size);
+    return kept.sort((left, right) => {
+      const sessionDifference = right.sessionIdToRuns.size - left.sessionIdToRuns.size;
+      return sessionDifference || this.runCountOf(right) - this.runCountOf(left);
+    });
+  }
+  runCountOf(candidate) {
+    return [...candidate.sessionIdToRuns.values()].reduce((total, sessionRuns) => total + sessionRuns.length, 0);
   }
   spanOf(calls) {
     const lastCall = calls.at(-1);
@@ -1072,7 +1127,7 @@ var SignalService = class _SignalService {
     hook_blocked: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     api_error: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     context_compaction: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
-    repeated_workflow: (_occurrences, sessions, options) => sessions >= options.thresholds.minWorkflowSessions,
+    repeated_workflow: (occurrences, sessions, options) => sessions >= options.thresholds.minWorkflowSessions || occurrences >= options.thresholds.minWorkflowRuns,
     user_correction: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     interruption: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     repeated_read: (occurrences, _sessions, options) => occurrences >= options.thresholds.minExtraReads,
@@ -1617,15 +1672,15 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
 // src/Shared/Utils/PathUtil.ts
-import { homedir } from "node:os";
+import { homedir as homedir2 } from "node:os";
 var PathUtil = class {
   /** Replaces the home directory prefix with `~`, so outputs don't leak usernames. */
   static tildify(path) {
-    const home = homedir();
+    const home = homedir2();
     return path.startsWith(home) ? `~${path.slice(home.length)}` : path;
   }
   static untildify(path) {
-    return path.startsWith("~") ? `${homedir()}${path.slice(1)}` : path;
+    return path.startsWith("~") ? `${homedir2()}${path.slice(1)}` : path;
   }
 };
 
@@ -1671,6 +1726,9 @@ var MentionService = class {
 
 // src/Shared/Services/AnalysisService.ts
 var DEFAULT_MAX_SIGNALS = 25;
+var MIN_COMMON_COMMAND_RUNS = 2;
+var MAX_COMMON_COMMANDS = 15;
+var EMPTY_COMMAND_KEY = "(empty)";
 var DEFAULT_MAX_EVIDENCE = 5;
 var SAVED_EVIDENCE_PER_SIGNAL = 50;
 var MAX_USAGE_ENTRIES = 15;
@@ -1755,6 +1813,7 @@ var AnalysisService = class _AnalysisService {
         notes: inventory.notes
       },
       usage: new UsageService(config.prices, pieceIds).pieceUsage(sessions),
+      commonCommands: this.commonCommands(sessions),
       signals,
       suggestions: CollectionUtil.countBy(suggestions.map((suggestion) => suggestion.status)),
       dataDir: store.root
@@ -1824,6 +1883,34 @@ var AnalysisService = class _AnalysisService {
       method: COST_METHOD,
       idleMinutes: this.context.config.idleMinutes
     };
+  }
+  commonCommands(sessions) {
+    const keyToCommand = /* @__PURE__ */ new Map();
+    const workCalls = sessions.flatMap((session) => session.tools.map((call) => ({
+      session,
+      call
+    }))).filter(({ call }) => call.category === "shell" && !NormalizeUtil.isExplorationCommand(call.key));
+    for (const { session, call } of workCalls) {
+      const command = keyToCommand.get(call.key) ?? {
+        key: call.key,
+        runs: 0,
+        sessions: 0,
+        failures: 0,
+        sessionIds: /* @__PURE__ */ new Set()
+      };
+      command.runs++;
+      command.sessionIds.add(session.sessionId);
+      if (call.result?.isError) {
+        command.failures++;
+      } else {
+        command.example = call.summary;
+      }
+      keyToCommand.set(call.key, command);
+    }
+    return [...keyToCommand.values()].filter((command) => command.runs >= MIN_COMMON_COMMAND_RUNS && command.key !== EMPTY_COMMAND_KEY).map(({ sessionIds, ...command }) => ({
+      ...command,
+      sessions: sessionIds.size
+    })).sort((left, right) => right.sessions - left.sessions || right.runs - left.runs).slice(0, MAX_COMMON_COMMANDS);
   }
   reportedTotals(sessions) {
     const sessionsWithCost = sessions.filter((session) => session.reported.costUsd !== void 0);
@@ -2532,7 +2619,7 @@ var JsonlUtil = class {
 };
 
 // src/Providers/ClaudeCode/Utils/ClaudeCodePathUtil.ts
-import { homedir as homedir2 } from "node:os";
+import { homedir as homedir3 } from "node:os";
 import { join as join3 } from "node:path";
 
 // src/Shared/Utils/EnvUtil.ts
@@ -2548,12 +2635,12 @@ var EnvUtil = class {
 var ClaudeCodePathUtil = class {
   /** Claude Code's config directory. `IMH_CLAUDE_HOME` exists for tests. */
   static homeDir() {
-    return EnvUtil.read("IMH_CLAUDE_HOME") ?? EnvUtil.read("CLAUDE_CONFIG_DIR") ?? join3(homedir2(), ".claude");
+    return EnvUtil.read("IMH_CLAUDE_HOME") ?? EnvUtil.read("CLAUDE_CONFIG_DIR") ?? join3(homedir3(), ".claude");
   }
   /** The user-level `.claude.json`, which holds user and per-project MCP servers. */
   static claudeJsonPath() {
     const configDir = EnvUtil.read("CLAUDE_CONFIG_DIR");
-    const defaultPath = configDir ? join3(configDir, ".claude.json") : join3(homedir2(), ".claude.json");
+    const defaultPath = configDir ? join3(configDir, ".claude.json") : join3(homedir3(), ".claude.json");
     return EnvUtil.read("IMH_CLAUDE_JSON") ?? defaultPath;
   }
   /** Claude Code keeps a project's transcripts in `projects/<cwd with every non-alphanumeric replaced by "-">`. */
@@ -2567,6 +2654,7 @@ var HARNESS_INJECTED_BLOCKS = /<(system-reminder|command-message|command-args|lo
 var INTERRUPTION_PREFIX = "[Request interrupted by user";
 var PERMISSION_DENIED = /(permission to use .+ (?:has been|was) denied|permission for this action was denied|denied by (?:the )?(?:claude code )?(?:permission|auto[- ]mode)|requires approval|not allowed by your permission settings)/i;
 var USER_REJECTED = /(doesn'?t want to proceed with this tool use|tool use was rejected|denied by (?:the )?user)/i;
+var REJECTION_FEEDBACK = /the user said:\s*([\s\S]+)$/i;
 var DENIAL_KIND_TO_RESULT_KIND = {
   "user-rejected": "user_rejected",
   "automode-blocked": "permission_denied",
@@ -2613,6 +2701,11 @@ var ClaudeCodeTranscriptUtil = class _ClaudeCodeTranscriptUtil {
       return "hook_blocked";
     }
     return isMarkedError || wasInterrupted ? "error" : "ok";
+  }
+  /** The person's words after "the user said:", when they rejected a call with feedback. */
+  static rejectionFeedback(text) {
+    const feedback = REJECTION_FEEDBACK.exec(text)?.[1]?.trim();
+    return feedback === "" ? void 0 : feedback;
   }
   /** Error text without Claude Code's wrapper tags, ready for `NormalizeUtil.errorKey`. */
   static errorText(text) {
@@ -3097,11 +3190,21 @@ var ClaudeCodeSessionService = class {
       errorHead: isError ? NormalizeUtil.errorKey(ClaudeCodeTranscriptUtil.errorText(text)) : void 0,
       contentChars: text.length,
       ref: {
-        ...toEvidence(isError ? text : void 0),
+        ...toEvidence(this.resultExcerptText(text, kind)),
         thread: call.thread.agentType
       },
       returnedAtMs: line.occurredAtMs
     };
+  }
+  /** What the person wrote when they rejected a call, without Claude Code's fixed wording around it. */
+  resultExcerptText(text, kind) {
+    if (kind === "ok") {
+      return void 0;
+    }
+    if (kind === "user_rejected") {
+      return ClaudeCodeTranscriptUtil.rejectionFeedback(text) ?? "rejected without feedback";
+    }
+    return text;
   }
   readModel(message) {
     const model = GuardUtil.asString(message.model);
@@ -3270,6 +3373,7 @@ var ConfigService = class _ConfigService {
       minSubagentRereads: 3,
       minRepeatedRequestSessions: 3,
       minWorkflowSessions: 4,
+      minWorkflowRuns: 6,
       minWorkflowSteps: 3,
       repeatedRequestSimilarity: 0.5
     }

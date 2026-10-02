@@ -34,6 +34,7 @@ export class ConfigService {
       minSubagentRereads: 3,
       minRepeatedRequestSessions: 3,
       minWorkflowSessions: 4,
+      minWorkflowRuns: 6,
       minWorkflowSteps: 3,
       repeatedRequestSimilarity: 0.5,
     },

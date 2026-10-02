@@ -65,7 +65,8 @@ export class SignalService {
     hook_blocked: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     api_error: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     context_compaction: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
-    repeated_workflow: (_occurrences, sessions, options) => sessions >= options.thresholds.minWorkflowSessions,
+    repeated_workflow: (occurrences, sessions, options) =>
+      sessions >= options.thresholds.minWorkflowSessions || occurrences >= options.thresholds.minWorkflowRuns,
     user_correction: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     interruption: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     repeated_read: (occurrences, _sessions, options) => occurrences >= options.thresholds.minExtraReads,

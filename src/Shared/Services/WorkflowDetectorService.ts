@@ -17,15 +17,15 @@ const MAX_WORKFLOW_STEPS = 5;
 const WORKFLOW_HASH_CHARS = 8;
 const MAX_WORKFLOW_SIGNALS = 10;
 const STEP_SEPARATOR = " → ";
-/** A shorter sequence seen in about as many sessions as a longer one that contains it is the same workflow. */
+/** A shorter sequence run about as often as a longer one that contains it is the same workflow. */
 const SUBSUMED_SESSION_RATIO = 0.75;
 /** Steps spread over a longer stretch are separate pieces of work, not one procedure. */
 const MAX_WORKFLOW_SPAN_MINUTES = 15;
 
 interface WorkflowCandidate {
   steps: string[];
-  /** The first time each session ran the sequence. */
-  sessionIdToCalls: Map<string, ToolCall[]>;
+  /** Every non-overlapping run of the sequence, per session. */
+  sessionIdToRuns: Map<string, ToolCall[][]>;
 }
 
 export class WorkflowDetectorService {
@@ -35,14 +35,25 @@ export class WorkflowDetectorService {
   ) {}
 
   detect(sessions: SessionFacts[], sessionIdToIndex: Map<string, SessionIndex>): void {
-    const candidates = this.candidatesOf(sessions)
-      .filter((candidate) => candidate.sessionIdToCalls.size >= this.options.thresholds.minWorkflowSessions);
+    const thresholds = this.options.thresholds;
+    // Across sessions, or many times within long sessions (an edit → lint → diff loop done by hand).
+    const candidates = this.candidatesOf(sessions).filter((candidate) => {
+      const isAcrossSessions = candidate.sessionIdToRuns.size >= thresholds.minWorkflowSessions;
+      return isAcrossSessions || this.runCountOf(candidate) >= thresholds.minWorkflowRuns;
+    });
     const sessionIdToSession = new Map(sessions.map((session) => [session.sessionId, session]));
     for (const workflow of this.withoutSubsumed(candidates).slice(0, MAX_WORKFLOW_SIGNALS)) {
       const gram = workflow.steps.join(STEP_SEPARATOR);
-      const title = `Same steps in ${workflow.sessionIdToCalls.size} sessions: ${gram}`;
+      const runCount = this.runCountOf(workflow);
+      const sessionCount = workflow.sessionIdToRuns.size;
+      const title = `Same steps ${runCount} times in ${sessionCount} session${sessionCount === 1 ? "" : "s"}: ${gram}`;
       const signalId = `repeated_workflow:${HashUtil.sha(gram, WORKFLOW_HASH_CHARS)}`;
-      for (const [sessionId, calls] of workflow.sessionIdToCalls) {
+      const runs = [...workflow.sessionIdToRuns.entries()]
+        .flatMap(([sessionId, sessionRuns]) => sessionRuns.map((calls) => ({
+          sessionId,
+          calls,
+        })));
+      for (const { sessionId, calls } of runs) {
         const session = sessionIdToSession.get(sessionId);
         const index = sessionIdToIndex.get(sessionId);
         const [firstCall] = calls;
@@ -82,11 +93,15 @@ export class WorkflowDetectorService {
             const gram = steps.join(STEP_SEPARATOR);
             const candidate = gramToCandidate.get(gram) ?? {
               steps,
-              sessionIdToCalls: new Map<string, ToolCall[]>(),
+              sessionIdToRuns: new Map<string, ToolCall[][]>(),
             };
-            if (!candidate.sessionIdToCalls.has(session.sessionId)) {
-              candidate.sessionIdToCalls.set(session.sessionId, window);
+            const sessionRuns = candidate.sessionIdToRuns.get(session.sessionId) ?? [];
+            const previousRunEnd = sessionRuns.at(-1)?.at(-1)?.calledAtMs ?? Number.NEGATIVE_INFINITY;
+            const isAfterPreviousRun = (window[0]?.calledAtMs ?? 0) > previousRunEnd;
+            if (isAfterPreviousRun) {
+              sessionRuns.push(window);
             }
+            candidate.sessionIdToRuns.set(session.sessionId, sessionRuns);
             gramToCandidate.set(gram, candidate);
           }
         }
@@ -118,21 +133,28 @@ export class WorkflowDetectorService {
   private withoutSubsumed(candidates: WorkflowCandidate[]): WorkflowCandidate[] {
     const longestFirst = [...candidates].sort((left, right) => {
       const lengthDifference = right.steps.length - left.steps.length;
-      return lengthDifference || right.sessionIdToCalls.size - left.sessionIdToCalls.size;
+      return lengthDifference || this.runCountOf(right) - this.runCountOf(left);
     });
     const kept: WorkflowCandidate[] = [];
     for (const candidate of longestFirst) {
       const gram = candidate.steps.join(STEP_SEPARATOR);
       const isCovered = kept.some((keptWorkflow) => {
         const hasCandidateInside = keptWorkflow.steps.join(STEP_SEPARATOR).includes(gram);
-        const minimumSessions = candidate.sessionIdToCalls.size * SUBSUMED_SESSION_RATIO;
-        return hasCandidateInside && keptWorkflow.sessionIdToCalls.size >= minimumSessions;
+        const minimumRuns = this.runCountOf(candidate) * SUBSUMED_SESSION_RATIO;
+        return hasCandidateInside && this.runCountOf(keptWorkflow) >= minimumRuns;
       });
       if (!isCovered) {
         kept.push(candidate);
       }
     }
-    return kept.sort((left, right) => right.sessionIdToCalls.size - left.sessionIdToCalls.size);
+    return kept.sort((left, right) => {
+      const sessionDifference = right.sessionIdToRuns.size - left.sessionIdToRuns.size;
+      return sessionDifference || this.runCountOf(right) - this.runCountOf(left);
+    });
+  }
+
+  private runCountOf(candidate: WorkflowCandidate): number {
+    return [...candidate.sessionIdToRuns.values()].reduce((total, sessionRuns) => total + sessionRuns.length, 0);
   }
 
   private spanOf(calls: ToolCall[]): number {

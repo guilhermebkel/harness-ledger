@@ -188,8 +188,10 @@ describe("parseSession on cases seen in real sessions", () => {
     return call;
   }
 
-  it("tells a rejected plan apart from a permission denial", () => {
-    expect(realCall("ExitPlanMode").result?.kind).toBe("user_rejected");
+  it("tells a rejected plan apart from a permission denial, keeping only the person's feedback", () => {
+    const rejectedPlan = realCall("ExitPlanMode").result;
+    expect(rejectedPlan?.kind).toBe("user_rejected");
+    expect(rejectedPlan?.ref.excerpt).toBe("use the existing queue");
   });
 
   it("reads auto-mode classifier blocks as permission denials", () => {

@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { describe, expect, it } from "vitest";
 import { RedactUtil } from "./RedactUtil.js";
 
@@ -20,5 +21,12 @@ describe("redact", () => {
 describe("excerpt", () => {
   it("keeps ordinary text and collapses whitespace", () => {
     expect(RedactUtil.excerpt("Run   pnpm test\nnow")).toBe("Run pnpm test now");
+  });
+});
+
+describe("home folder", () => {
+  it("shows the home folder, and the user name in it, as ~", () => {
+    const command = `cd ${homedir()}/work/app && npm test`;
+    expect(RedactUtil.redact(command)).toBe("cd ~/work/app && npm test");
   });
 });

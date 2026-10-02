@@ -9,7 +9,9 @@ const EXPLORATION_PROGRAMS = new Set([
 const COMMAND_WRAPPERS = new Set(["sudo", "time", "nohup", "env", "command", "exec", "timeout", "do", "then", "else"]);
 /** Segments that set up the shell rather than do the work: navigation, variables and loop or condition headers. */
 const NAVIGATION_COMMAND = /^(cd|pushd|popd|export|source|\.|set|for|while|until|if|elif|done|fi|esac|nvm use|conda activate|pyenv shell)\b/;
-const ENV_ASSIGNMENT = /^[A-Z_][A-Z0-9_]*=/;
+const ENV_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+/** What a wrapper takes before the command: flags and durations (`timeout -k 5 300s cmd`). */
+const WRAPPER_ARGUMENT = /^(-\S*|\d+(\.\d+)?[smhd]?)$/;
 /** Programs whose subcommand is part of what the command means (`git push`, `npm test`). */
 const PROGRAMS_WITH_SUBCOMMAND = new Set([
   "npm", "pnpm", "yarn", "bun", "npx", "bunx", "git", "gh", "docker", "kubectl", "helm", "cargo", "go",
@@ -65,10 +67,17 @@ export class NormalizeUtil {
       .split(/&&|\|\||;|\n/)
       .map((segment) => segment.trim())
       .filter(Boolean);
-    const mainSegment = segments.find((segment) => !NAVIGATION_COMMAND.test(segment)) ?? segments[0] ?? command;
-    const firstPipelineStage = mainSegment.split(/\s\|\s?/)[0] ?? mainSegment;
-    const tokens = firstPipelineStage.match(/"[^"]*"|'[^']*'|\S+/g) ?? [];
-    const programIndex = tokens.findIndex((token) => !ENV_ASSIGNMENT.test(token) && !COMMAND_WRAPPERS.has(token));
+    // The first segment that runs a program: setup lines, loop keywords and bare assignments are skipped.
+    let tokens: string[] = [];
+    let programIndex = -1;
+    for (const segment of segments.filter((candidate) => !NAVIGATION_COMMAND.test(candidate))) {
+      const firstPipelineStage = segment.split(/\s\|\s?/)[0] ?? segment;
+      tokens = firstPipelineStage.match(/"[^"]*"|'[^']*'|\S+/g) ?? [];
+      programIndex = NormalizeUtil.programIndexOf(tokens);
+      if (programIndex !== -1) {
+        break;
+      }
+    }
     const programToken = programIndex === -1 ? undefined : tokens[programIndex];
     if (!programToken) {
       return "(empty)";
@@ -145,6 +154,23 @@ export class NormalizeUtil {
       }
     }
     return sharedCount / (left.size + right.size - sharedCount);
+  }
+
+  /** Skips variable assignments and wrappers (`sudo`, `timeout 300`), with the wrappers' flags and durations. */
+  private static programIndexOf(tokens: string[]): number {
+    let isAfterWrapper = false;
+    for (const [index, token] of tokens.entries()) {
+      const isWrapperArgument = isAfterWrapper && WRAPPER_ARGUMENT.test(token);
+      if (ENV_ASSIGNMENT.test(token) || isWrapperArgument) {
+        continue;
+      }
+      if (COMMAND_WRAPPERS.has(token)) {
+        isAfterWrapper = true;
+        continue;
+      }
+      return index;
+    }
+    return -1;
   }
 
   /** A Python traceback ends with the exception that was raised; everything above it is the stack. */

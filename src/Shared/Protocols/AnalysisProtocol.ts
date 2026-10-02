@@ -135,9 +135,22 @@ export interface Analysis {
     notes: string[];
   };
   usage: PieceUsage[];
+  /** Work commands seen in at least two runs, most widespread first. Exploration (ls, cat, grep) is left out. */
+  commonCommands: CommonCommand[];
   signals: Signal[];
   suggestions: Record<string, number>;
   dataDir: string;
+}
+
+/** A work command the agent runs in this project, the raw material for a project's first instructions. */
+export interface CommonCommand {
+  /** Grouping key, e.g. "npm run build". */
+  key: string;
+  runs: number;
+  sessions: number;
+  failures: number;
+  /** The latest successful run in full, redacted: shows the setup it needed (version manager, flags). */
+  example?: string;
 }
 
 export interface CompactAnalysis extends Analysis {

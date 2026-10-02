@@ -12,6 +12,7 @@ const PERMISSION_DENIED
   = /(permission to use .+ (?:has been|was) denied|permission for this action was denied|denied by (?:the )?(?:claude code )?(?:permission|auto[- ]mode)|requires approval|not allowed by your permission settings)/i;
 /** The person said no to this call (often with feedback), as opposed to a rule or classifier blocking it. */
 const USER_REJECTED = /(doesn'?t want to proceed with this tool use|tool use was rejected|denied by (?:the )?user)/i;
+const REJECTION_FEEDBACK = /the user said:\s*([\s\S]+)$/i;
 /** `toolDenialKind` on the result line, written by recent Claude Code versions; more reliable than the text. */
 const DENIAL_KIND_TO_RESULT_KIND: Record<string, ToolResultKind> = {
   "user-rejected": "user_rejected",
@@ -69,6 +70,12 @@ export class ClaudeCodeTranscriptUtil {
       return "hook_blocked";
     }
     return isMarkedError || wasInterrupted ? "error" : "ok";
+  }
+
+  /** The person's words after "the user said:", when they rejected a call with feedback. */
+  static rejectionFeedback(text: string): string | undefined {
+    const feedback = REJECTION_FEEDBACK.exec(text)?.[1]?.trim();
+    return feedback === "" ? undefined : feedback;
   }
 
   /** Error text without Claude Code's wrapper tags, ready for `NormalizeUtil.errorKey`. */

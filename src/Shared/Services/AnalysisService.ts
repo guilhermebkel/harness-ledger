@@ -1,6 +1,7 @@
 import type {
   Analysis,
   AnalysisTotals,
+  CommonCommand,
   CompactAnalysis,
   CostSummary,
   ReportedTotals,
@@ -12,6 +13,7 @@ import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.js";
 import type { Signal, SignalType } from "@/Shared/Protocols/SignalProtocol.js";
 import type { Suggestion } from "@/Shared/Protocols/SuggestionProtocol.js";
 import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
+import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.js";
 import { NumberUtil } from "@/Shared/Utils/NumberUtil.js";
 import { RedactUtil } from "@/Shared/Utils/RedactUtil.js";
 import { SessionUtil } from "@/Shared/Utils/SessionUtil.js";
@@ -28,6 +30,9 @@ import { SignalService } from "./SignalService.js";
 import { UsageService } from "./UsageService.js";
 
 const DEFAULT_MAX_SIGNALS = 25;
+const MIN_COMMON_COMMAND_RUNS = 2;
+const MAX_COMMON_COMMANDS = 15;
+const EMPTY_COMMAND_KEY = "(empty)";
 const DEFAULT_MAX_EVIDENCE = 5;
 /** Evidence kept per signal in the saved analysis, for `imh evidence`. */
 const SAVED_EVIDENCE_PER_SIGNAL = 50;
@@ -125,6 +130,7 @@ export class AnalysisService {
         notes: inventory.notes,
       },
       usage: new UsageService(config.prices, pieceIds).pieceUsage(sessions),
+      commonCommands: this.commonCommands(sessions),
       signals,
       suggestions: CollectionUtil.countBy(suggestions.map((suggestion) => suggestion.status)),
       dataDir: store.root,
@@ -201,6 +207,39 @@ export class AnalysisService {
       method: COST_METHOD,
       idleMinutes: this.context.config.idleMinutes,
     };
+  }
+
+  private commonCommands(sessions: SessionFacts[]): CommonCommand[] {
+    const keyToCommand = new Map<string, CommonCommand & { sessionIds: Set<string> }>();
+    const workCalls = sessions.flatMap((session) => session.tools.map((call) => ({
+      session,
+      call,
+    }))).filter(({ call }) => call.category === "shell" && !NormalizeUtil.isExplorationCommand(call.key));
+    for (const { session, call } of workCalls) {
+      const command = keyToCommand.get(call.key) ?? {
+        key: call.key,
+        runs: 0,
+        sessions: 0,
+        failures: 0,
+        sessionIds: new Set<string>(),
+      };
+      command.runs++;
+      command.sessionIds.add(session.sessionId);
+      if (call.result?.isError) {
+        command.failures++;
+      } else {
+        command.example = call.summary;
+      }
+      keyToCommand.set(call.key, command);
+    }
+    return [...keyToCommand.values()]
+      .filter((command) => command.runs >= MIN_COMMON_COMMAND_RUNS && command.key !== EMPTY_COMMAND_KEY)
+      .map(({ sessionIds, ...command }) => ({
+        ...command,
+        sessions: sessionIds.size,
+      }))
+      .sort((left, right) => right.sessions - left.sessions || right.runs - left.runs)
+      .slice(0, MAX_COMMON_COMMANDS);
   }
 
   private reportedTotals(sessions: SessionFacts[]): ReportedTotals {

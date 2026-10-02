@@ -45,6 +45,16 @@ These are starting points, not rules; read the piece and what it loads (skill fi
 7. **Cheapest adequate fix.** Prefer deleting or tightening over adding. Prefer a hook or script over a longer prompt. Prefer moving rarely-needed detail out of always-loaded instructions.
 8. **Conflicts are a finding.** When two pieces give different instructions for the same thing (CLAUDE.md says one command, a skill or a preloaded skill says another), class it as Partial or outdated instruction. The fix keeps the instruction in the piece that does the work and removes or aligns the other; quote both lines.
 
+## Starting a harness
+
+When the project has no instruction file, the person has been repeating context by hand in every session. Besides the findings above, propose one suggestion: a first `CLAUDE.md` (class Missing instruction, piece `instructions:project`), drafted only from evidence:
+
+- **Commands** from `commonCommands`: the ones run in several sessions, written as in `example`, including the setup they needed (a version manager, an env var, a timeout). A command that keeps failing is not one to recommend.
+- **Corrections** the person made more than once, as rules (the excerpts of `user_correction` and rejected plans hold their words).
+- **Conventions** they stated while correcting ("follow the repo's pattern for X").
+
+Keep it short (under 30 lines) and cite the evidence for each line in the report. Don't describe the architecture or invent conventions the sessions don't show. Repeated workflows and long sessions still become skills, commands, scripts or subagents as usual; with no harness, draft them in full.
+
 ## Report format
 
 ```markdown

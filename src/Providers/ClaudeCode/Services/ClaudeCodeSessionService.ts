@@ -16,6 +16,7 @@ import type {
   ThreadRef,
   TokenUsage,
   ToolCall,
+  ToolResultKind,
 } from "@/Shared/Protocols/SessionProtocol.js";
 import type { UnknownRecord } from "@/Shared/Protocols/UtilProtocol.js";
 import { GuardUtil } from "@/Shared/Utils/GuardUtil.js";
@@ -586,11 +587,22 @@ export class ClaudeCodeSessionService {
       errorHead: isError ? NormalizeUtil.errorKey(ClaudeCodeTranscriptUtil.errorText(text)) : undefined,
       contentChars: text.length,
       ref: {
-        ...toEvidence(isError ? text : undefined),
+        ...toEvidence(this.resultExcerptText(text, kind)),
         thread: call.thread.agentType,
       },
       returnedAtMs: line.occurredAtMs,
     };
+  }
+
+  /** What the person wrote when they rejected a call, without Claude Code's fixed wording around it. */
+  private resultExcerptText(text: string, kind: ToolResultKind): string | undefined {
+    if (kind === "ok") {
+      return undefined;
+    }
+    if (kind === "user_rejected") {
+      return ClaudeCodeTranscriptUtil.rejectionFeedback(text) ?? "rejected without feedback";
+    }
+    return text;
   }
 
   private readModel(message: UnknownRecord): string | undefined {

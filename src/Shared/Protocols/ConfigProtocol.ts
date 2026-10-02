@@ -27,6 +27,8 @@ export interface SignalThresholds {
   minRepeatedRequestSessions: number;
   /** Sessions that must repeat the same sequence of commands before it counts as a workflow. */
   minWorkflowSessions: number;
+  /** ...or runs of it within long sessions, however few the sessions. */
+  minWorkflowRuns: number;
   /** Shortest sequence of distinct commands that counts as a workflow. */
   minWorkflowSteps: number;
   /** Word-set similarity (0–1) for two requests to count as the same request. */

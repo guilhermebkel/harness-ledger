@@ -4,7 +4,7 @@
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ClaudeCodeFixtureUtil, type Fixture } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.js";
+import { ClaudeCodeFixtureUtil, ClaudeCodeTranscriptBuilder, type Fixture } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.js";
 import type { Signal } from "@/Shared/Protocols/SignalProtocol.js";
 import { AnalyzeCommand } from "./AnalyzeCommand.js";
 
@@ -138,7 +138,7 @@ describe("AnalyzeCommand on cases seen in real sessions", () => {
     expect(analysis.signals.some((signal) => signal.id === "permission_denied:ExitPlanMode")).toBe(false);
     const correction = signalById(analysis.signals, "user_correction:main");
     expect(correction).toMatchObject({ occurrences: 4, sessions: 2 });
-    expect(correction.evidence.some((evidence) => evidence.excerpt?.startsWith("rejected"))).toBe(true);
+    expect(correction.evidence.map((evidence) => evidence.excerpt)).toContain("rejected ExitPlanMode → use the existing queue");
   });
 
   it("reports auto-mode blocks as permission denials with the classifier's reason", async () => {
@@ -244,6 +244,34 @@ describe("AnalyzeCommand on work that could be a skill, a script or a subagent",
     expect(workflows).toHaveLength(1);
     expect(workflows[0]).toMatchObject({ sessions: 4, pieces: ["main"] });
     expect(workflows[0]?.details.steps).toEqual(["git status", "git add", "npx tsc", "git commit", "git push"]);
+  });
+
+  it("lists the work commands the project runs, with a real example, for a first CLAUDE.md", async () => {
+    const analysis = await analyzeWorkflows();
+    const commandByKey = new Map(analysis.commonCommands.map((command) => [command.key, command]));
+    expect(commandByKey.get("npx tsc")).toEqual({
+      key: "npx tsc",
+      runs: 4,
+      sessions: 4,
+      failures: 0,
+      example: "npx tsc --noEmit",
+    });
+    expect(commandByKey.has("ls")).toBe(false);
+  });
+
+  it("finds a procedure repeated many times inside one long session", async () => {
+    const loop = new ClaudeCodeTranscriptBuilder("loop1", workflowFixture.projectDir, "2026-09-26T10:00:00.000Z")
+      .user("Fix the lint errors in the gallery");
+    for (let round = 0; round < 6; round++) {
+      for (const [stepIndex, command] of ["git status", "npm run eslint", "git diff"].entries()) {
+        loop.tool(`l${round}_${stepIndex}`, "Bash", { command }).result(`l${round}_${stepIndex}`, "ok");
+      }
+      loop.tool(`e${round}`, "Edit", { file_path: join(workflowFixture.projectDir, "src/a.js") }).result(`e${round}`, "ok");
+    }
+    loop.write(ClaudeCodeFixtureUtil.sessionPath(workflowFixture, "loop1"));
+    const analysis = await analyzeWorkflows();
+    const lintLoop = analysis.signals.find((signal) => signal.details.steps?.includes("npm run eslint"));
+    expect(lintLoop).toMatchObject({ type: "repeated_workflow", occurrences: 6, sessions: 1, isPartial: true });
   });
 
   it("reports sessions that outgrow the context window", async () => {

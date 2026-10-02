@@ -1,6 +1,8 @@
 // Masks secret-looking values before anything leaves the parser (ADR 0007).
 // Reports, cached facts and stdout only ever see redacted text.
 
+import { homedir } from "node:os";
+
 const MASK = "[REDACTED]";
 const DEFAULT_EXCERPT_CHARS = 200;
 
@@ -33,10 +35,23 @@ export class RedactUtil {
     for (const [pattern, replacement] of SECRET_PATTERNS) {
       redacted = redacted.replace(pattern, replacement);
     }
-    return redacted.replace(
+    const withoutSecrets = redacted.replace(
       SENSITIVE_ASSIGNMENT,
       (_match, keyPart: string, quote: string) => `${keyPart}${quote}${MASK}${quote}`,
     );
+    return RedactUtil.withoutHomeFolder(withoutSecrets);
+  }
+
+  /** The home folder carries the user's name; reports show it as `~`. */
+  private static withoutHomeFolder(text: string): string {
+    const home = homedir();
+    const isUsableHome = home.length > 1 && home !== "/";
+    if (!isUsableHome) {
+      return text;
+    }
+    // A longer folder that starts with the same name (/home/ana2 for /home/ana) is someone else's.
+    const escapedHome = home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return text.replace(new RegExp(`${escapedHome}(?![\\w.-])`, "g"), "~");
   }
 
   /** Redacts and collapses to a single line of at most `maxChars`. */

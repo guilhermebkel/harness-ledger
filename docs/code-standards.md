@@ -50,7 +50,7 @@ The layout and its reasons are in ADR 0008.
 
 - **Environment variables (lint).** `process.env` is read only in `EnvUtil` (`src/Shared/Utils/EnvUtil.ts`). Which variables a provider reads is that provider's business (`ClaudeCodePathUtil`).
 - **Validate at the edge.** Input is checked where it enters: CLI arguments in `CLIModule`, JSON from stdin or files in the service that parses it (`SuggestionService.parse`), transcript lines in the provider adapter. Code past the edge trusts its types.
-- **Redact on the way out.** Every string that can reach output passes through `redact()` or `excerpt()`. Hook commands and MCP configs keep names and shapes only, never env values, headers or arguments (ADR 0007). Any new output path gets a test with a fake secret.
+- **Redact on the way out.** Every string that can reach output passes through `redact()` or `excerpt()`, which mask secrets and show the home folder (and the user name in it) as `~`. Hook commands and MCP configs keep names and shapes only, never env values, headers or arguments (ADR 0007). Any new output path gets a test with a fake secret.
 - **Parse defensively.** Transcript formats are internal and change between agent versions. A bad or unknown line is counted, never thrown; a missing field degrades the result and marks it partial, never crashes the run.
 - **Never write outside `.imh/`.** The script only writes to the data directory. Applying changes to the harness is the skill's job, after confirmation.
 
