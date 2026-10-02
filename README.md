@@ -128,10 +128,11 @@ Issues and PRs are welcome. For larger changes, please open an issue first to di
 ### Development
 
 ```bash
-npm install
-npm test          # unit and end-to-end tests on synthetic transcripts
-npm run build     # bundles src/ into dist/imh.mjs (committed, so the plugin needs no install step)
-npm run check     # typecheck + tests + build + fails if dist/ is out of date
+pnpm install
+pnpm test         # unit and end-to-end tests on synthetic transcripts
+pnpm lint         # ESLint (typescript-eslint + stylistic); see docs/code-standards.md
+pnpm build        # bundles src/ into dist/imh.mjs (committed, so the plugin needs no install step)
+pnpm check        # typecheck + lint + tests + build + fails if dist/ is out of date
 ```
 
 The skill calls the bundled script; you can also run it directly:
