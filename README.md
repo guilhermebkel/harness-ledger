@@ -125,6 +125,24 @@ This project applies the ideas behind *Test-Driven Prompting* (CBSoft 2026): def
 
 Issues and PRs are welcome. For larger changes, please open an issue first to discuss the approach. Adding support for a new agent means writing two adapters — a session reader and a harness mapper — on top of the shared core.
 
+### Development
+
+```bash
+npm install
+npm test          # unit and end-to-end tests on synthetic transcripts
+npm run build     # bundles src/ into dist/imh.mjs (committed, so the plugin needs no install step)
+npm run check     # typecheck + tests + build + fails if dist/ is out of date
+```
+
+The skill calls the bundled script; you can also run it directly:
+
+```bash
+node dist/imh.mjs analyze --project /path/to/repo --since 14d --pretty
+node dist/imh.mjs --help
+```
+
+Layout: `src/adapters/<agent>/` reads one agent's sessions and harness; `src/analysis/` extracts signals, usage and before/after on the shared model in `src/core/types.ts`; `skills/improve-my-harness/` is what the agent reads.
+
 ## License
 
 MIT

@@ -1,0 +1,8 @@
+node_modules/
+coverage/
+.imh/
+*.log
+.DS_Store
+# No lockfile on purpose: Claude Code runs `npm ci` for plugins that ship one,
+# and this plugin has no runtime dependencies (dist/ is bundled).
+package-lock.json

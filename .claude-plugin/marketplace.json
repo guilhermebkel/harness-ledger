@@ -1,0 +1,17 @@
+{
+  "name": "improve-my-harness",
+  "description": "Improve your coding-agent harness with evidence from your own sessions.",
+  "owner": {
+    "name": "Guilherme Mota",
+    "url": "https://github.com/guilhermebkel"
+  },
+  "plugins": [
+    {
+      "name": "improve-my-harness",
+      "source": "./",
+      "description": "Reads the sessions your coding agent already saves, maps your harness and suggests evidence-based improvements.",
+      "category": "productivity",
+      "tags": ["harness", "insights", "transcripts"]
+    }
+  ]
+}
