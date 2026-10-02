@@ -1,311 +1,524 @@
 // Claude Code harness mapper: what is active for a project right now.
-// Reads instruction files, skills, subagents, commands, hooks, MCP servers and
-// enabled plugins. MCP and hook entries are reduced to names and shapes:
-// env values, headers and arguments are never stored.
+// MCP and hook entries are reduced to names and shapes (ADR 0007): env values,
+// headers and arguments are hashed to detect changes but never stored.
 
-import { execFile } from "node:child_process";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
-import { promisify } from "node:util";
-import type { HarnessPiece, Inventory, PieceKind, PieceScope } from "../../core/types.js";
-import { approxTokens, asList, parseFrontmatter, sha, tildify } from "../../core/util.js";
+import { asList, asText, parseFrontmatter } from "../../core/frontmatter.js";
+import { readGitChangeDates, type GitChangeDates } from "../../core/git.js";
+import { asArray, asNumber, asRecord, asString, parseJson, type UnknownRecord } from "../../core/guards.js";
+import type {
+  HarnessPiece,
+  Inventory,
+  ModifiedSource,
+  PieceKind,
+  PieceScope,
+  Retention,
+} from "../../core/types.js";
+import { approxTokens, sha, tildify } from "../../core/util.js";
 import { claudeHome, claudeJsonPath } from "./paths.js";
 
-const exec = promisify(execFile);
+const DEFAULT_RETENTION_DAYS = 30;
+const MAX_DESCRIPTION_CHARS = 300;
+const MAX_COMPONENT_DEPTH = 4;
+const HARNESS_PATHS = ["CLAUDE.md", "CLAUDE.local.md", ".claude", ".mcp.json"];
 
 export interface InventoryOptions {
   projectDir: string;
-  home?: string;
-  /** Skip user-level and plugin pieces (only what's committed to the project). */
-  projectOnly?: boolean;
+  claudeHomeDir?: string;
+  /** Only what's in the project: no user-level or plugin pieces. */
+  isProjectOnly?: boolean;
 }
 
-export async function takeInventory(opts: InventoryOptions): Promise<Inventory> {
-  const home = opts.home ?? claudeHome();
-  const project = opts.projectDir;
-  const pieces: HarnessPiece[] = [];
-  const notes: string[] = [];
-  const git = await gitDates(project);
+interface FileChange {
+  modifiedAt?: string;
+  modifiedSource?: ModifiedSource;
+}
 
-  const seenFiles = new Set<string>();
-  const add = async (file: string, kind: PieceKind, name: string, scope: PieceScope, extra: Partial<HarnessPiece> = {}) => {
-    const real = await realpath(file).catch(() => file);
-    if (seenFiles.has(real)) return; // e.g. the project is the home directory
-    seenFiles.add(real);
-    const text = await readFile(file, "utf8").catch(() => undefined);
-    if (text === undefined) return;
-    const st = await stat(file).catch(() => undefined);
-    const rel = scope === "project" || scope === "local" ? relative(project, file) : tildify(file);
-    const { data } = parseFrontmatter(text);
-    const relFile = relative(project, file);
-    const gitDate = scope === "project" && !git.dirty.has(relFile) ? git.get(relFile) : undefined;
-    // Same name in two scopes (e.g. a user and a project skill): keep both, disambiguate the id.
+/** A file-backed piece before it gets its content-derived fields. */
+interface FilePiece {
+  file: string;
+  kind: PieceKind;
+  name: string;
+  scope: PieceScope;
+  plugin?: string;
+}
+
+/** Collects pieces for one inventory, skipping files already seen (e.g. when the project is the home directory). */
+class InventoryBuilder {
+  readonly pieces: HarnessPiece[] = [];
+  readonly notes: string[] = [];
+  private readonly seenRealPaths = new Set<string>();
+
+  constructor(
+    readonly projectDir: string,
+    private readonly gitChangeDates: GitChangeDates,
+  ) {}
+
+  async markSeen(file: string): Promise<boolean> {
+    const realPath = await realpath(file).catch(() => file);
+    if (this.seenRealPaths.has(realPath)) {
+      return false;
+    }
+    this.seenRealPaths.add(realPath);
+    return true;
+  }
+
+  displayPath(file: string, scope: PieceScope): string {
+    const isProjectFile = scope === "project" || scope === "local";
+    return isProjectFile ? relative(this.projectDir, file) : tildify(file);
+  }
+
+  async changeOf(file: string, scope: PieceScope): Promise<FileChange> {
+    const projectRelativePath = relative(this.projectDir, file);
+    const isCommittedAsIs = scope === "project" && !this.gitChangeDates.dirtyPaths.has(projectRelativePath);
+    const committedAt = isCommittedAsIs ? this.gitChangeDates.pathToCommittedAt.get(projectRelativePath) : undefined;
+    if (committedAt) {
+      return {
+        modifiedAt: committedAt,
+        modifiedSource: "git",
+      };
+    }
+    const fileStat = await stat(file).catch(() => undefined);
+    return fileStat
+      ? {
+          modifiedAt: new Date(fileStat.mtimeMs).toISOString(),
+          modifiedSource: "mtime",
+        }
+      : {};
+  }
+
+  /** Same name in two scopes (a user and a project skill, say): keep both and disambiguate the id. */
+  uniqueId(kind: PieceKind, name: string, scope: PieceScope): string {
     const baseId = `${kind}:${name}`;
-    const id = pieces.some((p) => p.id === baseId) ? `${baseId}@${scope}` : baseId;
-    pieces.push({
-      id,
-      kind,
-      name,
-      scope,
-      path: rel,
+    const isTaken = this.pieces.some((piece) => piece.id === baseId);
+    return isTaken ? `${baseId}@${scope}` : baseId;
+  }
+
+  async addFile(filePiece: FilePiece): Promise<void> {
+    const isNew = await this.markSeen(filePiece.file);
+    const text = isNew ? await readFile(filePiece.file, "utf8").catch(() => undefined) : undefined;
+    if (text === undefined) {
+      return;
+    }
+    const { data } = parseFrontmatter(text);
+    this.pieces.push({
+      id: this.uniqueId(filePiece.kind, filePiece.name, filePiece.scope),
+      kind: filePiece.kind,
+      name: filePiece.name,
+      scope: filePiece.scope,
+      path: this.displayPath(filePiece.file, filePiece.scope),
       hash: sha(text),
       bytes: Buffer.byteLength(text),
       approxTokens: approxTokens(text),
-      description: typeof data.description === "string" ? data.description.slice(0, 300) : undefined,
-      model: typeof data.model === "string" ? data.model : undefined,
+      description: asText(data.description)?.slice(0, MAX_DESCRIPTION_CHARS),
+      model: asText(data.model),
       tools: asList(data.tools ?? data["allowed-tools"]),
-      modifiedAt: gitDate ?? (st ? new Date(st.mtimeMs).toISOString() : undefined),
-      modifiedSource: gitDate ? "git" : "mtime",
-      editable: scope !== "plugin" && scope !== "managed",
-      ...extra,
+      ...(await this.changeOf(filePiece.file, filePiece.scope)),
+      isEditable: isEditableScope(filePiece.scope),
+      plugin: filePiece.plugin,
     });
-  };
+  }
+}
 
-  // Instruction files
-  await add(join(project, "CLAUDE.md"), "instructions", "project", "project");
-  await add(join(project, ".claude", "CLAUDE.md"), "instructions", "project-dotclaude", "project");
-  await add(join(project, "CLAUDE.local.md"), "instructions", "local", "local");
-  if (!opts.projectOnly) await add(join(home, "CLAUDE.md"), "instructions", "user", "user");
+function isEditableScope(scope: PieceScope): boolean {
+  return scope !== "plugin" && scope !== "managed";
+}
 
-  // Skills, agents, commands
-  await scanComponents(join(project, ".claude"), "project", add);
-  if (!opts.projectOnly) await scanComponents(home, "user", add);
+export async function takeInventory(options: InventoryOptions): Promise<Inventory> {
+  const homeDir = options.claudeHomeDir ?? claudeHome();
+  const projectDir = options.projectDir;
+  const builder = new InventoryBuilder(projectDir, await readGitChangeDates(projectDir, HARNESS_PATHS));
+  const shouldIncludeUser = !options.isProjectOnly;
 
-  // Settings: hooks + permissions + enabled plugins
-  // Lowest precedence first, so later files win for enabledPlugins and cleanupPeriodDays.
-  const settingsFiles: Array<[string, PieceScope]> = [];
-  if (!opts.projectOnly) settingsFiles.push([join(home, "settings.json"), "user"]);
-  settingsFiles.push([join(project, ".claude", "settings.json"), "project"], [join(project, ".claude", "settings.local.json"), "local"]);
-  const seenSettings = new Set<string>();
-  const enabledPlugins = new Map<string, boolean>();
-  let retention = { days: 30, source: "default" };
-  for (const [file, scope] of settingsFiles) {
-    const real = await realpath(file).catch(() => file);
-    if (seenSettings.has(real)) continue;
-    seenSettings.add(real);
-    const json = await readJson(file);
-    if (!json) continue;
-    pieces.push(...hookPieces(json.hooks, file, scope, project, git));
-    if (json.permissions && typeof json.permissions === "object") {
-      const allow = Array.isArray(json.permissions.allow) ? json.permissions.allow.length : 0;
-      const deny = Array.isArray(json.permissions.deny) ? json.permissions.deny.length : 0;
-      const body = JSON.stringify(json.permissions);
-      pieces.push({
-        id: `settings:permissions-${scope}`,
-        kind: "settings",
-        name: `permissions (${scope})`,
-        scope,
-        path: scope === "user" ? tildify(file) : relative(project, file),
-        hash: sha(body),
-        bytes: body.length,
-        approxTokens: 0,
-        description: `${allow} allow rules, ${deny} deny rules`,
-        modifiedAt: git.get(relative(project, file)),
-        modifiedSource: git.has(relative(project, file)) ? "git" : undefined,
-        editable: true,
-      });
-    }
-    if (json.enabledPlugins && typeof json.enabledPlugins === "object") {
-      for (const [id, on] of Object.entries(json.enabledPlugins)) enabledPlugins.set(id, on === true);
-    }
-    if (typeof json.cleanupPeriodDays === "number") retention = { days: json.cleanupPeriodDays, source: scope === "user" ? tildify(file) : relative(project, file) };
+  await addInstructionFiles(builder, homeDir, shouldIncludeUser);
+  await addComponents(builder, join(projectDir, ".claude"), "project");
+  if (shouldIncludeUser) {
+    await addComponents(builder, homeDir, "user");
+  }
+  const settings = await addSettings(builder, homeDir, shouldIncludeUser);
+  await addMcpServers(builder, shouldIncludeUser);
+  if (shouldIncludeUser) {
+    await addPlugins(builder, homeDir, settings.pluginIdToIsEnabled);
   }
 
-  // MCP servers: project .mcp.json, and user/local entries in ~/.claude.json
-  const mcp = await readJson(join(project, ".mcp.json"));
-  pieces.push(...mcpPieces(mcp?.mcpServers, ".mcp.json", "project", git.get(".mcp.json")));
-  if (!opts.projectOnly) {
-    const cj = await readJson(claudeJsonPath());
-    if (cj) {
-      pieces.push(...mcpPieces(cj.mcpServers, tildify(claudeJsonPath()), "user"));
-      const proj = cj.projects?.[project];
-      pieces.push(...mcpPieces(proj?.mcpServers, tildify(claudeJsonPath()), "local"));
-    }
-  }
-
-  // Plugins (read-only for the user: suggestions about them are recommendations only)
-  if (!opts.projectOnly) {
-    const installed = await installedPlugins(home);
-    for (const [id, installPath] of installed) {
-      if (enabledPlugins.get(id) === false) continue;
-      if (!enabledPlugins.has(id)) notes.push(`Plugin ${id} is installed but not listed in enabledPlugins; assumed enabled.`);
-      const manifest = await readJson(join(installPath, ".claude-plugin", "plugin.json"));
-      const body = JSON.stringify(manifest ?? {});
-      pieces.push({
-        id: `plugin:${id}`,
-        kind: "plugin",
-        name: id,
-        scope: "plugin",
-        path: tildify(installPath),
-        hash: sha(body),
-        bytes: body.length,
-        approxTokens: 0,
-        description: typeof manifest?.description === "string" ? manifest.description.slice(0, 300) : undefined,
-        editable: false,
-        plugin: id,
-      });
-      const pluginName = id.split("@")[0]!;
-      await scanComponents(installPath, "plugin", (file, kind, name, scope, extra) =>
-        add(file, kind, `${pluginName}:${name}`, scope, { ...extra, plugin: id }),
-        true,
-      );
-    }
-  }
-
-  pieces.sort((a, b) => a.id.localeCompare(b.id));
-  const fingerprint = sha(pieces.map((p) => `${p.id}=${p.hash}`).join("\n"));
+  builder.pieces.sort((left, right) => left.id.localeCompare(right.id));
+  const fingerprint = sha(builder.pieces.map((piece) => `${piece.id}=${piece.hash}`).join("\n"));
   return {
     agent: "claude-code",
-    projectDir: project,
+    projectDir,
     takenAt: new Date().toISOString(),
     fingerprint,
-    pieces,
-    retention,
-    notes,
+    pieces: builder.pieces,
+    retention: settings.retention,
+    notes: builder.notes,
   };
 }
 
-type AddFn = (file: string, kind: PieceKind, name: string, scope: PieceScope, extra?: Partial<HarnessPiece>) => Promise<void>;
-
-/** Scans <base>/skills/*\/SKILL.md, <base>/agents/**\/*.md and <base>/commands/**\/*.md. */
-async function scanComponents(base: string, scope: PieceScope, add: AddFn, isPluginRoot = false): Promise<void> {
-  for (const dir of await readdir(join(base, "skills")).catch(() => [] as string[])) {
-    const file = join(base, "skills", dir, "SKILL.md");
-    const text = await readFile(file, "utf8").catch(() => undefined);
-    if (text === undefined) continue;
-    const name = parseFrontmatter(text).data.name;
-    await add(file, "skill", typeof name === "string" && name ? name : dir, scope);
+async function addInstructionFiles(
+  builder: InventoryBuilder,
+  homeDir: string,
+  shouldIncludeUser: boolean,
+): Promise<void> {
+  const projectDir = builder.projectDir;
+  const instructionFiles: FilePiece[] = [
+    {
+      file: join(projectDir, "CLAUDE.md"),
+      kind: "instructions",
+      name: "project",
+      scope: "project",
+    },
+    {
+      file: join(projectDir, ".claude", "CLAUDE.md"),
+      kind: "instructions",
+      name: "project-dotclaude",
+      scope: "project",
+    },
+    {
+      file: join(projectDir, "CLAUDE.local.md"),
+      kind: "instructions",
+      name: "local",
+      scope: "local",
+    },
+  ];
+  if (shouldIncludeUser) {
+    instructionFiles.push({
+      file: join(homeDir, "CLAUDE.md"),
+      kind: "instructions",
+      name: "user",
+      scope: "user",
+    });
   }
-  if (isPluginRoot) {
-    const rootSkill = join(base, "SKILL.md");
-    if (await stat(rootSkill).catch(() => undefined)) await add(rootSkill, "skill", basename(base), scope);
-  }
-  for (const file of await walkMd(join(base, "agents"))) {
-    const text = await readFile(file, "utf8").catch(() => "");
-    const fmName = parseFrontmatter(text).data.name;
-    const name = typeof fmName === "string" && fmName ? fmName : relative(join(base, "agents"), file).replace(/\.md$/, "").replace(/[\\/]/g, ":");
-    await add(file, "agent", name, scope);
-  }
-  for (const file of await walkMd(join(base, "commands"))) {
-    const name = relative(join(base, "commands"), file).replace(/\.md$/, "").replace(/[\\/]/g, ":");
-    await add(file, "command", name, scope);
+  for (const instructionFile of instructionFiles) {
+    await builder.addFile(instructionFile);
   }
 }
 
-async function walkMd(dir: string, depth = 0): Promise<string[]> {
-  if (depth > 4) return [];
+interface ComponentOptions {
+  /** Prefix for names of plugin components, which Claude Code namespaces as `plugin:name`. */
+  namePrefix?: string;
+  plugin?: string;
+  /** A plugin may be a single skill with SKILL.md at its root. */
+  canBeRootSkill?: boolean;
+}
+
+/** Skills in `<base>/skills/<name>/SKILL.md`, agents in `<base>/agents/**.md`, commands in `<base>/commands/**.md`. */
+async function addComponents(
+  builder: InventoryBuilder,
+  baseDir: string,
+  scope: PieceScope,
+  componentOptions: ComponentOptions = {},
+): Promise<void> {
+  const prefix = componentOptions.namePrefix ?? "";
+  const plugin = componentOptions.plugin;
+  for (const skillDir of await readdir(join(baseDir, "skills")).catch(() => [] as string[])) {
+    const file = join(baseDir, "skills", skillDir, "SKILL.md");
+    const declaredName = await declaredNameOf(file);
+    await builder.addFile({
+      file,
+      kind: "skill",
+      name: `${prefix}${declaredName ?? skillDir}`,
+      scope,
+      plugin,
+    });
+  }
+  const rootSkill = join(baseDir, "SKILL.md");
+  const rootSkillStat = componentOptions.canBeRootSkill ? await stat(rootSkill).catch(() => undefined) : undefined;
+  const hasRootSkill = rootSkillStat !== undefined;
+  if (hasRootSkill) {
+    await builder.addFile({
+      file: rootSkill,
+      kind: "skill",
+      name: `${prefix}${basename(baseDir)}`,
+      scope,
+      plugin,
+    });
+  }
+  const agentsDir = join(baseDir, "agents");
+  for (const file of await listMarkdownFiles(agentsDir)) {
+    const declaredName = await declaredNameOf(file);
+    await builder.addFile({
+      file,
+      kind: "agent",
+      name: `${prefix}${declaredName ?? nameFromPath(agentsDir, file)}`,
+      scope,
+      plugin,
+    });
+  }
+  const commandsDir = join(baseDir, "commands");
+  for (const file of await listMarkdownFiles(commandsDir)) {
+    await builder.addFile({
+      file,
+      kind: "command",
+      name: `${prefix}${nameFromPath(commandsDir, file)}`,
+      scope,
+      plugin,
+    });
+  }
+}
+
+async function declaredNameOf(file: string): Promise<string | undefined> {
+  const text = await readFile(file, "utf8").catch(() => "");
+  return asText(parseFrontmatter(text).data.name);
+}
+
+/** `agents/review/security.md` → `review:security`, the way Claude Code names nested components. */
+function nameFromPath(baseDir: string, file: string): string {
+  return relative(baseDir, file).replace(/\.md$/, "").replace(/[\\/]/g, ":");
+}
+
+async function listMarkdownFiles(dir: string, depth = 0): Promise<string[]> {
+  if (depth > MAX_COMPONENT_DEPTH) {
+    return [];
+  }
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
-  const out: string[] = [];
-  for (const e of entries) {
-    const p = join(dir, e.name);
-    if (e.isDirectory()) out.push(...(await walkMd(p, depth + 1)));
-    else if (e.isFile() && e.name.endsWith(".md")) out.push(p);
+  const files: string[] = [];
+  for (const entry of entries) {
+    const entryPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await listMarkdownFiles(entryPath, depth + 1)));
+    } else if (entry.isFile() && entry.name.endsWith(".md")) {
+      files.push(entryPath);
+    }
   }
-  return out;
+  return files;
 }
 
-function hookPieces(hooks: any, file: string, scope: PieceScope, project: string, git: Map<string, string>): HarnessPiece[] {
-  if (!hooks || typeof hooks !== "object") return [];
-  const out: HarnessPiece[] = [];
-  const rel = scope === "user" ? tildify(file) : relative(project, file);
-  for (const [event, groups] of Object.entries(hooks)) {
-    if (!Array.isArray(groups)) continue;
-    groups.forEach((group: any, i: number) => {
-      const matcher = typeof group?.matcher === "string" && group.matcher ? group.matcher : "*";
-      const handlers = Array.isArray(group?.hooks) ? group.hooks : [];
-      // Keep only the shape: handler type and the program name, never full commands/args.
-      const shape = handlers.map((h: any) => `${h?.type ?? "?"}:${typeof h?.command === "string" ? basename(h.command.split(/\s+/)[0] ?? "") : ""}`);
-      const body = JSON.stringify(group);
-      out.push({
-        id: `hook:${scope}:${event}:${matcher}#${i}`,
+interface SettingsSummary {
+  pluginIdToIsEnabled: Map<string, boolean>;
+  retention: Retention;
+}
+
+/** Hooks, permissions, enabled plugins and retention, read from lowest to highest precedence so later files win. */
+async function addSettings(
+  builder: InventoryBuilder,
+  homeDir: string,
+  shouldIncludeUser: boolean,
+): Promise<SettingsSummary> {
+  const projectDir = builder.projectDir;
+  const settingsFiles: {
+    file: string; scope: PieceScope;
+  }[] = [];
+  if (shouldIncludeUser) {
+    settingsFiles.push({
+      file: join(homeDir, "settings.json"),
+      scope: "user",
+    });
+  }
+  settingsFiles.push(
+    {
+      file: join(projectDir, ".claude", "settings.json"),
+      scope: "project",
+    },
+    {
+      file: join(projectDir, ".claude", "settings.local.json"),
+      scope: "local",
+    },
+  );
+  const summary: SettingsSummary = {
+    pluginIdToIsEnabled: new Map(),
+    retention: {
+      days: DEFAULT_RETENTION_DAYS,
+      source: "default",
+    },
+  };
+  for (const { file, scope } of settingsFiles) {
+    const isNew = await builder.markSeen(file);
+    const settings = isNew ? await readJsonFile(file) : undefined;
+    if (!settings) {
+      continue;
+    }
+    const change = await builder.changeOf(file, scope);
+    const path = builder.displayPath(file, scope);
+    builder.pieces.push(...hookPieces(asRecord(settings.hooks), path, scope, change));
+    const permissions = asRecord(settings.permissions);
+    if (permissions) {
+      builder.pieces.push(permissionsPiece(permissions, path, scope, change));
+    }
+    for (const [pluginId, isEnabled] of Object.entries(asRecord(settings.enabledPlugins) ?? {})) {
+      summary.pluginIdToIsEnabled.set(pluginId, isEnabled === true);
+    }
+    const retentionDays = asNumber(settings.cleanupPeriodDays);
+    if (retentionDays !== undefined) {
+      summary.retention = {
+        days: retentionDays,
+        source: path,
+      };
+    }
+  }
+  return summary;
+}
+
+function permissionsPiece(
+  permissions: UnknownRecord,
+  path: string,
+  scope: PieceScope,
+  change: FileChange,
+): HarnessPiece {
+  const allowCount = asArray(permissions.allow).length;
+  const denyCount = asArray(permissions.deny).length;
+  const serialized = JSON.stringify(permissions);
+  return {
+    id: `settings:permissions-${scope}`,
+    kind: "settings",
+    name: `permissions (${scope})`,
+    scope,
+    path,
+    hash: sha(serialized),
+    bytes: serialized.length,
+    approxTokens: 0,
+    description: `${allowCount} allow rules, ${denyCount} deny rules`,
+    ...change,
+    isEditable: true,
+  };
+}
+
+function hookPieces(
+  hooks: UnknownRecord | undefined,
+  path: string,
+  scope: PieceScope,
+  change: FileChange,
+): HarnessPiece[] {
+  const pieces: HarnessPiece[] = [];
+  for (const [event, groups] of Object.entries(hooks ?? {})) {
+    asArray(groups).forEach((group, groupIndex) => {
+      const groupRecord = asRecord(group);
+      const declaredMatcher = asString(groupRecord?.matcher);
+      const matcher = declaredMatcher === undefined || declaredMatcher === "" ? "*" : declaredMatcher;
+      // Only the shape is kept: handler type and program name, never the command line or its arguments.
+      const handlerShapes = asArray(groupRecord?.hooks).map((handler) => {
+        const handlerRecord = asRecord(handler);
+        const program = asString(handlerRecord?.command)?.split(/\s+/)[0] ?? "";
+        return `${asString(handlerRecord?.type) ?? "?"}:${basename(program)}`;
+      });
+      const serialized = JSON.stringify(group);
+      pieces.push({
+        id: `hook:${scope}:${event}:${matcher}#${groupIndex}`,
         kind: "hook",
         name: `${event} ${matcher}`,
         scope,
-        path: rel,
-        hash: sha(body),
-        bytes: body.length,
+        path,
+        hash: sha(serialized),
+        bytes: serialized.length,
         approxTokens: 0,
-        description: shape.join(", "),
-        modifiedAt: git.get(relative(project, file)),
-        modifiedSource: git.has(relative(project, file)) ? "git" : undefined,
-        editable: true,
+        description: handlerShapes.join(", "),
+        ...change,
+        isEditable: true,
       });
     });
   }
-  return out;
+  return pieces;
 }
 
-function mcpPieces(servers: any, path: string, scope: PieceScope, modifiedAt?: string): HarnessPiece[] {
-  if (!servers || typeof servers !== "object") return [];
-  return Object.entries(servers).map(([name, cfg]: [string, any]) => {
-    const transport = cfg?.type ?? (cfg?.url ? "http" : "stdio");
-    const program = typeof cfg?.command === "string" ? basename(cfg.command) : undefined;
-    // Hash the full config so changes are detected, but store none of it.
-    const body = JSON.stringify(cfg ?? {});
+/** Project servers from `.mcp.json`; user and local servers from the user-level `.claude.json`. */
+async function addMcpServers(builder: InventoryBuilder, shouldIncludeUser: boolean): Promise<void> {
+  const projectMcpFile = join(builder.projectDir, ".mcp.json");
+  const projectMcp = await readJsonFile(projectMcpFile);
+  builder.pieces.push(
+    ...mcpPieces(
+      asRecord(projectMcp?.mcpServers),
+      ".mcp.json",
+      "project",
+      await builder.changeOf(projectMcpFile, "project"),
+    ),
+  );
+  if (!shouldIncludeUser) {
+    return;
+  }
+  const userConfigFile = claudeJsonPath();
+  const userConfig = await readJsonFile(userConfigFile);
+  if (!userConfig) {
+    return;
+  }
+  const displayPath = tildify(userConfigFile);
+  const projectEntry = asRecord(asRecord(userConfig.projects)?.[builder.projectDir]);
+  builder.pieces.push(
+    ...mcpPieces(asRecord(userConfig.mcpServers), displayPath, "user", {}),
+    ...mcpPieces(asRecord(projectEntry?.mcpServers), displayPath, "local", {}),
+  );
+}
+
+function mcpPieces(
+  servers: UnknownRecord | undefined,
+  path: string,
+  scope: PieceScope,
+  change: FileChange,
+): HarnessPiece[] {
+  return Object.entries(servers ?? {}).map(([name, config]) => {
+    const configRecord = asRecord(config);
+    const transport = asString(configRecord?.type) ?? (configRecord?.url === undefined ? "stdio" : "http");
+    const command = asString(configRecord?.command);
+    // The full config is hashed so changes are detected, but none of it is stored.
+    const serialized = JSON.stringify(config ?? {});
     return {
       id: `mcp:${name}`,
-      kind: "mcp" as const,
+      kind: "mcp",
       name,
       scope,
       path,
-      hash: sha(body),
-      bytes: body.length,
+      hash: sha(serialized),
+      bytes: serialized.length,
       approxTokens: 0,
-      description: program ? `${transport} (${program})` : String(transport),
-      modifiedAt,
-      modifiedSource: modifiedAt ? ("git" as const) : undefined,
-      editable: true,
+      description: command === undefined ? transport : `${transport} (${basename(command)})`,
+      ...change,
+      isEditable: true,
     };
   });
 }
 
-/** Reads installed_plugins.json (v1 or v2 shape). Returns id → install path. */
-async function installedPlugins(home: string): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  const json = await readJson(join(home, "plugins", "installed_plugins.json"));
-  const plugins = json?.plugins ?? json;
-  if (plugins && typeof plugins === "object") {
-    for (const [id, value] of Object.entries(plugins)) {
-      const entries = Array.isArray(value) ? value : [value];
-      const last: any = entries[entries.length - 1];
-      if (last && typeof last.installPath === "string") out.set(id, last.installPath);
+/** Plugins are read-only for the user: findings about them become recommendations, never edits. */
+async function addPlugins(
+  builder: InventoryBuilder,
+  homeDir: string,
+  pluginIdToIsEnabled: Map<string, boolean>,
+): Promise<void> {
+  for (const [pluginId, installPath] of await readInstalledPlugins(homeDir)) {
+    if (pluginIdToIsEnabled.get(pluginId) === false) {
+      continue;
     }
+    if (!pluginIdToIsEnabled.has(pluginId)) {
+      builder.notes.push(`Plugin ${pluginId} is installed but not listed in enabledPlugins; assumed enabled.`);
+    }
+    const manifest = await readJsonFile(join(installPath, ".claude-plugin", "plugin.json"));
+    const serialized = JSON.stringify(manifest ?? {});
+    builder.pieces.push({
+      id: `plugin:${pluginId}`,
+      kind: "plugin",
+      name: pluginId,
+      scope: "plugin",
+      path: tildify(installPath),
+      hash: sha(serialized),
+      bytes: serialized.length,
+      approxTokens: 0,
+      description: asString(manifest?.description)?.slice(0, MAX_DESCRIPTION_CHARS),
+      isEditable: false,
+      plugin: pluginId,
+    });
+    const pluginName = pluginId.split("@")[0] ?? pluginId;
+    await addComponents(builder, installPath, "plugin", {
+      namePrefix: `${pluginName}:`,
+      plugin: pluginId,
+      canBeRootSkill: true,
+    });
   }
-  return out;
 }
 
-async function readJson(file: string): Promise<any | undefined> {
-  try {
-    return JSON.parse(await readFile(file, "utf8"));
-  } catch {
-    return undefined;
+/** Plugin id → install path, from `installed_plugins.json` (accepts both the older and the versioned shape). */
+async function readInstalledPlugins(homeDir: string): Promise<Map<string, string>> {
+  const pluginIdToInstallPath = new Map<string, string>();
+  const installed = await readJsonFile(join(homeDir, "plugins", "installed_plugins.json"));
+  const plugins = asRecord(installed?.plugins) ?? installed ?? {};
+  for (const [pluginId, value] of Object.entries(plugins)) {
+    const installs = Array.isArray(value) ? value : [value];
+    const installPath = asString(asRecord(installs.at(-1))?.installPath);
+    if (installPath) {
+      pluginIdToInstallPath.set(pluginId, installPath);
+    }
   }
+  return pluginIdToInstallPath;
 }
 
-/** Last commit date per file in the project (one git call). Empty when not a git repo. */
-async function gitDates(project: string): Promise<Map<string, string> & { dirty: Set<string> }> {
-  const out = Object.assign(new Map<string, string>(), { dirty: new Set<string>() });
-  const paths = ["CLAUDE.md", "CLAUDE.local.md", ".claude", ".mcp.json"];
-  try {
-    // Files with uncommitted changes fall back to mtime.
-    const { stdout: status } = await exec("git", ["status", "--porcelain", "--untracked-files=all", "--", ...paths], { cwd: project, timeout: 15000 });
-    for (const line of status.split("\n")) if (line.length > 3) out.dirty.add(line.slice(3).trim());
-  } catch {
-    return out;
-  }
-  try {
-    const { stdout } = await exec(
-      "git",
-      ["log", "--format=__C__%cI", "--name-only", "--", ...paths],
-      { cwd: project, maxBuffer: 32 * 1024 * 1024, timeout: 15000 },
-    );
-    let current: string | undefined;
-    for (const line of stdout.split("\n")) {
-      if (line.startsWith("__C__")) current = line.slice(5).trim();
-      else if (line.trim() && current && !out.has(line.trim())) out.set(line.trim(), current);
-    }
-  } catch {
-    /* not a git repo or git missing */
-  }
-  return out;
+async function readJsonFile(file: string): Promise<UnknownRecord | undefined> {
+  const text = await readFile(file, "utf8").catch(() => undefined);
+  return text === undefined ? undefined : asRecord(parseJson(text));
 }

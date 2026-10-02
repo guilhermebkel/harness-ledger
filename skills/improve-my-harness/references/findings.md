@@ -11,7 +11,7 @@ Every finding gets exactly one class. The class decides the kind of fix.
 | **Missing instruction** (`missing_instruction`) | Nothing in the harness covers it. | Add it to the piece where it belongs: the subagent or skill that does the work, not the global instructions, unless it applies to every session. |
 | **Structure change** (`structure_change`) | A pattern across sessions: the same request repeated (→ a skill or command), a fixed sequence of steps the agent rediscovers (→ a script), a subagent that needs context it never gets (→ change what's passed when delegating), a piece unused for the whole period (→ remove), or a large piece loaded every turn (→ move detail into a skill). | Describe the new piece or the removal; draft the new file when it's a skill, subagent or command. |
 | **Out of scope** (`out_of_scope`) | The cause is in a piece the user doesn't control (a plugin, a built-in agent, managed settings) or outside the harness. | Recommendation only. Never edit it. |
-| **Already handled** (`already_handled`) | The signal has a suggestion (`handled` is set, any status), or an open branch/PR already changes that piece for that reason. | List it with its status. Never suggest it again. |
+| **Already handled** (`already_handled`) | The signal has a suggestion (`handledBy` is set, any status), or an open branch/PR already changes that piece for that reason. | List it with its status. Never suggest it again. |
 
 ### Typical mapping from signals
 
@@ -29,12 +29,12 @@ These are starting points, not rules; read the piece before deciding.
 | `user_correction`, `interruption` | Read the excerpt: the class depends on what was corrected; attributed pieces are where the turn ran |
 | `repeated_request` | Structure change: a skill or command (draft it) |
 | `unused_piece` | Structure change: remove, or improve its description if it should have triggered. Partial when it was added during the period |
-| `large_piece` | Structure change when `loadedEveryTurn` is true and the content is only needed sometimes |
+| `large_piece` | Structure change when `isLoadedEveryTurn` is true and the content is only needed sometimes |
 
 ## Rules
 
 1. **Traceable.** Each finding cites its evidence as `session <first 8 chars of id> · line <n> · <thread>`. Show up to 3 and "+N more".
-2. **Partial evidence is marked.** If the signal has `partial: true`, say why (from `partialReasons`) and don't claim the cause is certain. A single session is never enough for a structure change.
+2. **Partial evidence is marked.** If the signal has `isPartial: true`, say why (from `partialReasons`) and don't claim the cause is certain. A single session is never enough for a structure change.
 3. **No repeats.** Already-handled signals, and signals whose piece changed after the evidence, don't become new suggestions.
 4. **Mandate only.** Only report what the evidence supports and what concerns the harness. Never include secret values, even partially.
 5. **Self-contained text.** Text proposed for a subagent or skill describes the condition and the action in that piece's own terms. It never refers to who calls it, to another file's step numbers, or to this report.
@@ -47,7 +47,7 @@ These are starting points, not rules; read the piece before deciding.
 # Harness report — <YYYY-MM-DD>
 
 Analyzed <N> sessions (<period>) · <K> suggestions · ~<active minutes> and ~$<usd> estimated lost to failures
-History: <transcriptsAvailable> transcripts since <oldest>; retention <retentionDays> days.
+History: <transcriptsAvailable> transcripts since <oldestAt>; retention <retentionDays> days.
 
 ## Suggestions
 

@@ -1,11 +1,16 @@
-// Finds where the harness already talks about something. A failure the harness
-// already has an instruction for is an enforcement gap, not a missing instruction.
+// Where the harness already talks about something. A failure the harness already has an
+// instruction for is an enforcement gap, not a missing instruction.
 
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
-import type { Inventory } from "../core/types.js";
 import { excerpt } from "../core/redact.js";
+import type { Inventory, PieceKind } from "../core/types.js";
+import { untildify } from "../core/util.js";
+
+const DEFAULT_MAX_MENTIONS = 8;
+const MIN_TERM_CHARS = 3;
+const MAX_MENTION_CHARS = 160;
+const TEXT_KINDS = new Set<PieceKind>(["instructions", "skill", "agent", "command"]);
 
 export interface Mention {
   piece: string;
@@ -15,27 +20,34 @@ export interface Mention {
   term: string;
 }
 
-const TEXT_KINDS = new Set(["instructions", "skill", "agent", "command"]);
-
-export async function findMentions(inventory: Inventory, terms: string[], limit = 8): Promise<Mention[]> {
-  const wanted = [...new Set(terms.map((t) => t.trim()).filter((t) => t.length >= 3))];
-  if (!wanted.length) return [];
-  const out: Mention[] = [];
-  for (const p of inventory.pieces) {
-    if (!TEXT_KINDS.has(p.kind)) continue;
-    const abs = p.path.startsWith("~") ? join(homedir(), p.path.slice(1)) : isAbsolute(p.path) ? p.path : join(inventory.projectDir, p.path);
-    const text = await readFile(abs, "utf8").catch(() => undefined);
-    if (!text) continue;
-    const lines = text.split(/\r?\n/);
-    for (const term of wanted) {
-      const needle = term.toLowerCase();
-      lines.forEach((l, i) => {
-        if (out.length < limit && l.toLowerCase().includes(needle)) {
-          out.push({ piece: p.id, path: p.path, line: i + 1, text: excerpt(l, 160), term });
+export async function findMentions(
+  inventory: Inventory,
+  terms: string[],
+  maxMentions = DEFAULT_MAX_MENTIONS,
+): Promise<Mention[]> {
+  const searchTerms = [...new Set(terms.map((term) => term.trim()).filter((term) => term.length >= MIN_TERM_CHARS))];
+  const mentions: Mention[] = [];
+  for (const piece of inventory.pieces.filter((candidate) => TEXT_KINDS.has(candidate.kind))) {
+    if (!searchTerms.length || mentions.length >= maxMentions) {
+      break;
+    }
+    const expandedPath = untildify(piece.path);
+    const absolutePath = isAbsolute(expandedPath) ? expandedPath : join(inventory.projectDir, piece.path);
+    const lines = (await readFile(absolutePath, "utf8").catch(() => "")).split(/\r?\n/);
+    for (const term of searchTerms) {
+      const lowerTerm = term.toLowerCase();
+      lines.forEach((line, lineIndex) => {
+        if (mentions.length < maxMentions && line.toLowerCase().includes(lowerTerm)) {
+          mentions.push({
+            piece: piece.id,
+            path: piece.path,
+            line: lineIndex + 1,
+            text: excerpt(line, MAX_MENTION_CHARS),
+            term,
+          });
         }
       });
     }
-    if (out.length >= limit) break;
   }
-  return out;
+  return mentions;
 }

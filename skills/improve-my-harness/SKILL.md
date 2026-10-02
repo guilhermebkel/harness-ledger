@@ -47,14 +47,14 @@ Before any flow, read `references/findings.md` in this skill's folder (`${CLAUDE
 ## Flow 1 and 2: analyze
 
 1. Run `analyze` with the options from the request. Read the JSON.
-2. Tell the user in one line what was analyzed: sessions, period, and how much history exists (`history`). If `history.transcriptsAvailable` is small or the oldest transcript is close to `retentionDays` ago, say that older sessions were already deleted by the agent's retention setting. Never change that setting.
+2. Tell the user in one line what was analyzed: sessions, period, and how much history exists (`history`). If `history.transcriptsAvailable` is small or `history.oldestAt` is close to `retentionDays` ago, say that older sessions were already deleted by the agent's retention setting. Never change that setting.
 3. If `analyzed.sessions` is 0, say so, suggest a wider period or `--all-projects`, and stop.
 4. Go through `signals` in order. For each one worth reporting:
    - Read the harness piece it points to (paths are in `inventory.pieces`), so you know what the piece says today.
    - Use `details.mentions` when present: a failure the harness already has an instruction for is **Rule exists, but is ignored**.
    - If you need more evidence, run `evidence <signal-id>`. Don't read whole transcripts; if you must check one step, read only the cited line (`sed -n '<line>p' <file> | cut -c1-2000`).
    - If `changedAfterEvidence` is set, the piece changed after the newest evidence: report it under "Changed since this evidence", not as a new suggestion.
-   - If `handled` is set, it goes under **Already handled** with its status. Never suggest it again.
+   - If `handledBy` is set, it goes under **Already handled** with its status. Never suggest it again.
    - Also treat as already handled anything an open branch or PR already changes: check `git branch --list` and, if `gh` works, `gh pr list --state open --limit 20 --json title,headRefName,files`. Skip this silently when not a git repo or `gh` isn't available.
    - Classify it with exactly one class and write the change, following the rules in the reference.
 5. Group signals that share a cause into one finding (for example, `failed_command:npm test` and a correction saying "use pnpm").

@@ -1,24 +1,28 @@
-// Agent-agnostic model. Adapters (Claude Code today; Codex and Cursor later)
-// read their own formats and produce these types. Everything after the adapter
-// works only on these types.
+// The agent-agnostic model. Adapters read each agent's own formats and produce these
+// types; everything after the adapter works only on them (ADR 0005).
 
-/** Where a step happened: the main thread or a subagent. */
+export type AgentId = "claude-code";
+
+export const MAIN_THREAD_ID = "main";
+
+/** Where a step happened: the main thread or a subagent run. */
 export interface ThreadRef {
-  /** "main" for the main thread; otherwise the subagent id. */
+  /** `MAIN_THREAD_ID` for the main thread; otherwise the subagent id. */
   id: string;
-  /** Subagent type (e.g. "code-reviewer") when known. "main" for the main thread. */
+  /** Subagent type (e.g. "code-reviewer") when known; `MAIN_THREAD_ID` for the main thread. */
   agentType: string;
 }
 
-/** A pointer back to the exact place in a transcript. Every finding carries these. */
+/** A pointer back to the exact place in a transcript. Every signal carries these. */
 export interface EvidenceRef {
   sessionId: string;
   /** Absolute path of the transcript file. */
   file: string;
   /** 1-based line in the transcript file. */
   line: number;
-  timestamp?: string;
-  thread: string; // agentType or "main"
+  occurredAt?: string;
+  /** Agent type of the thread, or `MAIN_THREAD_ID`. */
+  thread: string;
   /** Short, redacted excerpt. Never contains secret values. */
   excerpt?: string;
 }
@@ -30,41 +34,46 @@ export interface TokenUsage {
   cacheWrite: number;
 }
 
+export type ToolResultKind = "ok" | "error" | "permission_denied" | "interrupted" | "hook_blocked";
+
+export interface ToolResult {
+  isError: boolean;
+  kind: ToolResultKind;
+  /** First meaningful line of the error, redacted and normalized for grouping. */
+  errorHead?: string;
+  contentChars: number;
+  ref: EvidenceRef;
+  returnedAtMs?: number;
+}
+
 export interface ToolCall {
   id: string;
   name: string;
-  /** Normalized key used for grouping, e.g. "npm test", "Read", "mcp:github". */
+  /** Grouping key, e.g. "npm test", "Read", "mcp:github". */
   key: string;
   /** Redacted short description of the input (command, file path, query). */
   summary: string;
-  /** File path for file tools, when present. */
+  /** Project-relative path for file tools, when the file is inside the project. */
   filePath?: string;
   thread: ThreadRef;
   ref: EvidenceRef;
-  timestampMs?: number;
-  /** Message id of the assistant message that issued the call. */
+  calledAtMs?: number;
+  /** Id of the assistant message that issued the call. */
   messageId?: string;
-  result?: {
-    isError: boolean;
-    kind: "ok" | "error" | "permission_denied" | "interrupted" | "hook_blocked";
-    /** First line of the error, redacted and normalized. */
-    errorHead?: string;
-    contentChars: number;
-    ref: EvidenceRef;
-    timestampMs?: number;
-  };
-  /** For Task/Agent tool calls. */
+  result?: ToolResult;
+  /** Set for delegations to a subagent. */
   subagentType?: string;
   subagentPromptHash?: string;
-  /** For Skill tool calls. */
+  /** Set for skill invocations. */
   skill?: string;
 }
 
 export interface UserPrompt {
-  text: string; // redacted, system reminders stripped
+  /** Redacted, with harness-injected blocks removed. */
+  text: string;
   ref: EvidenceRef;
-  timestampMs?: number;
-  /** Slash command name if the prompt invoked one (without the slash). */
+  sentAtMs?: number;
+  /** Slash command name (without the slash) when the prompt invoked one. */
   command?: string;
   isCorrection: boolean;
   isInterruption: boolean;
@@ -75,51 +84,45 @@ export interface AssistantMessage {
   model?: string;
   usage: TokenUsage;
   thread: ThreadRef;
-  timestampMs?: number;
+  sentAtMs?: number;
   ref: EvidenceRef;
 }
 
 export interface ThreadFacts {
   thread: ThreadRef;
-  /** Active time in ms (gaps above the idle threshold are excluded). */
+  /** Gaps above the idle threshold are excluded. */
   activeMs: number;
-  firstMs?: number;
-  lastMs?: number;
+  firstEventAtMs?: number;
+  lastEventAtMs?: number;
   promptHash?: string;
 }
 
-/** Everything the analysis needs from one session (main transcript + subagents). */
+/** Everything the analysis needs from one session: the main transcript and its subagent transcripts. */
 export interface SessionFacts {
-  agent: "claude-code";
+  agent: AgentId;
   sessionId: string;
   file: string;
   projectDir?: string;
   gitBranch?: string;
-  startMs?: number;
-  endMs?: number;
-  /** Active time of the main thread. Subagent time is reported per thread, never summed into this. */
+  startedAtMs?: number;
+  endedAtMs?: number;
+  /** Main thread only. Subagent time is reported per thread and never added here. */
   activeMs: number;
   threads: ThreadFacts[];
   prompts: UserPrompt[];
   tools: ToolCall[];
   messages: AssistantMessage[];
-  /** Files counted, including subagent transcripts. */
+  /** Transcript files read, including subagent transcripts. */
   files: string[];
-  /** Lines that could not be parsed (format drift). */
+  /** Lines that could not be parsed, a sign of format drift. */
   unparsedLines: number;
 }
 
-export type PieceKind =
-  | "instructions"
-  | "skill"
-  | "agent"
-  | "command"
-  | "hook"
-  | "mcp"
-  | "plugin"
-  | "settings";
+export type PieceKind = "instructions" | "skill" | "agent" | "command" | "hook" | "mcp" | "plugin" | "settings";
 
 export type PieceScope = "project" | "local" | "user" | "plugin" | "managed";
+
+export type ModifiedSource = "git" | "mtime";
 
 export interface HarnessPiece {
   /** Stable id, e.g. "agent:code-reviewer", "skill:changelog", "instructions:project". */
@@ -127,33 +130,37 @@ export interface HarnessPiece {
   kind: PieceKind;
   name: string;
   scope: PieceScope;
-  /** Path relative to the project (project/local) or absolute with ~ (user/plugin). */
+  /** Relative to the project for project and local pieces; absolute with `~` otherwise. */
   path: string;
   /** Short sha256 of the content. */
   hash: string;
   bytes: number;
-  /** Rough token estimate (chars / 4). */
   approxTokens: number;
   description?: string;
   model?: string;
   tools?: string[];
-  /** ISO date of the last change: last git commit touching the file, or mtime. */
+  /** Last change: the last commit touching the file, or its mtime when uncommitted or outside git. */
   modifiedAt?: string;
-  modifiedSource?: "git" | "mtime";
-  /** False for pieces the user doesn't control (plugins, managed). */
-  editable: boolean;
+  modifiedSource?: ModifiedSource;
+  /** False for pieces the user doesn't control (plugins, managed settings). */
+  isEditable: boolean;
   /** Plugin id for pieces that come from a plugin. */
   plugin?: string;
 }
 
+export interface Retention {
+  days: number;
+  /** The settings file that set it, or "default". */
+  source: string;
+}
+
 export interface Inventory {
-  agent: "claude-code";
+  agent: AgentId;
   projectDir: string;
   takenAt: string;
-  /** Hash over all piece hashes; changes when anything in the harness changes. */
+  /** Changes whenever any piece changes. */
   fingerprint: string;
   pieces: HarnessPiece[];
-  /** Transcript retention as configured (days), and where it came from. */
-  retention: { days: number; source: string };
+  retention: Retention;
   notes: string[];
 }

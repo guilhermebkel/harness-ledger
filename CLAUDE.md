@@ -5,18 +5,23 @@ A Claude Code plugin that reads the session transcripts the agent already saves,
 ## Layout
 
 - `skills/improve-my-harness/`: what the agent reads at runtime. `SKILL.md` has the four flows; `references/findings.md` has the classes, rules and report format.
-- `src/`: the `imh` analysis script. `adapters/<agent>/` reads one agent's sessions and harness; `analysis/` (signals, usage, before/after, mentions) and `state/` work only on the shared model in `src/core/types.ts`.
+- `src/`: the `imh` analysis script.
+  - `cli.ts` parses arguments and prints JSON; `commands/` has one module per command.
+  - `adapters/<agent>/` reads one agent's sessions and harness into the shared model in `core/types.ts`.
+  - `analysis/` (attribution, detectors, signals, usage, before/after, mentions) and `state/` (`.imh/` store, config) work only on that model.
+  - `core/` holds agent-agnostic helpers: guards for external data, env, time, redaction, JSONL, git.
 - `dist/imh.mjs`: the bundled script the skill runs. Generated, committed (ADR 0004).
 - `test/`: Vitest. `test/helpers/fixture.ts` builds a fake Claude Code home and project with transcripts in the agent's real format.
 
 ## Commands
 
 ```bash
-npm install
-npm test            # vitest
-npm run typecheck
-npm run build       # src/ -> dist/imh.mjs
-npm run check       # all of the above, and fails if dist/ is stale (CI runs this)
+pnpm install
+pnpm test           # vitest
+pnpm typecheck
+pnpm lint           # pnpm lint:fix for autofixable rules
+pnpm build          # src/ -> dist/imh.mjs
+pnpm check          # all of the above, and fails if dist/ is stale (CI runs this)
 node dist/imh.mjs --help
 claude plugin validate .
 ```
@@ -24,7 +29,9 @@ claude plugin validate .
 ## Rules
 
 - Rebuild and commit `dist/` in the same commit as any change to `src/`.
-- Runtime code uses only Node built-ins (Node 20+). No runtime dependencies, no lockfile (ADR 0004).
+- Use pnpm, never npm: commit `pnpm-lock.yaml`, never `package-lock.json` (ADR 0004).
+- Runtime code uses only Node built-ins (Node 20+). No runtime dependencies (ADR 0004).
+- Follow `docs/code-standards.md`. `pnpm lint` enforces most of it; review checks the rest.
 - Numbers come only from the script; the skill never estimates them (ADR 0002). New signals must carry evidence (session, line, thread) and a `partial` flag with reasons when the evidence is incomplete.
 - Every string that can reach output passes through `redact()` / `excerpt()`. Hook and MCP entries keep names and shapes only (ADR 0007). Add a test with a fake secret for any new output path.
 - Transcript formats are internal: parse defensively, count unknown lines, never throw on a bad line. Test new format cases in `test/helpers/fixture.ts`.

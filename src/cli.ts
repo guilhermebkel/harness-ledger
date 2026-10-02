@@ -1,18 +1,25 @@
+// Entry point of the `imh` script. Validates arguments at the edge, runs one command and
+// prints its result as JSON. This is the only module that writes to stdout and stderr.
+
 import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import {
-  cmdAnalyze,
-  cmdCompare,
-  cmdEvidence,
-  cmdInventory,
-  cmdStatus,
-  cmdSuggestionsAdd,
-  cmdSuggestionsList,
-  cmdSuggestionsSet,
+  isSuggestionStatus,
+  runAddSuggestions,
+  runAnalyze,
+  runCompare,
+  runEvidence,
+  runInventory,
+  runListSuggestions,
+  runSetSuggestionStatus,
+  runStatus,
   VERSION,
-  type NewSuggestion,
-} from "./commands.js";
-import type { SuggestionStatus } from "./state/store.js";
+  type CommonOptions,
+} from "./commands/index.js";
+import { parseJson } from "./core/guards.js";
+
+const MIN_NODE_MAJOR = 20;
+const JSON_INDENT = 2;
 
 const HELP = `imh ${VERSION} — improve-my-harness analysis script
 
@@ -38,6 +45,7 @@ Options
   --all-projects          Read transcripts from every project
   --max-signals <n>       analyze: signals in stdout (default 25)
   --max-evidence <n>      analyze: evidence per signal in stdout (default 5)
+  --max <n>               evidence: evidence items (default 50)
   --data-dir <dir>        Where state lives (default: <project>/.imh)
   --exclude-session <id>  Leave a session out, e.g. the one running the analysis (repeatable)
   --no-cache              Re-parse every transcript
@@ -45,116 +53,188 @@ Options
 
 Output is JSON on stdout. Nothing leaves your machine.`;
 
-async function main(argv: string[]): Promise<number> {
-  const { values, positionals } = parseArgs({
+const ARGUMENT_SPEC = {
+  "project": { type: "string" },
+  "since": { type: "string" },
+  "until": { type: "string" },
+  "piece": { type: "string", multiple: true },
+  "at": { type: "string" },
+  "status": { type: "string" },
+  "note": { type: "string" },
+  "file": { type: "string" },
+  "max": { type: "string" },
+  "max-signals": { type: "string" },
+  "max-evidence": { type: "string" },
+  "data-dir": { type: "string" },
+  "project-only": { type: "boolean" },
+  "all-projects": { type: "boolean" },
+  "no-cache": { type: "boolean" },
+  "exclude-session": { type: "string", multiple: true },
+  "pretty": { type: "boolean" },
+  "help": { type: "boolean", short: "h" },
+  "version": { type: "boolean", short: "v" },
+} as const;
+
+type ParsedValues = ReturnType<typeof parseArguments>["values"];
+
+interface Invocation {
+  values: ParsedValues;
+  /** Positional arguments after the command name. */
+  rest: string[];
+  common: CommonOptions;
+}
+
+type CommandName = "analyze" | "inventory" | "evidence" | "compare" | "status" | "suggestions";
+type CommandHandler = (invocation: Invocation) => Promise<unknown>;
+
+const COMMAND_NAME_TO_HANDLER: Record<CommandName, CommandHandler> = {
+  analyze: async ({ values, common }) =>
+    runAnalyze({
+      ...common,
+      since: values.since,
+      until: values.until,
+      focusPieces: values.piece,
+      maxSignals: readCount(values["max-signals"], "--max-signals"),
+      maxEvidence: readCount(values["max-evidence"], "--max-evidence"),
+    }),
+  inventory: async ({ common }) => runInventory(common),
+  evidence: async ({ values, rest, common }) => {
+    const [signalId] = rest;
+    if (!signalId) {
+      throw new Error("Usage: imh evidence <signal-id>");
+    }
+    return runEvidence({
+      ...common,
+      signalId,
+      maxEvidence: readCount(values.max, "--max"),
+    });
+  },
+  compare: async ({ values, common }) => {
+    const piece = values.piece?.[0];
+    if (!piece) {
+      throw new Error("Usage: imh compare --piece <id> [--at <date>]");
+    }
+    return runCompare({
+      ...common,
+      piece,
+      changedAt: values.at,
+      since: values.since,
+    });
+  },
+  status: async ({ common }) => runStatus(common),
+  suggestions: async (invocation) => runSuggestionsCommand(invocation),
+};
+
+function parseArguments(argv: string[]) {
+  return parseArgs({
     args: argv,
     allowPositionals: true,
-    options: {
-      project: { type: "string" },
-      since: { type: "string" },
-      until: { type: "string" },
-      piece: { type: "string", multiple: true },
-      at: { type: "string" },
-      status: { type: "string" },
-      note: { type: "string" },
-      file: { type: "string" },
-      max: { type: "string" },
-      "max-signals": { type: "string" },
-      "max-evidence": { type: "string" },
-      "data-dir": { type: "string" },
-      "project-only": { type: "boolean" },
-      "all-projects": { type: "boolean" },
-      "no-cache": { type: "boolean" },
-      "exclude-session": { type: "string", multiple: true },
-      pretty: { type: "boolean" },
-      help: { type: "boolean", short: "h" },
-      version: { type: "boolean", short: "v" },
-    },
+    options: ARGUMENT_SPEC,
   });
+}
 
+function isCommandName(value: string): value is CommandName {
+  return value in COMMAND_NAME_TO_HANDLER;
+}
+
+async function main(argv: string[]): Promise<void> {
+  const { values, positionals } = parseArguments(argv);
   if (values.version) {
     process.stdout.write(`${VERSION}\n`);
-    return 0;
+    return;
   }
-  const [cmd, ...rest] = positionals;
-  if (values.help || !cmd || cmd === "help") {
+  const [commandName, ...rest] = positionals;
+  if (values.help || !commandName || commandName === "help") {
     process.stdout.write(`${HELP}\n`);
-    return 0;
+    return;
   }
-
-  const major = Number(process.versions.node.split(".")[0]);
-  if (major < 20) throw new Error(`Node.js 20+ is required (found ${process.version}).`);
-
-  const common = {
-    project: values.project,
-    dataDir: values["data-dir"],
-    projectOnly: values["project-only"],
-    allProjects: values["all-projects"],
-    noCache: values["no-cache"],
-    excludeSessions: values["exclude-session"],
-  };
-  const int = (v: string | undefined) => (v === undefined ? undefined : Number.parseInt(v, 10));
-
-  let result: unknown;
-  switch (cmd) {
-    case "analyze":
-      result = await cmdAnalyze({
-        ...common,
-        since: values.since,
-        until: values.until,
-        pieces: values.piece,
-        maxSignals: int(values["max-signals"]),
-        maxEvidence: int(values["max-evidence"]),
-      });
-      break;
-    case "inventory":
-      result = await cmdInventory(common);
-      break;
-    case "evidence":
-      if (!rest[0]) throw new Error("Usage: imh evidence <signal-id>");
-      result = await cmdEvidence({ ...common, signal: rest[0], max: int(values.max) });
-      break;
-    case "compare": {
-      const piece = values.piece?.[0];
-      if (!piece) throw new Error("Usage: imh compare --piece <id> [--at <date>]");
-      result = await cmdCompare({ ...common, piece, at: values.at, since: values.since });
-      break;
-    }
-    case "status":
-      result = await cmdStatus(common);
-      break;
-    case "suggestions": {
-      const sub = rest[0] ?? "list";
-      if (sub === "list") result = await cmdSuggestionsList({ ...common, status: values.status });
-      else if (sub === "add") {
-        const raw = values.file ? await readFile(values.file, "utf8") : await readStdin();
-        const parsed = JSON.parse(raw) as NewSuggestion | NewSuggestion[];
-        result = await cmdSuggestionsAdd({ ...common, items: Array.isArray(parsed) ? parsed : [parsed] });
-      } else if (sub === "set") {
-        const [, id, status] = rest;
-        if (!id || !status) throw new Error("Usage: imh suggestions set <id> <pending|accepted|rejected|applied> [--note text]");
-        result = await cmdSuggestionsSet({ ...common, id, status: status as SuggestionStatus, note: values.note });
-      } else throw new Error(`Unknown suggestions command: ${sub}`);
-      break;
-    }
-    default:
-      throw new Error(`Unknown command: ${cmd}. Run \`imh --help\`.`);
+  const nodeMajor = Number(process.versions.node.split(".")[0]);
+  if (nodeMajor < MIN_NODE_MAJOR) {
+    throw new Error(`Node.js ${MIN_NODE_MAJOR}+ is required (found ${process.version}).`);
   }
-  process.stdout.write(`${JSON.stringify(result, null, values.pretty ? 2 : 0)}\n`);
-  return 0;
+  if (!isCommandName(commandName)) {
+    throw new Error(`Unknown command: ${commandName}. Run \`imh --help\`.`);
+  }
+  const result = await COMMAND_NAME_TO_HANDLER[commandName]({
+    values,
+    rest,
+    common: {
+      projectDir: values.project,
+      dataDir: values["data-dir"],
+      isProjectOnly: values["project-only"],
+      shouldReadAllProjects: values["all-projects"],
+      shouldSkipCache: values["no-cache"],
+      excludedSessionIds: values["exclude-session"],
+    },
+  });
+  process.stdout.write(`${JSON.stringify(result, null, values.pretty ? JSON_INDENT : 0)}\n`);
+}
+
+async function runSuggestionsCommand({ values, rest, common }: Invocation): Promise<unknown> {
+  const [subcommand = "list", id, status] = rest;
+  if (subcommand === "list") {
+    const statusFilter = values.status;
+    if (statusFilter !== undefined && !isSuggestionStatus(statusFilter)) {
+      throw new Error(`Unknown status: ${statusFilter}`);
+    }
+    return runListSuggestions({
+      ...common,
+      status: statusFilter,
+    });
+  }
+  if (subcommand === "add") {
+    const rawJson = values.file ? await readFile(values.file, "utf8") : await readStdin();
+    const items = parseJson(rawJson);
+    if (items === undefined) {
+      throw new Error("Suggestions must be valid JSON.");
+    }
+    return runAddSuggestions({
+      ...common,
+      items,
+    });
+  }
+  if (subcommand === "set") {
+    if (!id || !status || !isSuggestionStatus(status)) {
+      throw new Error("Usage: imh suggestions set <id> <pending|accepted|rejected|applied> [--note text]");
+    }
+    return runSetSuggestionStatus({
+      ...common,
+      id,
+      status,
+      note: values.note,
+    });
+  }
+  throw new Error(`Unknown suggestions command: ${subcommand}`);
+}
+
+function readCount(value: string | undefined, flag: string): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const count = Number(value);
+  if (!Number.isInteger(count) || count < 0) {
+    throw new Error(`${flag} must be a non-negative integer.`);
+  }
+  return count;
 }
 
 async function readStdin(): Promise<string> {
-  if (process.stdin.isTTY) throw new Error("Pass --file <json> or pipe JSON on stdin.");
+  if (process.stdin.isTTY) {
+    throw new Error("Pass --file <json> or pipe JSON on stdin.");
+  }
   const chunks: Buffer[] = [];
-  for await (const c of process.stdin) chunks.push(c as Buffer);
+  for await (const chunk of process.stdin) {
+    chunks.push(Buffer.from(chunk as Uint8Array));
+  }
   return Buffer.concat(chunks).toString("utf8");
 }
 
-main(process.argv.slice(2)).then(
-  (code) => process.exit(code),
-  (err: unknown) => {
-    process.stderr.write(`imh: ${err instanceof Error ? err.message : String(err)}\n`);
+const FIRST_ARGUMENT_INDEX = 2;
+
+main(process.argv.slice(FIRST_ARGUMENT_INDEX)).then(
+  () => process.exit(0),
+  (error: unknown) => {
+    process.stderr.write(`imh: ${error instanceof Error ? error.message : String(error)}\n`);
     process.exit(1);
   },
 );

@@ -1,19 +1,20 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { readEnv } from "../../core/env.js";
 
-/** Claude Code's config directory (honors CLAUDE_CONFIG_DIR). */
+/** Claude Code's config directory. `IMH_CLAUDE_HOME` exists for tests. */
 export function claudeHome(): string {
-  return process.env.IMH_CLAUDE_HOME || process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
+  return readEnv("IMH_CLAUDE_HOME") ?? readEnv("CLAUDE_CONFIG_DIR") ?? join(homedir(), ".claude");
 }
 
-/** The user-level ~/.claude.json, which holds per-project MCP servers. */
+/** The user-level `.claude.json`, which holds user and per-project MCP servers. */
 export function claudeJsonPath(): string {
-  if (process.env.IMH_CLAUDE_JSON) return process.env.IMH_CLAUDE_JSON;
-  if (process.env.CLAUDE_CONFIG_DIR) return join(process.env.CLAUDE_CONFIG_DIR, ".claude.json");
-  return join(homedir(), ".claude.json");
+  const configDir = readEnv("CLAUDE_CONFIG_DIR");
+  const defaultPath = configDir ? join(configDir, ".claude.json") : join(homedir(), ".claude.json");
+  return readEnv("IMH_CLAUDE_JSON") ?? defaultPath;
 }
 
-/** Claude Code stores a project's transcripts under projects/<cwd with non-alphanumerics replaced by "-">. */
-export function encodeProjectDir(dir: string): string {
-  return dir.replace(/[^a-zA-Z0-9]/g, "-");
+/** Claude Code keeps a project's transcripts in `projects/<cwd with every non-alphanumeric replaced by "-">`. */
+export function encodeProjectDir(projectDir: string): string {
+  return projectDir.replace(/[^a-zA-Z0-9]/g, "-");
 }

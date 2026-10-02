@@ -1,86 +1,138 @@
 import { cpus } from "node:os";
-import type { SessionFacts } from "../core/types.js";
-import { mapLimit } from "../core/util.js";
 import { discoverTranscripts, parseSession, type TranscriptFile } from "../adapters/claude-code/sessions.js";
-import type { Store } from "../state/store.js";
+import { toIso } from "../core/time.js";
+import type { SessionFacts } from "../core/types.js";
+import { mapWithConcurrency } from "../core/util.js";
+import { FACTS_VERSION, type FactsCache, type Store } from "../state/store.js";
+
+const MIN_PARSE_CONCURRENCY = 2;
+const MAX_PARSE_CONCURRENCY = 8;
 
 export interface LoadOptions {
   projectDir: string;
-  allProjects?: boolean;
-  sinceMs?: number;
-  untilMs?: number;
+  shouldReadAllProjects?: boolean;
+  periodStartAtMs?: number;
+  periodEndAtMs?: number;
   idleMs: number;
   store: Store;
-  noCache?: boolean;
-  /** Session ids to leave out (e.g. the session running the analysis). */
-  excludeSessions?: string[];
+  shouldSkipCache?: boolean;
+  /** Session ids to leave out, such as the session running the analysis. */
+  excludedSessionIds?: string[];
+}
+
+export interface AvailableHistory {
+  /** Transcripts for the project before the period filter. */
+  count: number;
+  oldestAt?: string;
+  newestAt?: string;
 }
 
 export interface LoadResult {
   sessions: SessionFacts[];
-  /** All transcripts found for the project, before the time filter. */
-  available: { count: number; oldest?: string; newest?: string };
-  parsed: number;
-  fromCache: number;
+  available: AvailableHistory;
+  parsedCount: number;
+  cachedCount: number;
   unparsedLines: number;
 }
 
-function signature(t: TranscriptFile, idleMs: number): string {
-  const subs = t.subagentFiles.map((s) => `${s.file}:${s.mtimeMs}:${s.size}`).join("|");
-  return `${t.mtimeMs}:${t.size}:${idleMs}:${subs}`;
+/** Changes when the transcript or any of its subagent transcripts changes, or when the idle threshold changes. */
+function cacheSignature(transcript: TranscriptFile, idleMs: number): string {
+  const subagentSignature = transcript.subagentFiles
+    .map((subagentFile) => `${subagentFile.file}:${subagentFile.modifiedAtMs}:${subagentFile.bytes}`)
+    .join("|");
+  return `${transcript.modifiedAtMs}:${transcript.bytes}:${idleMs}:${subagentSignature}`;
 }
 
-/** Discovers transcripts, parses new or changed ones (cache by mtime+size), and filters by period. */
-export async function loadSessions(opts: LoadOptions): Promise<LoadResult> {
-  const transcripts = await discoverTranscripts({ projectDir: opts.projectDir, allProjects: opts.allProjects });
-  const cache = opts.noCache ? { version: 0, entries: {} as Record<string, never> } : await opts.store.loadFactsCache();
-  let parsed = 0;
-  let fromCache = 0;
+/** Finds transcripts, parses only new or changed ones, and keeps the sessions of this project and period. */
+export async function loadSessions(options: LoadOptions): Promise<LoadResult> {
+  const transcripts = await discoverTranscripts({
+    projectDir: options.projectDir,
+    shouldReadAllProjects: options.shouldReadAllProjects,
+  });
+  const cache: FactsCache = options.shouldSkipCache
+    ? {
+        version: FACTS_VERSION,
+        fileToEntry: {},
+      }
+    : await options.store.loadFactsCache();
+  let parsedCount = 0;
+  let cachedCount = 0;
+  const concurrency = Math.max(MIN_PARSE_CONCURRENCY, Math.min(MAX_PARSE_CONCURRENCY, cpus().length));
 
-  const all = await mapLimit(transcripts, Math.max(2, Math.min(8, cpus().length)), async (t) => {
-    const sig = signature(t, opts.idleMs);
-    const hit = cache.entries[t.file];
-    if (hit && hit.signature === sig) {
-      fromCache++;
-      return hit.facts;
+  const allFacts = await mapWithConcurrency(transcripts, concurrency, async (transcript) => {
+    const signature = cacheSignature(transcript, options.idleMs);
+    const cached = cache.fileToEntry[transcript.file];
+    if (cached?.signature === signature) {
+      cachedCount++;
+      return cached.facts;
     }
-    const facts = await parseSession(t, { idleMs: opts.idleMs, projectDir: opts.projectDir });
-    parsed++;
-    (cache.entries as Record<string, { signature: string; facts: SessionFacts }>)[t.file] = { signature: sig, facts };
+    const facts = await parseSession(transcript, {
+      idleMs: options.idleMs,
+      projectDir: options.projectDir,
+    });
+    parsedCount++;
+    cache.fileToEntry[transcript.file] = {
+      signature,
+      facts,
+    };
     return facts;
   });
 
-  // Drop cache entries for transcripts that no longer exist (retention cleanup).
-  const live = new Set(transcripts.map((t) => t.file));
-  for (const k of Object.keys(cache.entries)) if (!live.has(k)) delete (cache.entries as Record<string, unknown>)[k];
-  if (!opts.noCache && parsed > 0) await opts.store.saveFactsCache(cache as never);
+  // Transcripts deleted by the agent's retention cleanup leave the cache too.
+  const liveFiles = new Set(transcripts.map((transcript) => transcript.file));
+  for (const file of Object.keys(cache.fileToEntry)) {
+    if (!liveFiles.has(file)) {
+      cache.fileToEntry[file] = undefined;
+    }
+  }
+  if (!options.shouldSkipCache && parsedCount > 0) {
+    await options.store.saveFactsCache(cache);
+  }
 
-  // Transcripts in the project's own folder always count (even if the project moved since).
-  // Prefix-matched folders only count when their cwd is this project or a subfolder of it.
-  const excluded = new Set(opts.excludeSessions ?? []);
-  const inProject = all.filter(
-    (s, i) =>
-      !excluded.has(s.sessionId) &&
-      (opts.allProjects ||
-      transcripts[i]!.exactProject ||
-      (!!s.projectDir && (s.projectDir === opts.projectDir || s.projectDir.startsWith(`${opts.projectDir}/`)))),
-  );
-  const starts = inProject.map((s) => s.startMs).filter((v): v is number => v !== undefined).sort((a, b) => a - b);
-  const sessions = inProject.filter((s) => {
-    const t = s.startMs ?? 0;
-    if (opts.sinceMs !== undefined && (s.endMs ?? t) < opts.sinceMs) return false;
-    if (opts.untilMs !== undefined && t > opts.untilMs) return false;
-    return s.tools.length > 0 || s.prompts.length > 0;
+  const excludedSessionIds = new Set(options.excludedSessionIds ?? []);
+  const projectSessions = allFacts.filter((facts, index) => {
+    const isExcluded = excludedSessionIds.has(facts.sessionId);
+    return !isExcluded && belongsToProject(facts, transcripts[index], options);
   });
+  const startsAtMs = projectSessions
+    .map((facts) => facts.startedAtMs)
+    .filter((startedAtMs): startedAtMs is number => startedAtMs !== undefined)
+    .sort((left, right) => left - right);
+  const sessions = projectSessions.filter((facts) => isInPeriod(facts, options) && hasActivity(facts));
   return {
     sessions,
     available: {
-      count: inProject.length,
-      oldest: starts.length ? new Date(starts[0]!).toISOString() : undefined,
-      newest: starts.length ? new Date(starts[starts.length - 1]!).toISOString() : undefined,
+      count: projectSessions.length,
+      oldestAt: toIso(startsAtMs[0]),
+      newestAt: toIso(startsAtMs.at(-1)),
     },
-    parsed,
-    fromCache,
-    unparsedLines: sessions.reduce((n, s) => n + s.unparsedLines, 0),
+    parsedCount,
+    cachedCount,
+    unparsedLines: sessions.reduce((total, facts) => total + facts.unparsedLines, 0),
   };
+}
+
+/**
+ * A transcript in the project's own folder always belongs to it, even if the project moved since.
+ * One in a prefix-matched folder (`my-app-2`, a subfolder) belongs only when its cwd is inside the project.
+ */
+function belongsToProject(facts: SessionFacts, transcript: TranscriptFile | undefined, options: LoadOptions): boolean {
+  if (options.shouldReadAllProjects || transcript?.isExactProject) {
+    return true;
+  }
+  const sessionDir = facts.projectDir;
+  const isInsideProject = sessionDir === options.projectDir || sessionDir?.startsWith(`${options.projectDir}/`) === true;
+  return sessionDir !== undefined && isInsideProject;
+}
+
+function isInPeriod(facts: SessionFacts, options: LoadOptions): boolean {
+  const startedAtMs = facts.startedAtMs ?? 0;
+  const endedAtMs = facts.endedAtMs ?? startedAtMs;
+  const isBeforePeriod = options.periodStartAtMs !== undefined && endedAtMs < options.periodStartAtMs;
+  const isAfterPeriod = options.periodEndAtMs !== undefined && startedAtMs > options.periodEndAtMs;
+  return !isBeforePeriod && !isAfterPeriod;
+}
+
+function hasActivity(facts: SessionFacts): boolean {
+  return facts.tools.length > 0 || facts.prompts.length > 0;
 }

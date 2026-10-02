@@ -1,31 +1,56 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { rmSync } from "node:fs";
-import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { takeInventory } from "../src/adapters/claude-code/inventory.js";
-import { cmdAnalyze, cmdCompare, cmdSuggestionsAdd, cmdSuggestionsList, cmdSuggestionsSet, suggestionId } from "../src/commands.js";
-import { makeFixture, sessionPath, Transcript, useFixtureEnv, writeHarness, writeHistory, type Fixture } from "./helpers/fixture.js";
+import type { Signal } from "../src/analysis/signals.js";
+import {
+  runAddSuggestions,
+  runAnalyze,
+  runCompare,
+  runListSuggestions,
+  runSetSuggestionStatus,
+  suggestionId,
+} from "../src/commands/index.js";
+import {
+  FAKE_SECRETS,
+  makeFixture,
+  useFixtureEnv,
+  writeHarness,
+  writeHistory,
+  writeTestRunnerSession,
+  type Fixture,
+} from "./helpers/fixture.js";
 
-let f: Fixture;
-let restore: () => void;
+let fixture: Fixture;
+let restoreEnv: () => void;
 
 beforeAll(() => {
-  f = makeFixture();
-  writeHarness(f);
-  writeHistory(f);
-  restore = useFixtureEnv(f);
-});
-afterAll(() => {
-  restore();
-  rmSync(f.root, { recursive: true, force: true });
+  fixture = makeFixture();
+  writeHarness(fixture);
+  writeHistory(fixture);
+  restoreEnv = useFixtureEnv(fixture);
 });
 
-const common = () => ({ project: f.project, dataDir: f.dataDir });
+afterAll(() => {
+  restoreEnv();
+  rmSync(fixture.root, { recursive: true, force: true });
+});
+
+function commonOptions() {
+  return { projectDir: fixture.projectDir, dataDir: fixture.dataDir };
+}
+
+function signalById(signals: Signal[], id: string): Signal {
+  const signal = signals.find((candidate) => candidate.id === id);
+  if (!signal) {
+    throw new Error(`Missing signal ${id}; got ${signals.map((candidate) => candidate.id).join(", ")}`);
+  }
+  return signal;
+}
 
 describe("inventory", () => {
   it("maps project and user pieces without storing secret values", async () => {
-    const inv = await takeInventory({ projectDir: f.project, home: f.home });
-    const ids = inv.pieces.map((p) => p.id);
-    expect(ids).toEqual(
+    const inventory = await takeInventory({ projectDir: fixture.projectDir, claudeHomeDir: fixture.claudeHome });
+    expect(inventory.pieces.map((piece) => piece.id)).toEqual(
       expect.arrayContaining([
         "instructions:project",
         "agent:test-runner",
@@ -36,146 +61,142 @@ describe("inventory", () => {
         "settings:permissions-project",
       ]),
     );
-    expect(inv.pieces.find((p) => p.id === "agent:test-runner")).toMatchObject({ model: "haiku", tools: ["Bash", "Read"], scope: "project", editable: true });
-    expect(inv.retention).toEqual({ days: 60, source: ".claude/settings.json" });
-    const json = JSON.stringify(inv);
-    expect(json).not.toContain("ghp_abcdefghijklmnopqrstuvwxyz123456");
-    expect(json).not.toContain("sk-ant-secretsecretsecret123");
+    expect(inventory.pieces.find((piece) => piece.id === "agent:test-runner")).toMatchObject({
+      model: "haiku",
+      tools: ["Bash", "Read"],
+      scope: "project",
+      isEditable: true,
+    });
+    expect(inventory.retention).toEqual({ days: 60, source: ".claude/settings.json" });
+    const serialized = JSON.stringify(inventory);
+    expect(serialized).not.toContain(FAKE_SECRETS.githubToken);
+    expect(serialized).not.toContain(FAKE_SECRETS.anthropicKey);
   });
 
-  it("can ignore user-level pieces", async () => {
-    const inv = await takeInventory({ projectDir: f.project, home: f.home, projectOnly: true });
-    expect(inv.pieces.some((p) => p.scope === "user")).toBe(false);
+  it("can leave out user-level pieces", async () => {
+    const inventory = await takeInventory({
+      projectDir: fixture.projectDir,
+      claudeHomeDir: fixture.claudeHome,
+      isProjectOnly: true,
+    });
+    expect(inventory.pieces.some((piece) => piece.scope === "user")).toBe(false);
   });
 });
 
 describe("analyze", () => {
-  it("finds the enforcement gap with recovery and the instruction that already covers it", async () => {
-    const r = await cmdAnalyze(common());
-    const npm = r.signals.find((s) => s.id === "failed_command:npm test")!;
-    expect(npm).toBeDefined();
-    expect(npm.occurrences).toBe(3);
-    expect(npm.sessions).toBe(3);
-    expect(npm.pieces).toEqual(["agent:test-runner"]);
-    expect(npm.details.recoveredWith).toEqual([{ value: "pnpm test", count: 3 }]);
-    expect(npm.details.mentions).toEqual(expect.arrayContaining([expect.objectContaining({ piece: "instructions:project", line: 3, term: "pnpm test" })]));
-    expect(npm.cost.activeMinutes).toBeGreaterThan(0);
-    expect(npm.cost.tokens).toBeGreaterThan(0);
-    expect(npm.evidence[0]).toMatchObject({ line: 3, thread: "test-runner" });
-    expect(npm.evidence[0]!.excerpt).toContain("npm ERR!");
+  it("finds the enforcement gap, the command that worked and the instruction that already covers it", async () => {
+    const analysis = await runAnalyze(commonOptions());
+    const npmTest = signalById(analysis.signals, "failed_command:npm test");
+    expect(npmTest).toMatchObject({ occurrences: 3, sessions: 3, pieces: ["agent:test-runner"] });
+    expect(npmTest.details.recoveredWith).toEqual([{ value: "pnpm test", count: 3 }]);
+    expect(npmTest.details.mentions).toEqual(
+      expect.arrayContaining([expect.objectContaining({ piece: "instructions:project", line: 3, term: "pnpm test" })]),
+    );
+    expect(npmTest.cost.activeMinutes).toBeGreaterThan(0);
+    expect(npmTest.cost.tokens).toBeGreaterThan(0);
+    expect(npmTest.evidence[0]).toMatchObject({ line: 3, thread: "test-runner" });
+    expect(npmTest.evidence[0]?.excerpt).toContain("npm ERR!");
   });
 
   it("finds subagent re-reads, repeated reads, permission denials and repeated requests", async () => {
-    const r = await cmdAnalyze(common());
-    const ids = r.signals.map((s) => s.id);
-    expect(ids).toContain("subagent_reread:code-reviewer");
-    expect(ids).toContain("repeated_read:code-reviewer:src/auth.ts");
-    expect(ids).toContain("permission_denied:rm");
-    const repeated = r.signals.find((s) => s.type === "repeated_request")!;
-    expect(repeated.sessions).toBe(3);
-    expect(r.signals.find((s) => s.id === "permission_denied:rm")!.pieces).toEqual(["skill:changelog"]);
+    const analysis = await runAnalyze(commonOptions());
+    const signalIds = analysis.signals.map((signal) => signal.id);
+    expect(signalIds).toEqual(
+      expect.arrayContaining([
+        "subagent_reread:code-reviewer",
+        "repeated_read:code-reviewer:src/auth.ts",
+        "permission_denied:rm",
+      ]),
+    );
+    expect(analysis.signals.find((signal) => signal.type === "repeated_request")?.sessions).toBe(3);
+    expect(signalById(analysis.signals, "permission_denied:rm").pieces).toEqual(["skill:changelog"]);
   });
 
   it("reports history, totals and per-piece usage", async () => {
-    const r = await cmdAnalyze(common());
-    expect(r.analyzed.sessions).toBe(6);
-    expect(r.history).toMatchObject({ transcriptsAvailable: 6, retentionDays: 60 });
-    expect(r.totals.tokens).toBeGreaterThan(0);
-    expect(r.totals.lostToFailures.activeMinutes).toBeGreaterThan(0);
-    const runner = r.usage.find((u) => u.piece === "agent:test-runner")!;
-    expect(runner).toMatchObject({ invocations: 3, sessions: 3, toolErrors: 3 });
-    expect(runner.models).toContain("claude-haiku-4-5");
+    const analysis = await runAnalyze(commonOptions());
+    expect(analysis.analyzed.sessions).toBe(6);
+    expect(analysis.history).toMatchObject({ transcriptsAvailable: 6, retentionDays: 60 });
+    expect(analysis.totals.tokens).toBeGreaterThan(0);
+    expect(analysis.totals.lostToFailures.activeMinutes).toBeGreaterThan(0);
+    const testRunner = analysis.usage.find((usage) => usage.piece === "agent:test-runner");
+    expect(testRunner).toMatchObject({ invocations: 3, sessions: 3, toolErrors: 3 });
+    expect(testRunner?.models).toContain("claude-haiku-4-5");
   });
 
   it("never prints secret values", async () => {
-    const r = await cmdAnalyze(common());
-    const json = JSON.stringify(r);
-    for (const secret of ["abcdefghijklmnop1234567", "ghp_abcdefghijklmnopqrstuvwxyz123456", "sk-ant-secretsecretsecret123"]) {
-      expect(json).not.toContain(secret);
+    const serialized = JSON.stringify(await runAnalyze(commonOptions()));
+    for (const secret of Object.values(FAKE_SECRETS)) {
+      expect(serialized).not.toContain(secret);
     }
   });
 
-  it("uses the cache on the next run and focuses on one piece", async () => {
-    await cmdAnalyze(common());
-    const again = await cmdAnalyze(common());
-    expect(again.analyzed).toMatchObject({ parsedNow: 0, fromCache: 6 });
-    const focused = await cmdAnalyze({ ...common(), pieces: ["agent:code-reviewer"] });
+  it("reuses the cache on the next run and can focus on one piece", async () => {
+    await runAnalyze(commonOptions());
+    const secondRun = await runAnalyze(commonOptions());
+    expect(secondRun.analyzed).toMatchObject({ parsedNow: 0, fromCache: 6 });
+    const focused = await runAnalyze({ ...commonOptions(), focusPieces: ["agent:code-reviewer"] });
     expect(focused.analyzed.sessions).toBe(1);
-    expect(focused.signals.every((s) => s.pieces.includes("agent:code-reviewer"))).toBe(true);
+    expect(focused.signals.every((signal) => signal.pieces.includes("agent:code-reviewer"))).toBe(true);
   });
 
   it("leaves out excluded sessions", async () => {
-    const r = await cmdAnalyze({ ...common(), excludeSessions: ["s5"] });
-    expect(r.analyzed.sessions).toBe(5);
+    const analysis = await runAnalyze({ ...commonOptions(), excludedSessionIds: ["s5"] });
+    expect(analysis.analyzed.sessions).toBe(5);
   });
 
   it("filters by period", async () => {
-    const r = await cmdAnalyze({ ...common(), since: "2026-09-13" });
-    expect(r.analyzed.sessions).toBe(3);
+    const analysis = await runAnalyze({ ...commonOptions(), since: "2026-09-13" });
+    expect(analysis.analyzed.sessions).toBe(3);
   });
 });
 
 describe("suggestions", () => {
   it("gives stable ids, never duplicates, and marks signals as handled", async () => {
-    const item = { title: "Enforce pnpm in test-runner", class: "rule_ignored", piece: "agent:test-runner", signals: ["failed_command:npm test"] };
-    const first = await cmdSuggestionsAdd({ ...common(), items: [item] });
-    const second = await cmdSuggestionsAdd({ ...common(), items: [item] });
-    expect(first.added).toEqual([suggestionId(item)]);
-    expect(second.added).toEqual([]);
-    expect(second.existing[0]!.status).toBe("pending");
+    const suggestion = {
+      title: "Enforce pnpm in test-runner",
+      class: "rule_ignored",
+      piece: "agent:test-runner",
+      signals: ["failed_command:npm test"],
+    };
+    const firstAdd = await runAddSuggestions({ ...commonOptions(), items: [suggestion] });
+    const secondAdd = await runAddSuggestions({ ...commonOptions(), items: [suggestion] });
+    const id = suggestionId(suggestion);
+    expect(firstAdd.added).toEqual([id]);
+    expect(secondAdd.added).toEqual([]);
+    expect(secondAdd.existing).toEqual([{ id, status: "pending" }]);
 
-    await cmdSuggestionsSet({ ...common(), id: suggestionId(item), status: "rejected", note: "we keep npm in CI" });
-    const r = await cmdAnalyze(common());
-    expect(r.signals.find((s) => s.id === "failed_command:npm test")!.handled).toEqual({ suggestionId: suggestionId(item), status: "rejected" });
-    expect(await cmdSuggestionsList({ ...common(), status: "rejected" })).toHaveLength(1);
+    await runSetSuggestionStatus({ ...commonOptions(), id, status: "rejected", note: "we keep npm in CI" });
+    const analysis = await runAnalyze(commonOptions());
+    expect(signalById(analysis.signals, "failed_command:npm test").handledBy).toEqual({ suggestionId: id, status: "rejected" });
+    expect(await runListSuggestions({ ...commonOptions(), status: "rejected" })).toHaveLength(1);
   });
 
-  it("rejects incomplete suggestions", async () => {
-    await expect(cmdSuggestionsAdd({ ...common(), items: [{ title: "x", class: "y", signals: [] }] })).rejects.toThrow();
+  it("rejects suggestions without signals or with an unknown class", async () => {
+    await expect(runAddSuggestions({ ...commonOptions(), items: [{ title: "x", class: "rule_ignored", signals: [] }] })).rejects.toThrow();
+    await expect(runAddSuggestions({ ...commonOptions(), items: [{ title: "x", class: "other", signals: ["a"] }] })).rejects.toThrow();
   });
 });
 
 describe("compare", () => {
   it("refuses to call a winner with too few sessions", async () => {
-    const r = await cmdCompare({ ...common(), piece: "agent:test-runner", at: "2026-09-12" });
-    expect(r.verdict).toBe("insufficient_data");
-    expect(r.before.sessions).toBe(2);
-    expect(r.after.sessions).toBe(1);
+    const result = await runCompare({ ...commonOptions(), piece: "agent:test-runner", changedAt: "2026-09-12" });
+    expect(result.verdict).toBe("insufficient_data");
+    expect(result.before.sessions).toBe(2);
+    expect(result.after.sessions).toBe(1);
   });
 
-  it("shows improvement when failures stop after the change", async () => {
-    // Five more sessions after the change, where test-runner runs pnpm directly.
-    for (let i = 0; i < 5; i++) {
-      const sid = `n${i}`;
-      const t = new Transcript(sid, f.project, `2026-09-2${i}T10:00:00.000Z`)
-        .user("run the tests")
-        .tool(`task_${sid}`, "Task", { subagent_type: "test-runner", prompt: `go ${sid}` });
-      const sub = new Transcript(sid, f.project, `2026-09-2${i}T10:00:00.000Z`, { sidechain: true, agentId: `x${sid}` })
-        .user(`go ${sid}`)
-        .tool(`b_${sid}`, "Bash", { command: "pnpm test" })
-        .result(`b_${sid}`, "ok");
-      sub.write(join(f.home, "projects", sessionPath(f, sid).split("/projects/")[1]!.replace(".jsonl", ""), "subagents", `agent-x${sid}.jsonl`));
-      t.result(`task_${sid}`, "ok", false, 30, { agentId: `x${sid}` }).write(sessionPath(f, sid));
+  it("shows an improvement when failures stop after the change", async () => {
+    for (let sessionIndex = 0; sessionIndex < 5; sessionIndex++) {
+      writeTestRunnerSession(fixture, `n${sessionIndex}`, `2026-09-2${sessionIndex}T10:00:00.000Z`, "pnpm test", false);
     }
-    // And two more failing sessions before the change.
-    for (const sid of ["o1", "o2"]) {
-      const t = new Transcript(sid, f.project, `2026-09-0${sid === "o1" ? 5 : 6}T10:00:00.000Z`)
-        .user("run the tests")
-        .tool(`task_${sid}`, "Task", { subagent_type: "test-runner", prompt: `old ${sid}` });
-      new Transcript(sid, f.project, `2026-09-05T10:00:00.000Z`, { sidechain: true, agentId: `y${sid}` })
-        .user(`old ${sid}`)
-        .tool(`b_${sid}`, "Bash", { command: "npm test" })
-        .result(`b_${sid}`, "Exit code 1\nnpm ERR! Missing script", true)
-        .tool(`c_${sid}`, "Bash", { command: "pnpm test" })
-        .result(`c_${sid}`, "ok")
-        .write(join(f.home, "projects", sessionPath(f, sid).split("/projects/")[1]!.replace(".jsonl", ""), "subagents", `agent-y${sid}.jsonl`));
-      t.result(`task_${sid}`, "ok", false, 30, { agentId: `y${sid}` }).write(sessionPath(f, sid));
-    }
-    const r = await cmdCompare({ ...common(), piece: "agent:test-runner", at: "2026-09-15" });
-    expect(r.before.sessions).toBe(5);
-    expect(r.after.sessions).toBe(5);
-    expect(r.before.errorRate).toBeGreaterThan(0);
-    expect(r.after.errorRate).toBe(0);
-    expect(r.verdict).toBe("improved");
+    writeTestRunnerSession(fixture, "o1", "2026-09-05T10:00:00.000Z", "npm test", true);
+    writeTestRunnerSession(fixture, "o2", "2026-09-06T10:00:00.000Z", "npm test", true);
+
+    const result = await runCompare({ ...commonOptions(), piece: "agent:test-runner", changedAt: "2026-09-15" });
+    expect(result.before.sessions).toBe(5);
+    expect(result.after.sessions).toBe(5);
+    expect(result.before.errorRate).toBeGreaterThan(0);
+    expect(result.after.errorRate).toBe(0);
+    expect(result.verdict).toBe("improved");
   });
 });
