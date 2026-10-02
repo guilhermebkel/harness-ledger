@@ -24,9 +24,10 @@ export class OccurrenceCollectorService {
   }
 
   /** Counts a value (an error, a recovery command, a file) seen with an occurrence of the group. */
-  count(group: OccurrenceGroup, detail: CountedDetail, value: string): void {
+  /** Adds `amount` (1 by default) to `value`; amounts other than 1 weigh a value, e.g. by tokens. */
+  count(group: OccurrenceGroup, detail: CountedDetail, value: string, amount = 1): void {
     const valueToCount = group.counters[detail] ?? new Map<string, number>();
-    valueToCount.set(value, (valueToCount.get(value) ?? 0) + 1);
+    valueToCount.set(value, (valueToCount.get(value) ?? 0) + amount);
     group.counters[detail] = valueToCount;
   }
 

@@ -622,9 +622,10 @@ var OccurrenceCollectorService = class {
     return group;
   }
   /** Counts a value (an error, a recovery command, a file) seen with an occurrence of the group. */
-  count(group, detail, value) {
+  /** Adds `amount` (1 by default) to `value`; amounts other than 1 weigh a value, e.g. by tokens. */
+  count(group, detail, value, amount = 1) {
     const valueToCount = group.counters[detail] ?? /* @__PURE__ */ new Map();
-    valueToCount.set(value, (valueToCount.get(value) ?? 0) + 1);
+    valueToCount.set(value, (valueToCount.get(value) ?? 0) + amount);
     group.counters[detail] = valueToCount;
   }
   groups() {
@@ -1136,6 +1137,90 @@ var WorkflowDetectorService = class {
   }
 };
 
+// src/Shared/Services/ContextLoadDetectorService.ts
+var TOKENS_PER_THOUSAND = 1e3;
+var LOADING_CATEGORIES = /* @__PURE__ */ new Set(["read", "shell", "search", "mcp", "skill", "other"]);
+var ContextLoadDetectorService = class {
+  constructor(options, collector) {
+    this.options = options;
+    this.collector = collector;
+  }
+  detect(sessions, sessionIdToIndex) {
+    for (const loads of this.heavySources(sessions, sessionIdToIndex)) {
+      for (const { session, call, tokens } of loads.calls) {
+        const title = `${loads.piece} keeps filling its context with the same material`;
+        const group = this.collector.add(`context_heavy:${loads.piece}`, "context_heavy", title, {
+          session,
+          ref: {
+            ...call.ref,
+            excerpt: `${call.summary} \u2192 ~${this.inThousands(tokens)}k tokens`
+          },
+          pieces: [loads.piece],
+          activeMs: 0,
+          // Counted once as input; in practice it is re-read on every later turn of the thread.
+          usage: {
+            input: tokens,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0
+          },
+          model: void 0
+        });
+        this.collector.count(group, "sources", `${loads.source} (\xD7${loads.calls.length})`, tokens);
+      }
+    }
+  }
+  /** Sources over the token threshold that were loaded repeatedly, or that once returned a huge result. */
+  heavySources(sessions, sessionIdToIndex) {
+    const thresholds = this.options.thresholds;
+    const keyToLoads = /* @__PURE__ */ new Map();
+    for (const session of sessions) {
+      const index = sessionIdToIndex.get(session.sessionId);
+      for (const call of session.tools.filter((toolCall) => LOADING_CATEGORIES.has(toolCall.category))) {
+        const tokens = NumberUtil.charsToTokens(call.result?.contentChars ?? 0);
+        if (!tokens || call.result?.isError) {
+          continue;
+        }
+        const piece = index?.toolCallIdToPieces.get(call.id)?.[0] ?? AttributionService.MAIN_PIECE;
+        const source = this.sourceOf(call);
+        const pieceSourceKey = `${piece}\0${source}`;
+        const loads = keyToLoads.get(pieceSourceKey) ?? {
+          pieceSourceKey,
+          piece,
+          source,
+          calls: []
+        };
+        loads.calls.push({
+          session,
+          call,
+          tokens
+        });
+        keyToLoads.set(pieceSourceKey, loads);
+      }
+    }
+    return [...keyToLoads.values()].filter((loads) => {
+      const totalTokens = loads.calls.reduce((total, load) => total + load.tokens, 0);
+      const isRepeated = loads.calls.length >= thresholds.minHeavySourceLoads;
+      const hasHugeResult = loads.calls.some((load) => load.tokens >= thresholds.minHugeResultTokens);
+      return totalTokens >= thresholds.minHeavySourceTokens && (isRepeated || hasHugeResult);
+    });
+  }
+  /**
+   * The material a call loads: a file for reads; for shell, the exact command when it only looks around
+   * (`cat a.ts` and `cat b.ts` are different material), otherwise its key (every `git diff` prints a diff).
+   */
+  sourceOf(call) {
+    if (call.category === "read" && call.filePath) {
+      return call.filePath;
+    }
+    const isExploration = call.category === "shell" && NormalizeUtil.isExplorationCommand(call.key);
+    return isExploration ? call.summary : call.key;
+  }
+  inThousands(tokens) {
+    return NumberUtil.round(tokens / TOKENS_PER_THOUSAND, 1);
+  }
+};
+
 // src/Shared/Services/SignalService.ts
 var MAX_COUNTED_VALUES = 5;
 var MIN_SESSIONS_FOR_FULL_EVIDENCE = 2;
@@ -1163,6 +1248,7 @@ var SignalService = class _SignalService {
     hook_blocked: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     api_error: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     context_compaction: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
+    context_heavy: () => true,
     repeated_workflow: (occurrences, sessions, options) => sessions >= options.thresholds.minWorkflowSessions || occurrences >= options.thresholds.minWorkflowRuns,
     user_correction: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     interruption: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
@@ -1186,6 +1272,7 @@ var SignalService = class _SignalService {
     }
     detector.detectRepeatedRequests(sessions);
     new WorkflowDetectorService(this.options, collector).detect(sessions, sessionIdToIndex);
+    new ContextLoadDetectorService(this.options, collector).detect(sessions, sessionIdToIndex);
     const signals = collector.groups().filter((group) => this.isStrongEnough(group)).map((group) => this.buildSignal(group));
     if (inventory) {
       signals.push(...this.unusedPieceSignals(sessions, inventory), ...this.largePieceSignals(inventory));
@@ -2864,7 +2951,7 @@ var HUMAN_ORIGIN = "human";
 var SYNTHETIC_MODEL = "<synthetic>";
 var MODEL_IN_ERROR = /\bmodel \(([^)\s]{1,80})\)/i;
 var UNKNOWN_API_ERROR = "unknown";
-var TOKENS_PER_THOUSAND = 1e3;
+var TOKENS_PER_THOUSAND2 = 1e3;
 var VALID_TOOL_NAME = /^[\w.:-]{1,100}$/;
 var MALFORMED_TOOL_NAME = "(malformed tool name)";
 var ClaudeCodeSessionService = class {
@@ -3264,7 +3351,7 @@ var ClaudeCodeSessionService = class {
     const metadata = GuardUtil.asRecord(line.record.compactMetadata);
     const trigger = metadata?.trigger === "manual" ? "manual" : "auto";
     const contextTokens = GuardUtil.asNumber(metadata?.preTokens);
-    const tokensText = contextTokens === void 0 ? "" : ` at ~${Math.round(contextTokens / TOKENS_PER_THOUSAND)}k tokens`;
+    const tokensText = contextTokens === void 0 ? "" : ` at ~${Math.round(contextTokens / TOKENS_PER_THOUSAND2)}k tokens`;
     context.facts.compactions.push({
       trigger,
       contextTokens,
@@ -3540,6 +3627,9 @@ var ConfigService = class _ConfigService {
       minRepeatedRequestSessions: 3,
       minWorkflowSessions: 4,
       minWorkflowRuns: 6,
+      minHeavySourceTokens: 5e4,
+      minHeavySourceLoads: 3,
+      minHugeResultTokens: 2e4,
       minWorkflowSteps: 3,
       repeatedRequestSimilarity: 0.5
     }

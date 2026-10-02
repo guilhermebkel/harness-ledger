@@ -1,7 +1,7 @@
 // Integration test: runs the command end to end against a fake Claude Code home, the only
 // provider today. Shared logic is exercised through a real provider on purpose.
 
-import { rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ClaudeCodeFixtureUtil, ClaudeCodeTranscriptBuilder, type Fixture } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.js";
@@ -312,5 +312,65 @@ describe("AnalyzeCommand on work that could be a skill, a script or a subagent",
     const serialized = JSON.stringify(await analyzeWorkflows());
     expect(serialized).toContain("(malformed tool name)");
     expect(serialized).not.toContain("getAll");
+  });
+});
+
+describe("AnalyzeCommand on pieces that keep filling their context", () => {
+  let contextFixture: Fixture;
+  let restoreContextEnv: () => void;
+
+  beforeAll(() => {
+    restoreEnv();
+    contextFixture = ClaudeCodeFixtureUtil.makeFixture();
+    // Low thresholds so a small fixture shows the pattern: 1 token is about 4 characters.
+    mkdirSync(contextFixture.dataDir, { recursive: true });
+    writeFileSync(join(contextFixture.dataDir, "config.json"), JSON.stringify({
+      signalThresholds: { minHeavySourceTokens: 5000, minHeavySourceLoads: 3, minHugeResultTokens: 4000 },
+    }));
+    const guide = join(contextFixture.projectDir, "docs/guide.md");
+    for (const sessionId of ["c1", "c2"]) {
+      const agentId = `r${sessionId}`;
+      const reviewer = new ClaudeCodeTranscriptBuilder(sessionId, contextFixture.projectDir, `2026-09-2${sessionId.at(-1)}T10:00:00.000Z`, {
+        isSidechain: true,
+        agentId,
+      }).user(`Review ${sessionId}`);
+      for (let read = 0; read < 2; read++) {
+        reviewer.tool(`g${read}_${sessionId}`, "Read", { file_path: guide }).result(`g${read}_${sessionId}`, "x".repeat(8000));
+      }
+      reviewer
+        .tool(`a_${sessionId}`, "Bash", { command: "cat src/a.ts" }).result(`a_${sessionId}`, "a".repeat(12000))
+        .tool(`b_${sessionId}`, "Bash", { command: "cat src/b.ts" }).result(`b_${sessionId}`, "b".repeat(12000))
+        .tool(`l_${sessionId}`, "Bash", { command: "npm run build" }).result(`l_${sessionId}`, "log ".repeat(4500))
+        .write(ClaudeCodeFixtureUtil.subagentPath(contextFixture, sessionId, agentId));
+      new ClaudeCodeTranscriptBuilder(sessionId, contextFixture.projectDir, `2026-09-2${sessionId.at(-1)}T10:00:00.000Z`)
+        .user("Review the change")
+        .tool(`t_${sessionId}`, "Task", { subagent_type: "reviewer", prompt: `Review ${sessionId}` })
+        .result(`t_${sessionId}`, "Looks good.", { secondsLater: 60, toolUseResult: { agentId } })
+        .write(ClaudeCodeFixtureUtil.sessionPath(contextFixture, sessionId));
+    }
+    restoreContextEnv = ClaudeCodeFixtureUtil.useFixtureEnv(contextFixture);
+  });
+
+  afterAll(() => {
+    restoreContextEnv();
+    restoreEnv = ClaudeCodeFixtureUtil.useFixtureEnv(fixture);
+    rmSync(contextFixture.root, { recursive: true, force: true });
+  });
+
+  it("names the files loaded again and again and the huge outputs, per piece, with their tokens", async () => {
+    const analysis = await command.run({ projectDir: contextFixture.projectDir, dataDir: contextFixture.dataDir });
+    const heavy = signalById(analysis.signals, "context_heavy:agent:reviewer (built-in)");
+    expect(heavy).toMatchObject({ sessions: 2, pieces: ["agent:reviewer (built-in)"] });
+    expect(heavy.details.sources).toEqual([
+      { value: "npm run build (×2)", count: 9000 },
+      { value: "docs/guide.md (×4)", count: 8000 },
+    ]);
+    expect(heavy.cost.tokens).toBe(17000);
+  });
+
+  it("doesn't take different files read with the same command as the same material", async () => {
+    const analysis = await command.run({ projectDir: contextFixture.projectDir, dataDir: contextFixture.dataDir });
+    const heavy = signalById(analysis.signals, "context_heavy:agent:reviewer (built-in)");
+    expect(heavy.details.sources?.some((source) => source.value.startsWith("cat"))).toBe(false);
   });
 });

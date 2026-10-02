@@ -29,6 +29,12 @@ export interface SignalThresholds {
   minWorkflowSessions: number;
   /** ...or runs of it within long sessions, however few the sessions. */
   minWorkflowRuns: number;
+  /** Tokens one source (a file, a command) must add to one piece's context, over the period, to count as heavy. */
+  minHeavySourceTokens: number;
+  /** ...and how many times it must be loaded, unless a single load is huge (see the next threshold). */
+  minHeavySourceLoads: number;
+  /** One result this large counts on its own, e.g. a command printing a whole log. */
+  minHugeResultTokens: number;
   /** Shortest sequence of distinct commands that counts as a workflow. */
   minWorkflowSteps: number;
   /** Word-set similarity (0–1) for two requests to count as the same request. */

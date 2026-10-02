@@ -26,6 +26,7 @@ import { CostService } from "./CostService.js";
 import { OccurrenceCollectorService } from "./OccurrenceCollectorService.js";
 import { SignalDetectorService } from "./SignalDetectorService.js";
 import { WorkflowDetectorService } from "./WorkflowDetectorService.js";
+import { ContextLoadDetectorService } from "./ContextLoadDetectorService.js";
 
 const MAX_COUNTED_VALUES = 5;
 /** Evidence from fewer sessions than this is marked partial (re-reads within one session are still meaningful). */
@@ -65,6 +66,7 @@ export class SignalService {
     hook_blocked: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     api_error: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
     context_compaction: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
+    context_heavy: () => true,
     repeated_workflow: (occurrences, sessions, options) =>
       sessions >= options.thresholds.minWorkflowSessions || occurrences >= options.thresholds.minWorkflowRuns,
     user_correction: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
@@ -95,6 +97,7 @@ export class SignalService {
     }
     detector.detectRepeatedRequests(sessions);
     new WorkflowDetectorService(this.options, collector).detect(sessions, sessionIdToIndex);
+    new ContextLoadDetectorService(this.options, collector).detect(sessions, sessionIdToIndex);
 
     const signals = collector
       .groups()

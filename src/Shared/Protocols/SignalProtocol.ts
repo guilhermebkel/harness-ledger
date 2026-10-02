@@ -10,6 +10,7 @@ export type SignalType
     | "api_error"
     | "context_compaction"
     | "repeated_workflow"
+    | "context_heavy"
     | "repeated_read"
     | "subagent_reread"
     | "repeated_request"
@@ -46,6 +47,8 @@ export interface SignalDetails {
   /** tool_error */
   tool?: string;
   error?: string;
+  /** context_heavy: what filled the context ("source (×loads)"), with the approximate tokens it added. */
+  sources?: CountedValue[];
   /** repeated_workflow: the commands, in order. */
   steps?: string[];
   /** context_compaction: the largest context seen right before compacting. */
@@ -61,7 +64,7 @@ export interface SignalDetails {
   isLoadedEveryTurn?: boolean;
 }
 
-export type CountedDetail = "errors" | "recoveredWith" | "files" | "models";
+export type CountedDetail = "errors" | "recoveredWith" | "files" | "models" | "sources";
 
 export interface SignalCost {
   activeMinutes: number;
