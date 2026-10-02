@@ -47,11 +47,14 @@ export interface ToolStepOptions {
   model?: string;
   /** Extra fields on the assistant lines, e.g. `attributionSkill`. */
   lineFields?: Record<string, unknown>;
+  /** Replaces the default output tokens of the step. */
+  outputTokens?: number;
 }
 
 export interface TestRunOptions {
   commandSeconds?: number;
   model?: string;
+  outputTokens?: number;
 }
 
 export interface ResultOptions {
@@ -103,7 +106,9 @@ export class ClaudeCodeTranscriptBuilder {
   tool(id: string, name: string, input: Record<string, unknown>, stepOptions: ToolStepOptions = {}): this {
     const messageId = `msg_${id}`;
     const model = stepOptions.model ?? DEFAULT_MODEL;
-    const message = { id: messageId, role: "assistant", model, usage: DEFAULT_TOOL_USAGE };
+    const outputTokens = stepOptions.outputTokens ?? DEFAULT_TOOL_USAGE.output_tokens;
+    const usage = { ...DEFAULT_TOOL_USAGE, output_tokens: outputTokens };
+    const message = { id: messageId, role: "assistant", model, usage };
     this.lines.push({
       ...this.lineBase("assistant", stepOptions.secondsLater ?? 3),
       ...stepOptions.lineFields,
@@ -382,7 +387,7 @@ export class ClaudeCodeFixtureUtil {
     const subagentOptions = { isSidechain: true, agentId };
     const subagent = new ClaudeCodeTranscriptBuilder(sessionId, fixture.projectDir, startedAt, subagentOptions)
       .user(delegationPrompt)
-      .tool(`b_${sessionId}`, "Bash", { command }, { model: runOptions.model });
+      .tool(`b_${sessionId}`, "Bash", { command }, { model: runOptions.model, outputTokens: runOptions.outputTokens });
     if (isFailing) {
       subagent
         .result(`b_${sessionId}`, "Exit code 1\nnpm ERR! Missing script", { isError: true })

@@ -37,6 +37,9 @@ export class CompareService {
     mcp: (session, name) => session.tools.some((call) => call.category === "mcp" && call.key === `mcp:${name}`),
   };
 
+  /** Already priced into usdPerInvocation, so they inform the report but don't vote in the verdict. */
+  private static readonly TOKEN_METRICS = new Set<ComparedMetric>(["inputTokensPerInvocation", "outputTokensPerInvocation"]);
+
   constructor(
     private readonly config: Config,
     private readonly idleMs: number,
@@ -83,6 +86,11 @@ export class CompareService {
           after.perInvocation?.activeMinutes,
         ),
         tokensPerInvocation: this.difference(before.perInvocation?.tokens, after.perInvocation?.tokens),
+        inputTokensPerInvocation: this.difference(before.perInvocation?.inputTokens, after.perInvocation?.inputTokens),
+        outputTokensPerInvocation: this.difference(
+          before.perInvocation?.outputTokens,
+          after.perInvocation?.outputTokens,
+        ),
         usdPerInvocation: this.difference(before.perInvocation?.usd, after.perInvocation?.usd),
       },
       caveats,
@@ -99,6 +107,8 @@ export class CompareService {
       correctionsPerSession: [before.correctionsPerSession, after.correctionsPerSession],
       activeMinutesPerInvocation: [before.perInvocation?.activeMinutes, after.perInvocation?.activeMinutes],
       usdPerInvocation: [before.perInvocation?.usd, after.perInvocation?.usd],
+      inputTokensPerInvocation: [before.perInvocation?.inputTokens, after.perInvocation?.inputTokens],
+      outputTokensPerInvocation: [before.perInvocation?.outputTokens, after.perInvocation?.outputTokens],
     };
     return (Object.entries(metricToValues) as [ComparedMetric, [number | undefined, number | undefined]][])
       .map(([metric, [beforeValue, afterValue]]): MetricMove => {
@@ -107,12 +117,14 @@ export class CompareService {
           metric,
           relativeChange: NumberUtil.round(relativeChange, RELATIVE_CHANGE_DIGITS),
           direction: relativeChange < 0 ? "better" : "worse",
+          isInVerdict: !CompareService.TOKEN_METRICS.has(metric),
         };
       })
       .filter((move) => Math.abs(move.relativeChange) >= this.config.minRelativeChange);
   }
 
-  private verdictOf(moves: MetricMove[]): CompareVerdict {
+  private verdictOf(allMoves: MetricMove[]): CompareVerdict {
+    const moves = allMoves.filter((move) => move.isInVerdict);
     if (!moves.length) {
       return "no_clear_change";
     }

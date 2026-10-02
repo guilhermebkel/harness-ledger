@@ -45,6 +45,9 @@ export interface LoadOptions extends Period {
 export interface PerInvocation {
   activeMinutes: number;
   tokens: number;
+  /** Everything the model read: new input plus cache reads and writes. */
+  inputTokens: number;
+  outputTokens: number;
   usd: number;
   toolCalls: number;
 }
@@ -161,7 +164,13 @@ export interface SideMetrics {
 /** `mixed`: some metrics got better and others worse, e.g. faster but more expensive. */
 export type CompareVerdict = "insufficient_data" | "improved" | "worse" | "mixed" | "no_clear_change";
 
-export type ComparedMetric = "errorRate" | "correctionsPerSession" | "activeMinutesPerInvocation" | "usdPerInvocation";
+export type ComparedMetric
+  = | "errorRate"
+    | "correctionsPerSession"
+    | "activeMinutesPerInvocation"
+    | "usdPerInvocation"
+    | "inputTokensPerInvocation"
+    | "outputTokensPerInvocation";
 
 /** A metric that moved by at least `minRelativeChange`. Lower is better for every compared metric. */
 export interface MetricMove {
@@ -169,6 +178,8 @@ export interface MetricMove {
   /** (after - before) / before, e.g. -0.4 is 40% lower. */
   relativeChange: number;
   direction: "better" | "worse";
+  /** Token moves are reported but left out of the verdict: their cost is already in `usdPerInvocation`. */
+  isInVerdict: boolean;
 }
 
 export interface CompareDeltas {
@@ -176,6 +187,8 @@ export interface CompareDeltas {
   correctionsPerSession: number | null;
   activeMinutesPerInvocation: number | null;
   tokensPerInvocation: number | null;
+  inputTokensPerInvocation: number | null;
+  outputTokensPerInvocation: number | null;
   usdPerInvocation: number | null;
 }
 

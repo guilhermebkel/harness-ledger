@@ -1220,11 +1220,16 @@ var UsageService = class {
       pieceUsage.perInvocation = {
         activeMinutes: TimeUtil.msToMinutes(totals.activeMs / totals.invocations),
         tokens: Math.round(tokens / totals.invocations),
+        inputTokens: Math.round(this.inputTokensOf(totals.usage) / totals.invocations),
+        outputTokens: Math.round(totals.usage.output / totals.invocations),
         usd: NumberUtil.round(totals.usd / totals.invocations, PER_INVOCATION_USD_DIGITS),
         toolCalls: NumberUtil.round(totals.toolCalls / totals.invocations, 1)
       };
     }
     return pieceUsage;
+  }
+  inputTokensOf(usage) {
+    return usage.input + usage.cacheRead + usage.cacheWrite;
   }
 };
 
@@ -1245,6 +1250,8 @@ var CompareService = class _CompareService {
     command: (session, name) => session.prompts.some((prompt) => prompt.command === name),
     mcp: (session, name) => session.tools.some((call) => call.category === "mcp" && call.key === `mcp:${name}`)
   };
+  /** Already priced into usdPerInvocation, so they inform the report but don't vote in the verdict. */
+  static TOKEN_METRICS = /* @__PURE__ */ new Set(["inputTokensPerInvocation", "outputTokensPerInvocation"]);
   static usesPiece(session, piece) {
     const [kind = "", ...nameParts] = piece.split(":");
     const usageCheck = _CompareService.PIECE_KIND_TO_USAGE_CHECK[kind];
@@ -1284,6 +1291,11 @@ var CompareService = class _CompareService {
           after.perInvocation?.activeMinutes
         ),
         tokensPerInvocation: this.difference(before.perInvocation?.tokens, after.perInvocation?.tokens),
+        inputTokensPerInvocation: this.difference(before.perInvocation?.inputTokens, after.perInvocation?.inputTokens),
+        outputTokensPerInvocation: this.difference(
+          before.perInvocation?.outputTokens,
+          after.perInvocation?.outputTokens
+        ),
         usdPerInvocation: this.difference(before.perInvocation?.usd, after.perInvocation?.usd)
       },
       caveats
@@ -1298,18 +1310,22 @@ var CompareService = class _CompareService {
       errorRate: [before.errorRate, after.errorRate],
       correctionsPerSession: [before.correctionsPerSession, after.correctionsPerSession],
       activeMinutesPerInvocation: [before.perInvocation?.activeMinutes, after.perInvocation?.activeMinutes],
-      usdPerInvocation: [before.perInvocation?.usd, after.perInvocation?.usd]
+      usdPerInvocation: [before.perInvocation?.usd, after.perInvocation?.usd],
+      inputTokensPerInvocation: [before.perInvocation?.inputTokens, after.perInvocation?.inputTokens],
+      outputTokensPerInvocation: [before.perInvocation?.outputTokens, after.perInvocation?.outputTokens]
     };
     return Object.entries(metricToValues).map(([metric, [beforeValue, afterValue]]) => {
       const relativeChange = this.relativeChange(beforeValue, afterValue);
       return {
         metric,
         relativeChange: NumberUtil.round(relativeChange, RELATIVE_CHANGE_DIGITS),
-        direction: relativeChange < 0 ? "better" : "worse"
+        direction: relativeChange < 0 ? "better" : "worse",
+        isInVerdict: !_CompareService.TOKEN_METRICS.has(metric)
       };
     }).filter((move) => Math.abs(move.relativeChange) >= this.config.minRelativeChange);
   }
-  verdictOf(moves) {
+  verdictOf(allMoves) {
+    const moves = allMoves.filter((move) => move.isInVerdict);
     if (!moves.length) {
       return "no_clear_change";
     }

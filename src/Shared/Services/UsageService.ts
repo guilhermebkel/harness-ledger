@@ -132,10 +132,16 @@ export class UsageService {
       pieceUsage.perInvocation = {
         activeMinutes: TimeUtil.msToMinutes(totals.activeMs / totals.invocations),
         tokens: Math.round(tokens / totals.invocations),
+        inputTokens: Math.round(this.inputTokensOf(totals.usage) / totals.invocations),
+        outputTokens: Math.round(totals.usage.output / totals.invocations),
         usd: NumberUtil.round(totals.usd / totals.invocations, PER_INVOCATION_USD_DIGITS),
         toolCalls: NumberUtil.round(totals.toolCalls / totals.invocations, 1),
       };
     }
     return pieceUsage;
+  }
+
+  private inputTokensOf(usage: TokenUsage): number {
+    return usage.input + usage.cacheRead + usage.cacheWrite;
   }
 }

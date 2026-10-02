@@ -68,10 +68,11 @@ If `.imh/` is not in `.gitignore` and the project is a git repo, ask once whethe
 
 1. Find the piece id (`inventory` if needed) and when it changed: an applied suggestion, the date the user gives (`--at`), or the piece's last change (git commit, else file mtime). The script picks this automatically; say which source it used.
 2. Run `compare --piece <id>`.
-3. Report before vs. after: sessions, error rate, corrections per session, time/tokens/cost per use, and the signals on each side. Use the script's `verdict`:
+3. Report before vs. after: sessions, error rate, corrections per session, time, input and output tokens, and cost per use, and the signals on each side. Use the script's `verdict`:
    - `insufficient_data`: say how many sessions each side has and that it needs `minSessions` per side. Don't conclude anything.
    - `improved` / `worse` / `mixed` / `no_clear_change`: say it, and always add that this is an observational comparison of different tasks, not a controlled test.
    - Describe the verdict with `moves`, the metrics that changed: time per use counts as much as cost, so "same cost, 40% faster" is an improvement. For `mixed`, name the trade-off ("40% faster, 30% more expensive") and let the user weigh it.
+   - Moves with `isInVerdict: false` are input and output tokens per use. Report them ("30% fewer output tokens"), but they don't decide the verdict: their cost is already in `usdPerInvocation`.
 
 ## Flow 4: manage suggestions
 

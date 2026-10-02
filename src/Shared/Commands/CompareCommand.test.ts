@@ -97,10 +97,21 @@ describe("CompareCommand counts time as much as cost", () => {
     const result = await compareAt("2026-09-08");
     expect(result.verdict).toBe("improved");
     expect(result.moves).toEqual([
-      { metric: "activeMinutesPerInvocation", relativeChange: expect.any(Number) as number, direction: "better" },
+      {
+        metric: "activeMinutesPerInvocation",
+        relativeChange: expect.any(Number) as number,
+        direction: "better",
+        isInVerdict: true,
+      },
     ]);
     expect(result.moves[0]?.relativeChange).toBeLessThan(-0.5);
     expect(result.deltas.usdPerInvocation).toBe(0);
+  });
+
+  it("reports input and output tokens per use without letting them vote twice", async () => {
+    const result = await compareAt("2026-09-08");
+    expect(result.before.perInvocation).toMatchObject({ inputTokens: 1100, outputTokens: 50 });
+    expect(result.deltas).toMatchObject({ inputTokensPerInvocation: 0, outputTokensPerInvocation: 0 });
   });
 
   it("calls faster but more expensive a mixed result", async () => {
@@ -110,5 +121,46 @@ describe("CompareCommand counts time as much as cost", () => {
     const metricToDirection = Object.fromEntries(result.moves.map((move) => [move.metric, move.direction]));
     // Before the change: the slow and the fast sessions; after: fast, on a pricier model.
     expect(metricToDirection).toEqual({ activeMinutesPerInvocation: "better", usdPerInvocation: "worse" });
+  });
+});
+
+describe("CompareCommand with fewer output tokens", () => {
+  let tokenFixture: Fixture;
+  let restoreTokenEnv: () => void;
+
+  beforeAll(() => {
+    restoreEnv();
+    tokenFixture = ClaudeCodeFixtureUtil.makeFixture();
+    ClaudeCodeFixtureUtil.writeHarness(tokenFixture);
+    for (let sessionIndex = 0; sessionIndex < 5; sessionIndex++) {
+      const day = (offset: number): string => `2026-09-${String(offset + sessionIndex).padStart(2, "0")}T10:00:00.000Z`;
+      ClaudeCodeFixtureUtil.writeTestRunnerSession(tokenFixture, `v${sessionIndex}`, day(1), "pnpm test", false, {
+        outputTokens: 400,
+      });
+      ClaudeCodeFixtureUtil.writeTestRunnerSession(tokenFixture, `t${sessionIndex}`, day(10), "pnpm test", false, {
+        outputTokens: 100,
+      });
+    }
+    restoreTokenEnv = ClaudeCodeFixtureUtil.useFixtureEnv(tokenFixture);
+  });
+
+  afterAll(() => {
+    restoreTokenEnv();
+    restoreEnv = ClaudeCodeFixtureUtil.useFixtureEnv(fixture);
+    rmSync(tokenFixture.root, { recursive: true, force: true });
+  });
+
+  it("shows the token move, while the verdict comes from the cost it causes", async () => {
+    const result = await command.run({
+      projectDir: tokenFixture.projectDir,
+      dataDir: tokenFixture.dataDir,
+      piece: "agent:test-runner",
+      changedAt: "2026-09-08",
+    });
+    expect(result.verdict).toBe("improved");
+    const metricToMove = Object.fromEntries(result.moves.map((move) => [move.metric, move]));
+    expect(metricToMove.outputTokensPerInvocation).toMatchObject({ direction: "better", isInVerdict: false });
+    expect(metricToMove.usdPerInvocation).toMatchObject({ direction: "better", isInVerdict: true });
+    expect(result.deltas.outputTokensPerInvocation).toBe(-300);
   });
 });
