@@ -16,6 +16,7 @@ import type {
   ThreadRef,
   TokenUsage,
   ToolCall,
+  ToolCategory,
   ToolResultKind,
 } from "@/Shared/Protocols/SessionProtocol.js";
 import type { UnknownRecord } from "@/Shared/Protocols/UtilProtocol.js";
@@ -49,6 +50,7 @@ const READ_TOOLS = new Set(["Read", "NotebookRead"]);
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 const SEARCH_TOOLS = new Set(["Grep", "Glob", "WebSearch", "WebFetch", "ToolSearch"]);
 const DELEGATION_TOOLS = new Set(["Task", "Agent"]);
+const PLAN_TOOLS = new Set(["ExitPlanMode", "EnterPlanMode"]);
 const HUMAN_ORIGIN = "human";
 /** Claude Code writes API errors and "no response" notices as assistant messages from this pseudo-model. */
 const SYNTHETIC_MODEL = "<synthetic>";
@@ -697,9 +699,16 @@ export class ClaudeCodeSessionService {
     const detail = GuardUtil.firstString(input, ["pattern", "url", "query"]);
     return {
       key: name,
-      category: SEARCH_TOOLS.has(name) ? "search" : "other",
+      category: this.categoryOf(name),
       summary: detail === undefined ? name : `${name} ${detail}`,
     };
+  }
+
+  private categoryOf(name: string): ToolCategory {
+    if (SEARCH_TOOLS.has(name)) {
+      return "search";
+    }
+    return PLAN_TOOLS.has(name) ? "plan" : "other";
   }
 
   private toProjectRelative(filePath: string, projectDir?: string): string {

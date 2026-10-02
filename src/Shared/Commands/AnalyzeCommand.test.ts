@@ -133,6 +133,14 @@ describe("AnalyzeCommand on cases seen in real sessions", () => {
     return command.run({ projectDir: realFixture.projectDir, dataDir: realFixture.dataDir });
   }
 
+  it("profiles the work by stage, with rejected plans as planning failures", async () => {
+    const analysis = await analyzeReal();
+    const stageToProfile = new Map(analysis.process.map((profile) => [profile.stage, profile]));
+    expect(analysis.process.map((profile) => profile.stage)).toEqual(["setup", "planning", "exploration"]);
+    expect(stageToProfile.get("planning")).toMatchObject({ sessions: 2, steps: 2, failures: 2 });
+    expect(stageToProfile.get("setup")?.commands).toEqual(["git stash"]);
+  });
+
   it("counts rejected plans and queued pushback as corrections, not permission problems", async () => {
     const analysis = await analyzeReal();
     expect(analysis.signals.some((signal) => signal.id === "permission_denied:ExitPlanMode")).toBe(false);
@@ -244,6 +252,14 @@ describe("AnalyzeCommand on work that could be a skill, a script or a subagent",
     expect(workflows).toHaveLength(1);
     expect(workflows[0]).toMatchObject({ sessions: 4, pieces: ["main"] });
     expect(workflows[0]?.details.steps).toEqual(["git status", "git add", "npx tsc", "git commit", "git push"]);
+  });
+
+  it("puts validation and delivery commands in their stages", async () => {
+    const analysis = await analyzeWorkflows();
+    const stageToCommands = new Map(analysis.process.map((profile) => [profile.stage, profile.commands]));
+    expect(stageToCommands.get("validation")).toEqual(["npx tsc"]);
+    expect(stageToCommands.get("delivery")).toEqual(expect.arrayContaining(["git commit", "git push"]));
+    expect(stageToCommands.get("exploration")).toEqual([]);
   });
 
   it("lists the work commands the project runs, with a real example, for a first CLAUDE.md", async () => {

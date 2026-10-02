@@ -5,6 +5,12 @@ const EXPLORATION_PROGRAMS = new Set([
   "ls", "cat", "find", "grep", "rg", "sed", "head", "tail", "wc", "echo", "pwd", "tree", "which", "sort", "awk",
   "cut", "jq", "file", "stat", "du", "diff", "true", "sleep", "less", "printf", "date", "env", "type",
 ]);
+/** Commands that check the work: tests, linters, type checks, builds. */
+const VALIDATION_COMMAND = /\b(test|tests|jest|vitest|mocha|pytest|rspec|phpunit|lint|eslint|prettier|ruff|flake8|mypy|tsc|typecheck|check|build|clippy|vet)\b/;
+/** Commands that hand the work over: commits, pushes, pull or merge requests, deploys. */
+const DELIVERY_COMMAND = /^(git (commit|push|tag)|gh pr|gh release|glab mr|vercel|netlify|fly deploy|kubectl apply)\b/;
+/** Commands that get the workspace ready: branches, worktrees, pulls, installs. */
+const SETUP_COMMAND = /^(git (checkout|switch|pull|fetch|worktree|branch|clone|stash|rebase)|npm (install|ci)|pnpm install|yarn install|pip install|uv sync|bundle install|docker compose up)\b/;
 /** Words that run the next word as the command, including shell keywords (`do pnpm test`, `then make`). */
 const COMMAND_WRAPPERS = new Set(["sudo", "time", "nohup", "env", "command", "exec", "timeout", "do", "then", "else"]);
 /** Segments that set up the shell rather than do the work: navigation, variables and loop or condition headers. */
@@ -96,6 +102,20 @@ export class NormalizeUtil {
       }
     }
     return RedactUtil.redact(keyParts.join(" "));
+  }
+
+  /** The stage of work a shell command belongs to, from its grouping key; undefined when it says nothing. */
+  static commandStage(commandKey: string): "setup" | "exploration" | "validation" | "delivery" | undefined {
+    if (NormalizeUtil.isExplorationCommand(commandKey)) {
+      return "exploration";
+    }
+    if (DELIVERY_COMMAND.test(commandKey)) {
+      return "delivery";
+    }
+    if (SETUP_COMMAND.test(commandKey)) {
+      return "setup";
+    }
+    return VALIDATION_COMMAND.test(commandKey) ? "validation" : undefined;
   }
 
   /** True for a command key whose program only reads or prints (`ls`, `cat`, `grep`). */

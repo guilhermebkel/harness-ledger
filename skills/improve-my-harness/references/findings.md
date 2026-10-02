@@ -47,13 +47,20 @@ These are starting points, not rules; read the piece and what it loads (skill fi
 
 ## Starting a harness
 
-When the project has no instruction file, the person has been repeating context by hand in every session. Besides the findings above, propose one suggestion: a first `CLAUDE.md` (class Missing instruction, piece `instructions:project`), drafted only from evidence:
+When the project has no instruction file, the person has been repeating context by hand in every session. Propose the harness in the order of their work, using `process` (stages in order, with sessions, steps, failures and commands):
 
-- **Commands** from `commonCommands`: the ones run in several sessions, written as in `example`, including the setup they needed (a version manager, an env var, a timeout). A command that keeps failing is not one to recommend.
-- **Corrections** the person made more than once, as rules (the excerpts of `user_correction` and rejected plans hold their words).
-- **Conventions** they stated while correcting ("follow the repo's pattern for X").
+1. **A first `CLAUDE.md`** (class Missing instruction, piece `instructions:project`), drafted only from evidence:
+   - **Commands** from `commonCommands`: the ones run in several sessions, written as in `example`, including the setup they needed (a version manager, an env var, a timeout). A command that keeps failing is not one to recommend.
+   - **Corrections** the person made more than once, as rules (the excerpts of `user_correction` and rejected plans hold their words).
+   - **Conventions** they stated while correcting ("follow the repo's pattern for X").
+   - Keep it under 30 lines and cite the evidence for each line. Don't describe the architecture or invent conventions the sessions don't show.
+2. **One piece per stage that needs it**, in stage order (setup, planning, exploration, implementation, validation, delivery), at most one per stage and only where the evidence points to a problem: many steps, failures or rejections, a `repeated_workflow`, `context_compaction`, or repeated corrections about that stage. Skip stages that go smoothly.
+3. **Deterministic first.** Split each stage into what always runs the same way and what needs judgment. The fixed part becomes a script or a hook (validation after edits is a `PostToolUse` hook, a branch setup or a PR is a script); only the judgment part becomes a skill or subagent (planning, review). Rule 7 applies.
+4. **Reuse before writing.** For each piece, check `references/community-skills.md` for a skill to adopt or learn from, and say which. Never install one yourself.
 
-Keep it short (under 30 lines) and cite the evidence for each line in the report. Don't describe the architecture or invent conventions the sessions don't show. Repeated workflows and long sessions still become skills, commands, scripts or subagents as usual; with no harness, draft them in full.
+Draft new pieces in full, keep the list short (the 7-suggestion limit applies), and order it by stage, then by estimated cost.
+
+In a project that already has a harness, a stage with many failures or rejections and no pieces in `process[].pieces` is also worth one suggestion, built the same way.
 
 ## Report format
 

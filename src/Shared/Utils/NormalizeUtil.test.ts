@@ -63,3 +63,19 @@ describe("keys for cases seen in real sessions", () => {
     expect(NormalizeUtil.errorKey("npm WARN deprecated x@1.0.0\nnpm ERR! code E404")).toBe("npm ERR! code E404");
   });
 });
+
+describe("commandStage", () => {
+  it.each([
+    ["npm run test", "validation"],
+    ["npx tsc", "validation"],
+    ["pnpm lint", "validation"],
+    ["git push", "delivery"],
+    ["gh pr", "delivery"],
+    ["git checkout", "setup"],
+    ["pnpm install", "setup"],
+    ["grep", "exploration"],
+    ["python3 report.py", undefined],
+  ])("%s → %s", (commandKey, expectedStage) => {
+    expect(NormalizeUtil.commandStage(commandKey)).toBe(expectedStage);
+  });
+});

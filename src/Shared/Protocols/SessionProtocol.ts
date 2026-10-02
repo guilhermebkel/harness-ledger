@@ -46,7 +46,8 @@ export interface ToolResult {
  * What a tool does, independent of the provider's tool names. Shared code branches on this,
  * never on a tool's name.
  */
-export type ToolCategory = "shell" | "read" | "edit" | "search" | "delegation" | "skill" | "mcp" | "other";
+/** `plan`: the agent proposes a plan for approval (plan mode). */
+export type ToolCategory = "shell" | "read" | "edit" | "search" | "plan" | "delegation" | "skill" | "mcp" | "other";
 
 export interface ToolCall {
   id: string;

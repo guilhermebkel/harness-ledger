@@ -123,6 +123,9 @@ var EXPLORATION_PROGRAMS = /* @__PURE__ */ new Set([
   "env",
   "type"
 ]);
+var VALIDATION_COMMAND = /\b(test|tests|jest|vitest|mocha|pytest|rspec|phpunit|lint|eslint|prettier|ruff|flake8|mypy|tsc|typecheck|check|build|clippy|vet)\b/;
+var DELIVERY_COMMAND = /^(git (commit|push|tag)|gh pr|gh release|glab mr|vercel|netlify|fly deploy|kubectl apply)\b/;
+var SETUP_COMMAND = /^(git (checkout|switch|pull|fetch|worktree|branch|clone|stash|rebase)|npm (install|ci)|pnpm install|yarn install|pip install|uv sync|bundle install|docker compose up)\b/;
 var COMMAND_WRAPPERS = /* @__PURE__ */ new Set(["sudo", "time", "nohup", "env", "command", "exec", "timeout", "do", "then", "else"]);
 var NAVIGATION_COMMAND = /^(cd|pushd|popd|export|source|\.|set|for|while|until|if|elif|done|fi|esac|nvm use|conda activate|pyenv shell)\b/;
 var ENV_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
@@ -221,6 +224,19 @@ var NormalizeUtil = class _NormalizeUtil {
       }
     }
     return RedactUtil.redact(keyParts.join(" "));
+  }
+  /** The stage of work a shell command belongs to, from its grouping key; undefined when it says nothing. */
+  static commandStage(commandKey) {
+    if (_NormalizeUtil.isExplorationCommand(commandKey)) {
+      return "exploration";
+    }
+    if (DELIVERY_COMMAND.test(commandKey)) {
+      return "delivery";
+    }
+    if (SETUP_COMMAND.test(commandKey)) {
+      return "setup";
+    }
+    return VALIDATION_COMMAND.test(commandKey) ? "validation" : void 0;
   }
   /** True for a command key whose program only reads or prints (`ls`, `cat`, `grep`). */
   static isExplorationCommand(commandKey) {
@@ -1724,6 +1740,79 @@ var MentionService = class {
   }
 };
 
+// src/Shared/Services/ProcessProfileService.ts
+var MAX_STAGE_COMMANDS = 5;
+var MAX_STAGE_PIECES = 5;
+var STAGES_WITH_COMMANDS = /* @__PURE__ */ new Set(["setup", "validation", "delivery"]);
+var ProcessProfileService = class _ProcessProfileService {
+  static STAGES = ["setup", "planning", "exploration", "implementation", "validation", "delivery"];
+  static CATEGORY_TO_STAGE = {
+    plan: "planning",
+    read: "exploration",
+    search: "exploration",
+    edit: "implementation"
+  };
+  profile(sessions, sessionIdToIndex) {
+    const stageToTotals = /* @__PURE__ */ new Map();
+    for (const session of sessions) {
+      const index = sessionIdToIndex.get(session.sessionId);
+      for (const call of session.tools) {
+        const stage = this.stageOf(call);
+        if (!stage) {
+          continue;
+        }
+        const totals = stageToTotals.get(stage) ?? this.emptyTotals();
+        totals.sessionIds.add(session.sessionId);
+        totals.steps++;
+        totals.failures += call.result?.isError === true ? 1 : 0;
+        for (const piece of index?.toolCallIdToPieces.get(call.id) ?? []) {
+          if (piece !== AttributionService.MAIN_PIECE) {
+            totals.pieceToCount.set(piece, (totals.pieceToCount.get(piece) ?? 0) + 1);
+          }
+        }
+        if (call.category === "shell" && STAGES_WITH_COMMANDS.has(stage)) {
+          totals.commandToCount.set(call.key, (totals.commandToCount.get(call.key) ?? 0) + 1);
+        }
+        stageToTotals.set(stage, totals);
+      }
+    }
+    return _ProcessProfileService.STAGES.flatMap((stage) => {
+      const totals = stageToTotals.get(stage);
+      return totals ? [this.toProfile(stage, totals)] : [];
+    });
+  }
+  stageOf(call) {
+    if (call.category === "shell") {
+      return NormalizeUtil.commandStage(call.key);
+    }
+    return _ProcessProfileService.CATEGORY_TO_STAGE[call.category];
+  }
+  emptyTotals() {
+    return {
+      sessionIds: /* @__PURE__ */ new Set(),
+      steps: 0,
+      failures: 0,
+      pieceToCount: /* @__PURE__ */ new Map(),
+      commandToCount: /* @__PURE__ */ new Map()
+    };
+  }
+  toProfile(stage, totals) {
+    return {
+      stage,
+      sessions: totals.sessionIds.size,
+      steps: totals.steps,
+      failures: totals.failures,
+      pieces: this.mostFrequent(totals.pieceToCount, MAX_STAGE_PIECES),
+      commands: this.mostFrequent(totals.commandToCount, MAX_STAGE_COMMANDS)
+    };
+  }
+  mostFrequent(valueToCount, limit) {
+    return CollectionUtil.unique(
+      [...valueToCount.entries()].sort((left, right) => right[1] - left[1]).map(([value]) => value)
+    ).slice(0, limit);
+  }
+};
+
 // src/Shared/Services/AnalysisService.ts
 var DEFAULT_MAX_SIGNALS = 25;
 var MIN_COMMON_COMMAND_RUNS = 2;
@@ -1813,6 +1902,7 @@ var AnalysisService = class _AnalysisService {
         notes: inventory.notes
       },
       usage: new UsageService(config.prices, pieceIds).pieceUsage(sessions),
+      process: this.processProfile(sessions, pieceIds),
       commonCommands: this.commonCommands(sessions),
       signals,
       suggestions: CollectionUtil.countBy(suggestions.map((suggestion) => suggestion.status)),
@@ -1883,6 +1973,13 @@ var AnalysisService = class _AnalysisService {
       method: COST_METHOD,
       idleMinutes: this.context.config.idleMinutes
     };
+  }
+  processProfile(sessions, pieceIds) {
+    const attribution = new AttributionService(pieceIds);
+    const sessionIdToIndex = new Map(
+      sessions.map((session) => [session.sessionId, attribution.buildSessionIndex(session)])
+    );
+    return new ProcessProfileService().profile(sessions, sessionIdToIndex);
   }
   commonCommands(sessions) {
     const keyToCommand = /* @__PURE__ */ new Map();
@@ -2725,6 +2822,7 @@ var READ_TOOLS = /* @__PURE__ */ new Set(["Read", "NotebookRead"]);
 var EDIT_TOOLS = /* @__PURE__ */ new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 var SEARCH_TOOLS = /* @__PURE__ */ new Set(["Grep", "Glob", "WebSearch", "WebFetch", "ToolSearch"]);
 var DELEGATION_TOOLS = /* @__PURE__ */ new Set(["Task", "Agent"]);
+var PLAN_TOOLS = /* @__PURE__ */ new Set(["ExitPlanMode", "EnterPlanMode"]);
 var HUMAN_ORIGIN = "human";
 var SYNTHETIC_MODEL = "<synthetic>";
 var MODEL_IN_ERROR = /\bmodel \(([^)\s]{1,80})\)/i;
@@ -3291,9 +3389,15 @@ var ClaudeCodeSessionService = class {
     const detail = GuardUtil.firstString(input, ["pattern", "url", "query"]);
     return {
       key: name,
-      category: SEARCH_TOOLS.has(name) ? "search" : "other",
+      category: this.categoryOf(name),
       summary: detail === void 0 ? name : `${name} ${detail}`
     };
+  }
+  categoryOf(name) {
+    if (SEARCH_TOOLS.has(name)) {
+      return "search";
+    }
+    return PLAN_TOOLS.has(name) ? "plan" : "other";
   }
   toProjectRelative(filePath, projectDir) {
     const isInsideProject = projectDir !== void 0 && isAbsolute2(filePath) && (filePath === projectDir || filePath.startsWith(`${projectDir}/`));

@@ -49,7 +49,7 @@ Before any flow, read `references/findings.md` in this skill's folder (`${CLAUDE
 1. Run `analyze` with the options from the request. Read the JSON.
 2. Tell the user in one line what was analyzed: sessions, period, and how much history exists (`history`). If `history.transcriptsAvailable` is small or `history.oldestAt` is close to `retentionDays` ago, say that older sessions were already deleted by the agent's retention setting. Never change that setting.
 3. If `analyzed.sessions` is 0, say so, suggest a wider period or `--all-projects`, and stop.
-   If `inventory.pieces` has no `instructions:*` piece, the project has no harness yet: follow "Starting a harness" in the reference as well.
+   If `inventory.pieces` has no `instructions:*` piece, the project has no harness yet: follow "Starting a harness" in the reference as well. When a suggestion creates a skill, subagent or command, read `references/community-skills.md` first.
 4. Go through `signals` in order. For each one worth reporting:
    - Read what shapes that behavior today, not only the piece the signal names (paths are in `inventory.pieces`):
      - `main`: the instruction files (`instructions:*` pieces), since they guide the main thread.

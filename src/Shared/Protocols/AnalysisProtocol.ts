@@ -135,11 +135,29 @@ export interface Analysis {
     notes: string[];
   };
   usage: PieceUsage[];
+  /** Stages in their usual order, with how much each one happened. */
+  process: StageProfile[];
   /** Work commands seen in at least two runs, most widespread first. Exploration (ls, cat, grep) is left out. */
   commonCommands: CommonCommand[];
   signals: Signal[];
   suggestions: Record<string, number>;
   dataDir: string;
+}
+
+/** The usual order of software work; a harness can support each stage with its own pieces. */
+export type ProcessStage = "setup" | "planning" | "exploration" | "implementation" | "validation" | "delivery";
+
+/** How much of the sessions went into one stage, measured from the steps the agent took. */
+export interface StageProfile {
+  stage: ProcessStage;
+  sessions: number;
+  steps: number;
+  /** Failed steps, and plans or calls the person rejected. */
+  failures: number;
+  /** Pieces of the harness that ran during this stage's steps. */
+  pieces: string[];
+  /** The most frequent command keys of the stage, for setup, validation and delivery. */
+  commands: string[];
 }
 
 /** A work command the agent runs in this project, the raw material for a project's first instructions. */

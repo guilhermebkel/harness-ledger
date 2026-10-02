@@ -6,6 +6,7 @@ import type {
   CostSummary,
   ReportedTotals,
   SessionTotals,
+  StageProfile,
 } from "@/Shared/Protocols/AnalysisProtocol.js";
 import type { AnalyzeOptions } from "@/Shared/Protocols/CommandProtocol.js";
 import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.js";
@@ -26,6 +27,7 @@ import type { ContextService } from "./ContextService.js";
 import { CostService } from "./CostService.js";
 import { InventoryService } from "./InventoryService.js";
 import { MentionService } from "./MentionService.js";
+import { ProcessProfileService } from "./ProcessProfileService.js";
 import { SignalService } from "./SignalService.js";
 import { UsageService } from "./UsageService.js";
 
@@ -130,6 +132,7 @@ export class AnalysisService {
         notes: inventory.notes,
       },
       usage: new UsageService(config.prices, pieceIds).pieceUsage(sessions),
+      process: this.processProfile(sessions, pieceIds),
       commonCommands: this.commonCommands(sessions),
       signals,
       suggestions: CollectionUtil.countBy(suggestions.map((suggestion) => suggestion.status)),
@@ -207,6 +210,14 @@ export class AnalysisService {
       method: COST_METHOD,
       idleMinutes: this.context.config.idleMinutes,
     };
+  }
+
+  private processProfile(sessions: SessionFacts[], pieceIds: Set<string>): StageProfile[] {
+    const attribution = new AttributionService(pieceIds);
+    const sessionIdToIndex = new Map(
+      sessions.map((session) => [session.sessionId, attribution.buildSessionIndex(session)]),
+    );
+    return new ProcessProfileService().profile(sessions, sessionIdToIndex);
   }
 
   private commonCommands(sessions: SessionFacts[]): CommonCommand[] {
