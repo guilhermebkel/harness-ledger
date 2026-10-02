@@ -44,13 +44,21 @@ const PYTHON_TRACEBACK = "Traceback (most recent call last):";
 /** An option and its value, e.g. `-C repo`. */
 const OPTION_WITH_VALUE_TOKENS = 2;
 const PYTHON_EXCEPTION_LINE = /^[\w.]+(Error|Exception|Exit|Interrupt)\b/;
+/** Terminal color codes, which tools like dbt print even when piped. */
+// eslint-disable-next-line no-control-regex -- matching the escape character is the point
+const ANSI_ESCAPE = /\u001b\[[0-9;]*[A-Za-z]/g;
+/** A line that only announces errors follow, ending in a colon. */
+const ERROR_HEADER_LINE = /^[^:]{0,60}\berrors?\b[^:]{0,30}:$/i;
+/** A clock time some tools put before every line ("14:44:07  Completed with 1 error"). */
+const LEADING_CLOCK_TIME = /^\d{1,2}:\d{2}:\d{2}(\.\d+)?\s+/;
 const MAX_ERROR_KEY_CHARS = 160;
 const ERROR_LOOKING_LINE
   = /error|fail|denied|not found|no such|invalid|cannot|can't|unable|exception|refused|timed? ?out|"reason"/i;
 
 const CORRECTION_PREFIX_CHARS = 80;
+/** "no" counts only as "no," / "no." / "no!": in Portuguese, "no" opens ordinary sentences ("no backend ..."). */
 const CORRECTION_START
-  = /^(no|nope|não|nao|wrong|errado|actually|na verdade|instead|ao invés|em vez|stop|pare|para de|don'?t|do not|não faça|nao faca|that'?s not|isso não|isso nao|you should|you shouldn'?t|você deveria|voce deveria|why did you|por que você|por que voce|undo|revert|desfaz|desfaça|again|de novo|still (?:not|wrong|failing)|ainda (?:não|nao|está|esta))\b/i;
+  = /^(no(?=[,.!]|\s*$)|nope|não|nao|wrong|errado|actually|na verdade|instead|ao invés|em vez|stop|pare|para de|don'?t|do not|não faça|nao faca|that'?s not|isso não|isso nao|you should|you shouldn'?t|você deveria|voce deveria|why did you|por que você|por que voce|undo|revert|desfaz|desfaça|again|de novo|still (?:not|wrong|failing)|ainda (?:não|nao|está|esta))\b/i;
 
 const MIN_WORD_CHARS = 3;
 const STOPWORDS = new Set(
@@ -126,13 +134,19 @@ export class NormalizeUtil {
   /** The first meaningful line of an error, normalized so the same error groups across sessions. */
   static errorKey(text: string): string {
     const lines = text
+      .replace(ANSI_ESCAPE, "")
       .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line && !/^exit code \d+$/i.test(line) && !/^<\/?[\w-]+\s*\/?>$/.test(line));
+      .map((line) => line.replace(LEADING_CLOCK_TIME, "").trim())
+      .filter((line) => line && !/^exit code \d+$/i.test(line) && !/^<\/?[\w-]+\s*\/?>$/.test(line))
+      .filter((line) => /[A-Za-z]/.test(line));
     // Tools prepend banners, notices and warnings to errors; the line that reads like an error is the useful one.
     const nonWarningLines = lines.filter((line) => !WARNING_LINE.test(line));
+    const errorIndex = nonWarningLines.slice(0, ERROR_LINES_TO_SCAN).findIndex((line) => ERROR_LOOKING_LINE.test(line));
+    // "Encountered an error:" only announces the error; the next line is the error.
+    const isHeaderOnly = errorIndex !== -1 && ERROR_HEADER_LINE.test(nonWarningLines[errorIndex] ?? "");
     const errorLine = NormalizeUtil.pythonException(lines)
-      ?? nonWarningLines.slice(0, ERROR_LINES_TO_SCAN).find((line) => ERROR_LOOKING_LINE.test(line));
+      ?? (isHeaderOnly ? nonWarningLines[errorIndex + 1] : undefined)
+      ?? (errorIndex === -1 ? undefined : nonWarningLines[errorIndex]);
     const head = errorLine ?? nonWarningLines[0] ?? lines[0] ?? text.trim();
     const structuredReason = /"reason"\s*:\s*"([^"]{1,60})"/.exec(head)?.[1];
     const errorText = structuredReason ? `reason: ${structuredReason}` : head;
@@ -199,7 +213,9 @@ export class NormalizeUtil {
     if (tracebackIndex === -1) {
       return undefined;
     }
-    return lines.slice(tracebackIndex + 1).reverse().find((line) => PYTHON_EXCEPTION_LINE.test(line));
+    // When the output was cut before the exception, the last line is still closer to the cause than "Traceback".
+    const afterTraceback = lines.slice(tracebackIndex + 1);
+    return afterTraceback.reverse().find((line) => PYTHON_EXCEPTION_LINE.test(line)) ?? afterTraceback[0];
   }
 
   private static withoutGlobalOptions(program: string, argumentTokens: string[]): string[] {

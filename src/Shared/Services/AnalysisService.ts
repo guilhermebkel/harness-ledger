@@ -11,7 +11,7 @@ import type {
 import type { AnalyzeOptions } from "@/Shared/Protocols/CommandProtocol.js";
 import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.js";
 import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.js";
-import type { Signal, SignalType } from "@/Shared/Protocols/SignalProtocol.js";
+import type { CountedValue, Signal, SignalType } from "@/Shared/Protocols/SignalProtocol.js";
 import type { Suggestion } from "@/Shared/Protocols/SuggestionProtocol.js";
 import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
 import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.js";
@@ -132,6 +132,10 @@ export class AnalysisService {
         notes: inventory.notes,
       },
       usage: new UsageService(config.prices, pieceIds).pieceUsage(sessions),
+      environment: {
+        platforms: this.countedBySession(sessions, (session) => session.environment.platform),
+        shells: this.countedBySession(sessions, (session) => session.environment.shell),
+      },
       process: this.processProfile(sessions, pieceIds),
       commonCommands: this.commonCommands(sessions),
       signals,
@@ -210,6 +214,19 @@ export class AnalysisService {
       method: COST_METHOD,
       idleMinutes: this.context.config.idleMinutes,
     };
+  }
+
+  private countedBySession(
+    sessions: SessionFacts[],
+    valueOf: (session: SessionFacts) => string | undefined,
+  ): CountedValue[] {
+    const values = sessions.map(valueOf).filter((value): value is string => value !== undefined);
+    return Object.entries(CollectionUtil.countBy(values))
+      .map(([value, count]) => ({
+        value: RedactUtil.redact(value),
+        count,
+      }))
+      .sort((left, right) => right.count - left.count);
   }
 
   private processProfile(sessions: SessionFacts[], pieceIds: Set<string>): StageProfile[] {

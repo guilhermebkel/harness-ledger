@@ -79,3 +79,25 @@ describe("commandStage", () => {
     expect(NormalizeUtil.commandStage(commandKey)).toBe(expectedStage);
   });
 });
+
+describe("bugs found running the skill on real sessions", () => {
+  it("doesn't read Portuguese 'no' (in the) as a correction", () => {
+    expect(NormalizeUtil.isCorrection("no backend não precisa de permissão")).toBe(false);
+    expect(NormalizeUtil.isCorrection("no, use pnpm")).toBe(true);
+    expect(NormalizeUtil.isCorrection("no")).toBe(true);
+  });
+
+  it("strips terminal colors and clock times from error keys", () => {
+    expect(NormalizeUtil.errorKey("\u001b[0m14:44:07  Database Error in model stg_x")).toBe("Database Error in model stg_x");
+  });
+
+  it("keys an error announced by a header line on the line after it", () => {
+    const dbtOutput = "\u001b[0m14:44:07  Running with dbt=1.8.0\n\u001b[0m14:44:08  Encountered an error:\nCompilation Error in model stg_users";
+    expect(NormalizeUtil.errorKey(dbtOutput)).toBe("Compilation Error in model stg_users");
+  });
+
+  it("skips separator lines and keys a cut-off traceback on what follows it", () => {
+    expect(NormalizeUtil.errorKey("Exit code 1\n=========\nAttributeError: no row field 'x'")).toBe("AttributeError: no row field '…'");
+    expect(NormalizeUtil.errorKey("Traceback (most recent call last):\n  File \"a.py\", line 3")).toBe("File '…', line N");
+  });
+});

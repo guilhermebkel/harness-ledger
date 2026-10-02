@@ -149,6 +149,14 @@ export interface ProviderReport {
   turns: ReportedTurn[];
 }
 
+/** Where the session ran, so suggested scripts and commands fit the person's machine. */
+export interface SessionEnvironment {
+  /** Node-style platform name: "darwin", "linux", "win32". */
+  platform?: string;
+  /** The shell commands ran in, e.g. "zsh", "bash", "powershell". */
+  shell?: string;
+}
+
 export interface SessionFacts {
   provider: string;
   sessionId: string;
@@ -165,6 +173,7 @@ export interface SessionFacts {
   messages: AssistantMessage[];
   apiErrors: ApiError[];
   compactions: ContextCompaction[];
+  environment: SessionEnvironment;
   reported: ProviderReport;
   /** Transcript files read, including subagent transcripts. */
   files: string[];

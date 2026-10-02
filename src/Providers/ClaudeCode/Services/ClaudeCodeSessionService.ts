@@ -105,6 +105,7 @@ export class ClaudeCodeSessionService {
       messages: [],
       apiErrors: [],
       compactions: [],
+      environment: {},
       reported: {
         isCostPartial: false,
         turns: [],
@@ -154,6 +155,7 @@ export class ClaudeCodeSessionService {
     }
 
     facts.messages = [...context.messageIdToMessage.values()];
+    facts.environment.platform ??= this.platformFromPath(facts.projectDir);
     this.summarizeThreads(context, options.idleMs);
     return facts;
   }
@@ -453,6 +455,27 @@ export class ClaudeCodeSessionService {
     });
   }
 
+  /** Older transcripts have no environment record; the working directory's shape still tells the platform. */
+  private platformFromPath(projectDir: string | undefined): string | undefined {
+    if (projectDir === undefined) {
+      return undefined;
+    }
+    if (/^[A-Za-z]:[\\/]/.test(projectDir)) {
+      return "win32";
+    }
+    if (projectDir.startsWith("/Users/")) {
+      return "darwin";
+    }
+    return projectDir.startsWith("/home/") ? "linux" : undefined;
+  }
+
+  /** Claude Code records the platform and shell in an `environment` attachment; the first one wins. */
+  private readEnvironment(context: ClaudeCodeParseContext, snapshot: UnknownRecord | undefined): void {
+    const environment = context.facts.environment;
+    environment.platform ??= GuardUtil.asString(snapshot?.platform);
+    environment.shell ??= GuardUtil.asString(snapshot?.shell);
+  }
+
   /** Claude Code's own running cost; the last line of each run holds that run's total. */
   private handleCostState(context: ClaudeCodeParseContext, line: ClaudeCodeTranscriptLine): void {
     const costUsd = GuardUtil.asNumber(line.record.totalCostUSD);
@@ -515,6 +538,10 @@ export class ClaudeCodeSessionService {
    */
   private handleAttachment(context: ClaudeCodeParseContext, line: ClaudeCodeTranscriptLine): void {
     const attachment = GuardUtil.asRecord(line.record.attachment);
+    if (attachment?.type === "environment") {
+      this.readEnvironment(context, GuardUtil.asRecord(attachment.snapshot));
+      return;
+    }
     const prompt = GuardUtil.asString(attachment?.prompt);
     const originKind = GuardUtil.asString(GuardUtil.asRecord(attachment?.origin)?.kind) ?? HUMAN_ORIGIN;
     const isQueuedHumanPrompt = attachment?.type === "queued_command"

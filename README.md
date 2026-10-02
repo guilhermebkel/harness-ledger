@@ -123,7 +123,7 @@ This project applies the ideas behind *Test-Driven Prompting* (CBSoft 2026): def
 
 ## Contributing
 
-Issues and PRs are welcome. For larger changes, please open an issue first to discuss the approach. Adding support for a new agentic tool (a provider) means a new `src/Providers/<Provider>/` folder whose adapter extends `BaseProviderAdapter`, one entry in `ProviderModule`, and one CI workflow; see ADR 0008.
+Issues and PRs are welcome. For larger changes, please open an issue first to discuss the approach. Adding support for a new agentic tool (a provider) means a new `src/Providers/<Provider>/` folder whose adapter extends `BaseProviderAdapter`, one entry in `ProviderModule`, and one CI workflow; [`docs/adding-a-provider.md`](docs/adding-a-provider.md) walks through it.
 
 ### Development
 

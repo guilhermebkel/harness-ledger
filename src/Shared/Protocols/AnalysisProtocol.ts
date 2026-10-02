@@ -1,6 +1,6 @@
 import type { CompactPiece, InventoryChange } from "./HarnessProtocol.js";
 import type { AssistantMessage, SessionFacts, UserPrompt } from "./SessionProtocol.js";
-import type { Signal } from "./SignalProtocol.js";
+import type { CountedValue, Signal } from "./SignalProtocol.js";
 
 /** Lookup tables for one session, used for attribution and cost estimates. */
 export interface SessionIndex {
@@ -135,6 +135,11 @@ export interface Analysis {
     notes: string[];
   };
   usage: PieceUsage[];
+  /** Platforms and shells the sessions ran on, by number of sessions. Suggested scripts must run there. */
+  environment: {
+    platforms: CountedValue[];
+    shells: CountedValue[];
+  };
   /** Stages in their usual order, with how much each one happened. */
   process: StageProfile[];
   /** Work commands seen in at least two runs, most widespread first. Exploration (ls, cat, grep) is left out. */
@@ -154,6 +159,8 @@ export interface StageProfile {
   steps: number;
   /** Failed steps, and plans or calls the person rejected. */
   failures: number;
+  /** Approximate tokens the stage's tool results added to the context (file reads, command output). */
+  contextTokens: number;
   /** Pieces of the harness that ran during this stage's steps. */
   pieces: string[];
   /** The most frequent command keys of the stage, for setup, validation and delivery. */

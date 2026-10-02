@@ -101,13 +101,18 @@ export class CLIModule {
     });
   }
 
-  /** Runs the CLI and exits the process with 0 on success, 1 on error. */
+  /**
+   * Runs the CLI and sets the exit code: 0 on success, 1 on error. It never calls `process.exit()`, which
+   * would cut stdout short when it's a pipe (how agents run the script) and the JSON is larger than 64 KB.
+   */
   run(argv: string[]): void {
     this.main(argv).then(
-      () => process.exit(0),
+      () => {
+        process.exitCode = 0;
+      },
       (error: unknown) => {
         process.stderr.write(`imh: ${error instanceof Error ? error.message : String(error)}\n`);
-        process.exit(1);
+        process.exitCode = 1;
       },
     );
   }

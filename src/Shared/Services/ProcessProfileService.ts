@@ -6,6 +6,7 @@ import type { ProcessStage, SessionIndex, StageProfile } from "@/Shared/Protocol
 import type { SessionFacts, ToolCall, ToolCategory } from "@/Shared/Protocols/SessionProtocol.js";
 import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
 import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.js";
+import { NumberUtil } from "@/Shared/Utils/NumberUtil.js";
 import { AttributionService } from "./AttributionService.js";
 
 const MAX_STAGE_COMMANDS = 5;
@@ -16,6 +17,7 @@ interface StageTotals {
   sessionIds: Set<string>;
   steps: number;
   failures: number;
+  contextChars: number;
   pieceToCount: Map<string, number>;
   commandToCount: Map<string, number>;
 }
@@ -43,6 +45,7 @@ export class ProcessProfileService {
         totals.sessionIds.add(session.sessionId);
         totals.steps++;
         totals.failures += call.result?.isError === true ? 1 : 0;
+        totals.contextChars += call.result?.contentChars ?? 0;
         for (const piece of index?.toolCallIdToPieces.get(call.id) ?? []) {
           if (piece !== AttributionService.MAIN_PIECE) {
             totals.pieceToCount.set(piece, (totals.pieceToCount.get(piece) ?? 0) + 1);
@@ -72,6 +75,7 @@ export class ProcessProfileService {
       sessionIds: new Set(),
       steps: 0,
       failures: 0,
+      contextChars: 0,
       pieceToCount: new Map(),
       commandToCount: new Map(),
     };
@@ -83,6 +87,7 @@ export class ProcessProfileService {
       sessions: totals.sessionIds.size,
       steps: totals.steps,
       failures: totals.failures,
+      contextTokens: NumberUtil.charsToTokens(totals.contextChars),
       pieces: this.mostFrequent(totals.pieceToCount, MAX_STAGE_PIECES),
       commands: this.mostFrequent(totals.commandToCount, MAX_STAGE_COMMANDS),
     };

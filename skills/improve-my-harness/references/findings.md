@@ -44,6 +44,7 @@ These are starting points, not rules; read the piece and what it loads (skill fi
 6. **Coupling is a finding.** If a piece only works because another piece says something specific (a subagent that relies on the main instructions mentioning a path), report the coupling as a structure change.
 7. **Cheapest adequate fix.** Prefer deleting or tightening over adding. Prefer a hook or script over a longer prompt. Prefer moving rarely-needed detail out of always-loaded instructions.
 8. **Conflicts are a finding.** When two pieces give different instructions for the same thing (CLAUDE.md says one command, a skill or a preloaded skill says another), class it as Partial or outdated instruction. The fix keeps the instruction in the piece that does the work and removes or aligns the other; quote both lines.
+9. **Fit the person's machine.** Scripts, hooks and commands you propose must run on `environment.platforms` with `environment.shells`. On macOS, assume BSD tools and bash 3.2: no `timeout` (use `gtimeout` or a Node script), `sed -i ''`, no `mapfile`. On Windows, check `environment.shells`: commands may run in PowerShell or Git Bash, so prefer a Node script (`node .claude/scripts/x.mjs`), which runs on every platform. When sessions come from more than one platform (a team), write the script in Node. A command that fails with "command not found" or "illegal option" on one platform only is a missing or partial instruction about that platform, not a broken command.
 
 ## Starting a harness
 
@@ -56,7 +57,7 @@ When the project has no instruction file, the person has been repeating context 
    - Keep it under 30 lines and cite the evidence for each line. Don't describe the architecture or invent conventions the sessions don't show.
 2. **One piece per stage that needs it**, in stage order (setup, planning, exploration, implementation, validation, delivery), at most one per stage and only where the evidence points to a problem: many steps, failures or rejections, a `repeated_workflow`, `context_compaction`, or repeated corrections about that stage. Skip stages that go smoothly.
 3. **Deterministic first.** Split each stage into what always runs the same way and what needs judgment. The fixed part becomes a script or a hook (validation after edits is a `PostToolUse` hook, a branch setup or a PR is a script); only the judgment part becomes a skill or subagent (planning, review). Rule 7 applies.
-4. **Reuse before writing.** For each piece, check `references/community-skills.md` for a skill to adopt or learn from, and say which. Never install one yourself.
+4. **Reuse before writing.** For each piece, check `references/community-extensions.md` for a skill or plugin to adopt or learn from, and say which. Never install one yourself.
 
 Draft new pieces in full, keep the list short (the 7-suggestion limit applies), and order it by stage, then by estimated cost.
 

@@ -417,6 +417,7 @@ export class ClaudeCodeFixtureUtil {
    */
   static writeRealCasesSession(fixture: Fixture, sessionId: string, startedAt: string): void {
     new ClaudeCodeTranscriptBuilder(sessionId, fixture.projectDir, startedAt)
+      .record("attachment", { attachment: { type: "environment", snapshot: { platform: "darwin", shell: "zsh" } } })
       .user("Add a retry to the billing job")
       .tool(`plan_${sessionId}`, "ExitPlanMode", { plan: "1. Add a new queue\n2. Retry there" })
       .result(

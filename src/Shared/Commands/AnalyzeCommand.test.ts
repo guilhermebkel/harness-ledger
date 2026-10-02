@@ -133,6 +133,16 @@ describe("AnalyzeCommand on cases seen in real sessions", () => {
     return command.run({ projectDir: realFixture.projectDir, dataDir: realFixture.dataDir });
   }
 
+  it("reports the platforms the sessions ran on, for scripts that work there", async () => {
+    const analysis = await analyzeReal();
+    expect(analysis.environment).toEqual({
+      platforms: [{ value: "darwin", count: 2 }],
+      shells: [{ value: "zsh", count: 2 }],
+    });
+    const exploration = analysis.process.find((profile) => profile.stage === "exploration");
+    expect(exploration?.contextTokens).toBeGreaterThan(0);
+  });
+
   it("profiles the work by stage, with rejected plans as planning failures", async () => {
     const analysis = await analyzeReal();
     const stageToProfile = new Map(analysis.process.map((profile) => [profile.stage, profile]));

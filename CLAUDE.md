@@ -18,6 +18,8 @@ ADR 0008 has the reasons; `docs/code-standards.md` ("Architecture") has the rule
 - Tests sit next to the file they test (`*.test.ts`). There is no `test/` folder.
 - `dist/imh.mjs`: the bundled script the skill runs. Generated, committed (ADR 0004).
 - `.github/workflows/`: `ci.yml` (shared checks) and one workflow per provider (`claude-code.yml` validates the plugin and skill).
+- `scripts/`: `build.mjs` (bundle) and `survey-transcripts.mjs` (the shape of a folder of transcripts, without their content).
+- Adding a provider (Codex, Cursor, ...): follow `docs/adding-a-provider.md`. It covers finding the sessions, exporting a sample of the last 7 days, learning the format, mapping it to the shared model and checking it on real sessions.
 
 ## Commands
 

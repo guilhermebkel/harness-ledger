@@ -214,6 +214,10 @@ describe("parseSession on cases seen in real sessions", () => {
     expect(realFacts.prompts.find((prompt) => prompt.text.startsWith("não"))?.isCorrection).toBe(true);
   });
 
+  it("reads the platform and shell the session ran on", () => {
+    expect(realFacts.environment).toEqual({ platform: "darwin", shell: "zsh" });
+  });
+
   it("never reads a background-task notification as something the person typed", () => {
     expect(realFacts.prompts.some((prompt) => prompt.text.includes("lint done"))).toBe(false);
   });

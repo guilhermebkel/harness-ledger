@@ -374,8 +374,24 @@ export class SignalDetectorService {
   private recoveryOf(failedCall: ToolCall, threadCommands: ToolCall[]): string | undefined {
     const failedIndex = threadCommands.indexOf(failedCall);
     const nextCommands = threadCommands.slice(failedIndex + 1, failedIndex + 1 + RECOVERY_WINDOW_CALLS);
-    const firstSuccess = nextCommands.find((call) => call.result !== undefined && !call.result.isError);
+    const firstSuccess = nextCommands.find((call) => call.result !== undefined && !call.result.isError
+      && this.isPlausibleRecovery(failedCall, call));
     return firstSuccess && firstSuccess.key !== failedCall.key ? firstSuccess.key : undefined;
+  }
+
+  /**
+   * A recovery does the same job another way (`npm test` → `pnpm test`). Looking around (`ls`, `cat`) or
+   * moving on to other work (`git add` after a failed script) is not one.
+   */
+  private isPlausibleRecovery(failedCall: ToolCall, candidate: ToolCall): boolean {
+    if (NormalizeUtil.isExplorationCommand(candidate.key)) {
+      return false;
+    }
+    const failedStage = NormalizeUtil.commandStage(failedCall.key);
+    if (failedStage !== undefined) {
+      return NormalizeUtil.commandStage(candidate.key) === failedStage;
+    }
+    return candidate.key.split(" ")[0] === failedCall.key.split(" ")[0];
   }
 
   /** Reading a file again is legitimate after it was edited or changed by a command in between. */

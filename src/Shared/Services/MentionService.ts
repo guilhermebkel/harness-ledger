@@ -25,9 +25,10 @@ export class MentionService {
       }
       const lines = (await readFile(this.absolutePathOf(piece.path), "utf8").catch(() => "")).split(/\r?\n/);
       for (const term of searchTerms) {
-        const lowerTerm = term.toLowerCase();
+        // Whole terms only: "cat" must not match "category".
+        const termPattern = new RegExp(`(?<![\\w-])${MentionService.escapeRegExp(term)}(?![\\w-])`, "i");
         lines.forEach((line, lineIndex) => {
-          if (mentions.length < maxMentions && line.toLowerCase().includes(lowerTerm)) {
+          if (mentions.length < maxMentions && termPattern.test(line)) {
             mentions.push({
               piece: piece.id,
               path: piece.path,
@@ -40,6 +41,10 @@ export class MentionService {
       }
     }
     return mentions;
+  }
+
+  private static escapeRegExp(text: string): string {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 
   private absolutePathOf(piecePath: string): string {

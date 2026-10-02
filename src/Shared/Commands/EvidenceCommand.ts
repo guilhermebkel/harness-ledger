@@ -13,9 +13,9 @@ export class EvidenceCommand {
     if (!analysis) {
       throw new Error("No analysis yet. Run `imh analyze` first.");
     }
-    const signal = analysis.signals.find(
-      (candidate) => candidate.id === options.signalId || candidate.id.startsWith(options.signalId),
-    );
+    // An exact id wins over a longer id that merely starts with it.
+    const signal = analysis.signals.find((candidate) => candidate.id === options.signalId)
+      ?? analysis.signals.find((candidate) => candidate.id.startsWith(options.signalId));
     if (!signal) {
       throw new Error(`Signal not found: ${options.signalId}`);
     }

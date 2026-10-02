@@ -181,10 +181,13 @@ var WARNING_LINE = /^(warning\b|npm warn\b)|\b\w*Warning:|^\s*warnings\.warn\(/i
 var PYTHON_TRACEBACK = "Traceback (most recent call last):";
 var OPTION_WITH_VALUE_TOKENS = 2;
 var PYTHON_EXCEPTION_LINE = /^[\w.]+(Error|Exception|Exit|Interrupt)\b/;
+var ANSI_ESCAPE = /\u001b\[[0-9;]*[A-Za-z]/g;
+var ERROR_HEADER_LINE = /^[^:]{0,60}\berrors?\b[^:]{0,30}:$/i;
+var LEADING_CLOCK_TIME = /^\d{1,2}:\d{2}:\d{2}(\.\d+)?\s+/;
 var MAX_ERROR_KEY_CHARS = 160;
 var ERROR_LOOKING_LINE = /error|fail|denied|not found|no such|invalid|cannot|can't|unable|exception|refused|timed? ?out|"reason"/i;
 var CORRECTION_PREFIX_CHARS = 80;
-var CORRECTION_START = /^(no|nope|não|nao|wrong|errado|actually|na verdade|instead|ao invés|em vez|stop|pare|para de|don'?t|do not|não faça|nao faca|that'?s not|isso não|isso nao|you should|you shouldn'?t|você deveria|voce deveria|why did you|por que você|por que voce|undo|revert|desfaz|desfaça|again|de novo|still (?:not|wrong|failing)|ainda (?:não|nao|está|esta))\b/i;
+var CORRECTION_START = /^(no(?=[,.!]|\s*$)|nope|não|nao|wrong|errado|actually|na verdade|instead|ao invés|em vez|stop|pare|para de|don'?t|do not|não faça|nao faca|that'?s not|isso não|isso nao|you should|you shouldn'?t|você deveria|voce deveria|why did you|por que você|por que voce|undo|revert|desfaz|desfaça|again|de novo|still (?:not|wrong|failing)|ainda (?:não|nao|está|esta))\b/i;
 var MIN_WORD_CHARS = 3;
 var STOPWORDS = new Set(
   "the and for with that this from you your are was were can could would should please into have has had not but all any some what when where which who how why its it's our out then than them they there here tamb\xE9m para com que uma umas uns dos das por pelo pela isso isto esse essa este esta voc\xEA voce seu sua nos nas n\xE3o nao mais muito pode poderia favor ser ter tem foi vai fazer faz como quando onde qual quais".split(" ")
@@ -244,9 +247,11 @@ var NormalizeUtil = class _NormalizeUtil {
   }
   /** The first meaningful line of an error, normalized so the same error groups across sessions. */
   static errorKey(text) {
-    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !/^exit code \d+$/i.test(line) && !/^<\/?[\w-]+\s*\/?>$/.test(line));
+    const lines = text.replace(ANSI_ESCAPE, "").split(/\r?\n/).map((line) => line.replace(LEADING_CLOCK_TIME, "").trim()).filter((line) => line && !/^exit code \d+$/i.test(line) && !/^<\/?[\w-]+\s*\/?>$/.test(line)).filter((line) => /[A-Za-z]/.test(line));
     const nonWarningLines = lines.filter((line) => !WARNING_LINE.test(line));
-    const errorLine = _NormalizeUtil.pythonException(lines) ?? nonWarningLines.slice(0, ERROR_LINES_TO_SCAN).find((line) => ERROR_LOOKING_LINE.test(line));
+    const errorIndex = nonWarningLines.slice(0, ERROR_LINES_TO_SCAN).findIndex((line) => ERROR_LOOKING_LINE.test(line));
+    const isHeaderOnly = errorIndex !== -1 && ERROR_HEADER_LINE.test(nonWarningLines[errorIndex] ?? "");
+    const errorLine = _NormalizeUtil.pythonException(lines) ?? (isHeaderOnly ? nonWarningLines[errorIndex + 1] : void 0) ?? (errorIndex === -1 ? void 0 : nonWarningLines[errorIndex]);
     const head = errorLine ?? nonWarningLines[0] ?? lines[0] ?? text.trim();
     const structuredReason = /"reason"\s*:\s*"([^"]{1,60})"/.exec(head)?.[1];
     const errorText = structuredReason ? `reason: ${structuredReason}` : head;
@@ -295,7 +300,8 @@ var NormalizeUtil = class _NormalizeUtil {
     if (tracebackIndex === -1) {
       return void 0;
     }
-    return lines.slice(tracebackIndex + 1).reverse().find((line) => PYTHON_EXCEPTION_LINE.test(line));
+    const afterTraceback = lines.slice(tracebackIndex + 1);
+    return afterTraceback.reverse().find((line) => PYTHON_EXCEPTION_LINE.test(line)) ?? afterTraceback[0];
   }
   static withoutGlobalOptions(program, argumentTokens) {
     const globalOptions = PROGRAM_TO_GLOBAL_OPTIONS[program];
@@ -954,8 +960,22 @@ var SignalDetectorService = class {
   recoveryOf(failedCall, threadCommands) {
     const failedIndex = threadCommands.indexOf(failedCall);
     const nextCommands = threadCommands.slice(failedIndex + 1, failedIndex + 1 + RECOVERY_WINDOW_CALLS);
-    const firstSuccess = nextCommands.find((call) => call.result !== void 0 && !call.result.isError);
+    const firstSuccess = nextCommands.find((call) => call.result !== void 0 && !call.result.isError && this.isPlausibleRecovery(failedCall, call));
     return firstSuccess && firstSuccess.key !== failedCall.key ? firstSuccess.key : void 0;
+  }
+  /**
+   * A recovery does the same job another way (`npm test` → `pnpm test`). Looking around (`ls`, `cat`) or
+   * moving on to other work (`git add` after a failed script) is not one.
+   */
+  isPlausibleRecovery(failedCall, candidate) {
+    if (NormalizeUtil.isExplorationCommand(candidate.key)) {
+      return false;
+    }
+    const failedStage = NormalizeUtil.commandStage(failedCall.key);
+    if (failedStage !== void 0) {
+      return NormalizeUtil.commandStage(candidate.key) === failedStage;
+    }
+    return candidate.key.split(" ")[0] === failedCall.key.split(" ")[0];
   }
   /** Reading a file again is legitimate after it was edited or changed by a command in between. */
   wasChangedBetween(session, firstRead, laterRead) {
@@ -1705,7 +1725,7 @@ var DEFAULT_MAX_MENTIONS = 8;
 var MIN_TERM_CHARS = 3;
 var MAX_MENTION_CHARS = 160;
 var TEXT_KINDS = /* @__PURE__ */ new Set(["instructions", "skill", "agent", "command"]);
-var MentionService = class {
+var MentionService = class _MentionService {
   constructor(inventory) {
     this.inventory = inventory;
   }
@@ -1718,9 +1738,9 @@ var MentionService = class {
       }
       const lines = (await readFile(this.absolutePathOf(piece.path), "utf8").catch(() => "")).split(/\r?\n/);
       for (const term of searchTerms) {
-        const lowerTerm = term.toLowerCase();
+        const termPattern = new RegExp(`(?<![\\w-])${_MentionService.escapeRegExp(term)}(?![\\w-])`, "i");
         lines.forEach((line, lineIndex) => {
-          if (mentions.length < maxMentions && line.toLowerCase().includes(lowerTerm)) {
+          if (mentions.length < maxMentions && termPattern.test(line)) {
             mentions.push({
               piece: piece.id,
               path: piece.path,
@@ -1733,6 +1753,9 @@ var MentionService = class {
       }
     }
     return mentions;
+  }
+  static escapeRegExp(text) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
   absolutePathOf(piecePath) {
     const expandedPath = PathUtil.untildify(piecePath);
@@ -1765,6 +1788,7 @@ var ProcessProfileService = class _ProcessProfileService {
         totals.sessionIds.add(session.sessionId);
         totals.steps++;
         totals.failures += call.result?.isError === true ? 1 : 0;
+        totals.contextChars += call.result?.contentChars ?? 0;
         for (const piece of index?.toolCallIdToPieces.get(call.id) ?? []) {
           if (piece !== AttributionService.MAIN_PIECE) {
             totals.pieceToCount.set(piece, (totals.pieceToCount.get(piece) ?? 0) + 1);
@@ -1792,6 +1816,7 @@ var ProcessProfileService = class _ProcessProfileService {
       sessionIds: /* @__PURE__ */ new Set(),
       steps: 0,
       failures: 0,
+      contextChars: 0,
       pieceToCount: /* @__PURE__ */ new Map(),
       commandToCount: /* @__PURE__ */ new Map()
     };
@@ -1802,6 +1827,7 @@ var ProcessProfileService = class _ProcessProfileService {
       sessions: totals.sessionIds.size,
       steps: totals.steps,
       failures: totals.failures,
+      contextTokens: NumberUtil.charsToTokens(totals.contextChars),
       pieces: this.mostFrequent(totals.pieceToCount, MAX_STAGE_PIECES),
       commands: this.mostFrequent(totals.commandToCount, MAX_STAGE_COMMANDS)
     };
@@ -1902,6 +1928,10 @@ var AnalysisService = class _AnalysisService {
         notes: inventory.notes
       },
       usage: new UsageService(config.prices, pieceIds).pieceUsage(sessions),
+      environment: {
+        platforms: this.countedBySession(sessions, (session) => session.environment.platform),
+        shells: this.countedBySession(sessions, (session) => session.environment.shell)
+      },
       process: this.processProfile(sessions, pieceIds),
       commonCommands: this.commonCommands(sessions),
       signals,
@@ -1973,6 +2003,13 @@ var AnalysisService = class _AnalysisService {
       method: COST_METHOD,
       idleMinutes: this.context.config.idleMinutes
     };
+  }
+  countedBySession(sessions, valueOf) {
+    const values = sessions.map(valueOf).filter((value) => value !== void 0);
+    return Object.entries(CollectionUtil.countBy(values)).map(([value, count]) => ({
+      value: RedactUtil.redact(value),
+      count
+    })).sort((left, right) => right.count - left.count);
   }
   processProfile(sessions, pieceIds) {
     const attribution = new AttributionService(pieceIds);
@@ -2872,6 +2909,7 @@ var ClaudeCodeSessionService = class {
       messages: [],
       apiErrors: [],
       compactions: [],
+      environment: {},
       reported: {
         isCostPartial: false,
         turns: []
@@ -2915,6 +2953,7 @@ var ClaudeCodeSessionService = class {
       }
     }
     facts.messages = [...context.messageIdToMessage.values()];
+    facts.environment.platform ??= this.platformFromPath(facts.projectDir);
     this.summarizeThreads(context, options.idleMs);
     return facts;
   }
@@ -3176,6 +3215,25 @@ var ClaudeCodeSessionService = class {
       occurredAtMs: line.occurredAtMs
     });
   }
+  /** Older transcripts have no environment record; the working directory's shape still tells the platform. */
+  platformFromPath(projectDir) {
+    if (projectDir === void 0) {
+      return void 0;
+    }
+    if (/^[A-Za-z]:[\\/]/.test(projectDir)) {
+      return "win32";
+    }
+    if (projectDir.startsWith("/Users/")) {
+      return "darwin";
+    }
+    return projectDir.startsWith("/home/") ? "linux" : void 0;
+  }
+  /** Claude Code records the platform and shell in an `environment` attachment; the first one wins. */
+  readEnvironment(context, snapshot) {
+    const environment = context.facts.environment;
+    environment.platform ??= GuardUtil.asString(snapshot?.platform);
+    environment.shell ??= GuardUtil.asString(snapshot?.shell);
+  }
   /** Claude Code's own running cost; the last line of each run holds that run's total. */
   handleCostState(context, line) {
     const costUsd = GuardUtil.asNumber(line.record.totalCostUSD);
@@ -3228,6 +3286,10 @@ var ClaudeCodeSessionService = class {
    */
   handleAttachment(context, line) {
     const attachment = GuardUtil.asRecord(line.record.attachment);
+    if (attachment?.type === "environment") {
+      this.readEnvironment(context, GuardUtil.asRecord(attachment.snapshot));
+      return;
+    }
     const prompt = GuardUtil.asString(attachment?.prompt);
     const originKind = GuardUtil.asString(GuardUtil.asRecord(attachment?.origin)?.kind) ?? HUMAN_ORIGIN;
     const isQueuedHumanPrompt = attachment?.type === "queued_command" && attachment.commandMode === "prompt" && attachment.isMeta !== true && originKind === HUMAN_ORIGIN;
@@ -3546,7 +3608,7 @@ var StoreService = class _StoreService {
     this.root = root;
   }
   /** Bump when the parser's output shape changes, so cached facts are re-parsed. */
-  static FACTS_VERSION = 4;
+  static FACTS_VERSION = 5;
   static forProject(projectDir, dataDir) {
     return new _StoreService(dataDir ?? join5(projectDir, DATA_DIR_NAME));
   }
@@ -3791,9 +3853,7 @@ var EvidenceCommand = class {
     if (!analysis) {
       throw new Error("No analysis yet. Run `imh analyze` first.");
     }
-    const signal = analysis.signals.find(
-      (candidate) => candidate.id === options.signalId || candidate.id.startsWith(options.signalId)
-    );
+    const signal = analysis.signals.find((candidate) => candidate.id === options.signalId) ?? analysis.signals.find((candidate) => candidate.id.startsWith(options.signalId));
     if (!signal) {
       throw new Error(`Signal not found: ${options.signalId}`);
     }
@@ -4058,14 +4118,19 @@ var CLIModule = class _CLIModule {
       options: ARGUMENT_SPEC
     });
   }
-  /** Runs the CLI and exits the process with 0 on success, 1 on error. */
+  /**
+   * Runs the CLI and sets the exit code: 0 on success, 1 on error. It never calls `process.exit()`, which
+   * would cut stdout short when it's a pipe (how agents run the script) and the JSON is larger than 64 KB.
+   */
   run(argv) {
     this.main(argv).then(
-      () => process.exit(0),
+      () => {
+        process.exitCode = 0;
+      },
       (error) => {
         process.stderr.write(`imh: ${error instanceof Error ? error.message : String(error)}
 `);
-        process.exit(1);
+        process.exitCode = 1;
       }
     );
   }
