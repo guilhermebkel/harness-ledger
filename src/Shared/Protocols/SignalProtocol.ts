@@ -68,7 +68,11 @@ export type CountedDetail = "errors" | "recoveredWith" | "files" | "models" | "s
 
 export interface SignalCost {
   activeMinutes: number;
+  /** inputTokens + outputTokens. */
   tokens: number;
+  /** Tokens the model read: new input plus cache reads and writes. */
+  inputTokens: number;
+  outputTokens: number;
   usd: number;
   isEstimated: true;
 }

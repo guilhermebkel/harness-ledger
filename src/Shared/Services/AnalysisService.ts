@@ -313,6 +313,8 @@ export class AnalysisService {
       activeMinutes: TimeUtil.msToMinutes(mainActiveMs),
       subagentActiveMinutes: TimeUtil.msToMinutes(subagentActiveMs),
       tokens: TokenUsageUtil.total(usage),
+      inputTokens: TokenUsageUtil.input(usage),
+      outputTokens: usage.output,
       usd: NumberUtil.round(usd),
     };
   }
@@ -322,6 +324,8 @@ export class AnalysisService {
     return {
       activeMinutes: NumberUtil.round(signals.reduce((total, signal) => total + signal.cost.activeMinutes, 0), 1),
       tokens: signals.reduce((total, signal) => total + signal.cost.tokens, 0),
+      inputTokens: signals.reduce((total, signal) => total + signal.cost.inputTokens, 0),
+      outputTokens: signals.reduce((total, signal) => total + signal.cost.outputTokens, 0),
       usd: NumberUtil.round(signals.reduce((total, signal) => total + signal.cost.usd, 0)),
     };
   }

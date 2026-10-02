@@ -433,6 +433,10 @@ var TokenUsageUtil = class {
       cacheWrite: left.cacheWrite + right.cacheWrite
     };
   }
+  /** Everything the model read: new input plus cache reads and writes. */
+  static input(usage) {
+    return usage.input + usage.cacheRead + usage.cacheWrite;
+  }
   static total(usage) {
     return usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
   }
@@ -1335,6 +1339,8 @@ var SignalService = class _SignalService {
     return {
       activeMinutes: TimeUtil.msToMinutes(activeMs),
       tokens: TokenUsageUtil.total(usage),
+      inputTokens: TokenUsageUtil.input(usage),
+      outputTokens: usage.output,
       usd: NumberUtil.round(usd),
       isEstimated: true
     };
@@ -1437,6 +1443,8 @@ var SignalService = class _SignalService {
       cost: {
         activeMinutes: 0,
         tokens: 0,
+        inputTokens: 0,
+        outputTokens: 0,
         usd: 0,
         isEstimated: true
       },
@@ -2168,6 +2176,8 @@ var AnalysisService = class _AnalysisService {
       activeMinutes: TimeUtil.msToMinutes(mainActiveMs),
       subagentActiveMinutes: TimeUtil.msToMinutes(subagentActiveMs),
       tokens: TokenUsageUtil.total(usage),
+      inputTokens: TokenUsageUtil.input(usage),
+      outputTokens: usage.output,
       usd: NumberUtil.round(usd)
     };
   }
@@ -2176,6 +2186,8 @@ var AnalysisService = class _AnalysisService {
     return {
       activeMinutes: NumberUtil.round(signals.reduce((total, signal) => total + signal.cost.activeMinutes, 0), 1),
       tokens: signals.reduce((total, signal) => total + signal.cost.tokens, 0),
+      inputTokens: signals.reduce((total, signal) => total + signal.cost.inputTokens, 0),
+      outputTokens: signals.reduce((total, signal) => total + signal.cost.outputTokens, 0),
       usd: NumberUtil.round(signals.reduce((total, signal) => total + signal.cost.usd, 0))
     };
   }

@@ -49,6 +49,9 @@ describe("AnalyzeCommand", () => {
     );
     expect(npmTest.cost.activeMinutes).toBeGreaterThan(0);
     expect(npmTest.cost.tokens).toBeGreaterThan(0);
+    expect(npmTest.cost.inputTokens).toBeGreaterThan(0);
+    expect(npmTest.cost.outputTokens).toBeGreaterThan(0);
+    expect(npmTest.cost.inputTokens + npmTest.cost.outputTokens).toBe(npmTest.cost.tokens);
     expect(npmTest.evidence[0]).toMatchObject({ line: 3, thread: "test-runner" });
     expect(npmTest.evidence[0]?.excerpt).toContain("npm ERR!");
   });
@@ -77,6 +80,8 @@ describe("AnalyzeCommand", () => {
     expect(analysis.history).toMatchObject({ transcriptsAvailable: 6, retentionDays: 60 });
     expect(analysis.history.note).toContain("Claude Code");
     expect(analysis.totals.tokens).toBeGreaterThan(0);
+    expect(analysis.totals.inputTokens + analysis.totals.outputTokens).toBe(analysis.totals.tokens);
+    expect(analysis.totals.lostToFailures.outputTokens).toBeGreaterThan(0);
     expect(analysis.totals.lostToFailures.activeMinutes).toBeGreaterThan(0);
     const testRunner = analysis.usage.find((usage) => usage.piece === "agent:test-runner");
     expect(testRunner).toMatchObject({ invocations: 3, sessions: 3, toolErrors: 3 });
@@ -365,7 +370,7 @@ describe("AnalyzeCommand on pieces that keep filling their context", () => {
       { value: "npm run build (×2)", count: 9000 },
       { value: "docs/guide.md (×4)", count: 8000 },
     ]);
-    expect(heavy.cost.tokens).toBe(17000);
+    expect(heavy.cost).toMatchObject({ tokens: 17000, inputTokens: 17000, outputTokens: 0 });
   });
 
   it("doesn't take different files read with the same command as the same material", async () => {

@@ -167,6 +167,8 @@ export class SignalService {
     return {
       activeMinutes: TimeUtil.msToMinutes(activeMs),
       tokens: TokenUsageUtil.total(usage),
+      inputTokens: TokenUsageUtil.input(usage),
+      outputTokens: usage.output,
       usd: NumberUtil.round(usd),
       isEstimated: true,
     };
@@ -285,6 +287,8 @@ export class SignalService {
       cost: {
         activeMinutes: 0,
         tokens: 0,
+        inputTokens: 0,
+        outputTokens: 0,
         usd: 0,
         isEstimated: true,
       },

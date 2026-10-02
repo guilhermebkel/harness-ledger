@@ -69,7 +69,11 @@ export interface PieceUsage {
 
 export interface CostSummary {
   activeMinutes: number;
+  /** inputTokens + outputTokens. */
   tokens: number;
+  /** Tokens the model read: new input plus cache reads and writes. */
+  inputTokens: number;
+  outputTokens: number;
   usd: number;
 }
 

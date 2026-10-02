@@ -66,22 +66,39 @@ In a project that already has a harness, a stage with many failures or rejection
 
 ## Report format
 
+Write the report in the language the person uses with you. Translate the labels below; keep ids, paths, commands and code as they are. The report is for the person, not for this skill: never show internal terms such as "class", "piece" or piece ids (`agent:x`) as column names or values.
+
+| Class | "What to do" label |
+| --- | --- |
+| Rule exists, but is ignored | Enforce a rule that already exists |
+| Partial or outdated instruction | Fix an instruction |
+| Missing instruction | Add an instruction |
+| Structure change | Change the structure (script, skill, agent, hook) |
+| Out of scope | Outside your harness |
+
+"Where to change" is the file the suggestion edits or creates, with a readable name: `test-runner agent (.claude/agents/test-runner.md)`, `new script (.claude/scripts/check.sh)`.
+
+Costs are the script's numbers for the whole analyzed period, adding up every occurrence; never per session and never your own estimate. Write tokens as `1.2M` / `340k`; input tokens include cache reads and writes.
+
 ```markdown
 # Harness report — <YYYY-MM-DD>
 
-Analyzed <N> sessions (<period>) · <K> suggestions · ~<active minutes> and ~$<usd> estimated lost to failures
+Analyzed <N> sessions (<period>) · <K> suggestions
+Estimated cost of the problems found, for the whole period: ~<activeMinutes> min · <inputTokens> input tokens · <outputTokens> output tokens · ~$<usd>
 History: <transcriptsAvailable> transcripts since <oldestAt>; retention <retentionDays> days.
 
 ## Suggestions
 
-| # | Class | Piece | Problem | Estimated cost | Id |
-| --- | --- | --- | --- | --- | --- |
-| 1 | Rule exists, but is ignored | agent:test-runner | Runs `npm test` (fails), then `pnpm test` | ~38 min, ~$2.10 | sug-1a2b3c4d |
+| # | What to do | Where to change | Problem | Sessions | Time | Input tokens | Output tokens | Cost | Id |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | Enforce a rule that already exists | test-runner agent (`.claude/agents/test-runner.md`) | Runs `npm test` (fails), then `pnpm test` | 3 of 20 | ~38 min | 1.2M | 40k | ~$2.10 | sug-1a2b3c4d |
+
+_Time, tokens and cost add up the whole period (<N> sessions), not one session; they are estimates from transcript timestamps and token usage, with idle time left out._
 
 ### 1. <title>
-**Class:** … · **Piece:** `…` (`path`) · **Evidence:** session 3f2a91bc · line 14 · test-runner; … +4 more
+**What to do:** … · **Where:** `<path>` · **Evidence:** session 3f2a91bc · line 14 · test-runner; … +4 more
 **What happens:** one or two sentences, with the numbers from the script, time first when it is the bigger cost.
-**Why this class:** one sentence (e.g. "CLAUDE.md line 3 already says to use pnpm").
+**Why:** one sentence on why this is the right kind of fix (e.g. "CLAUDE.md line 3 already says to use pnpm, so more text won't help").
 **Change:** the exact text, diff, hook or file to add.
 (**Partial:** reason — only when partial.)
 
@@ -89,14 +106,12 @@ History: <transcriptsAvailable> transcripts since <oldestAt>; retention <retenti
 - <title> — <status> (<id>)
 
 ## Changed since this evidence
-- <piece> changed on <date>; <signal> may already be fixed. Run a comparison after a few sessions.
+- <file> changed on <date>; <problem> may already be fixed. Run a comparison after a few sessions.
 
 ## Before/after
-- <piece>: <verdict> — <moves, e.g. "same cost, 40% faster">, only for pieces with an applied suggestion.
-
-_Time and cost are estimates from transcript timestamps and token usage; idle time is excluded._
-
-When `totals.reportedByProvider.costUsd` exists, show it next to the estimate as the agent's own figure ("the agent reports $X"); never add the two. Skill rows in `usage` overlap the main and agent rows.
+- <file>: <verdict> — <moves, e.g. "same cost, 40% faster">, only for files with an applied suggestion.
 ```
+
+When `totals.reportedByProvider.costUsd` exists, show it next to the estimate as the agent's own figure ("the agent reports $X"); never add the two. When several signals make up one suggestion, add their costs only if they don't overlap (corrections and failures can describe the same turn); otherwise show the largest and say so. Skill rows in `usage` overlap the main and agent rows.
 
 Leave out empty sections.
