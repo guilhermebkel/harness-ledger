@@ -2,7 +2,13 @@
 // change, which also differ in tasks. It reports deltas and refuses to call a winner when
 // either side has too few sessions.
 
-import type { CompareResult, CompareVerdict, SideMetrics } from "@/Shared/Protocols/AnalysisProtocol.js";
+import type {
+  ComparedMetric,
+  CompareResult,
+  CompareVerdict,
+  MetricMove,
+  SideMetrics,
+} from "@/Shared/Protocols/AnalysisProtocol.js";
 import type { Config } from "@/Shared/Protocols/ConfigProtocol.js";
 import type { PieceKind } from "@/Shared/Protocols/HarnessProtocol.js";
 import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.js";
@@ -14,6 +20,7 @@ import { UsageService } from "./UsageService.js";
 
 const MAX_SIDE_SIGNALS = 10;
 const DELTA_DIGITS = 3;
+const RELATIVE_CHANGE_DIGITS = 2;
 const GLOBAL_PIECE_PREFIXES = ["instructions:", "hook:", "settings:"];
 
 type UsageCheck = (session: SessionFacts, name: string) => boolean;
@@ -52,6 +59,7 @@ export class CompareService {
       "Time and cost are estimates; idle gaps are excluded.",
     ];
     const hasEnoughData = before.sessions >= minSessions && after.sessions >= minSessions;
+    const moves = hasEnoughData ? this.significantMoves(before, after) : [];
     if (!hasEnoughData) {
       caveats.push(
         `Need at least ${minSessions} sessions using ${piece} on each side `
@@ -65,7 +73,8 @@ export class CompareService {
       minSessions,
       before,
       after,
-      verdict: hasEnoughData ? this.verdictOf(before, after) : "insufficient_data",
+      verdict: hasEnoughData ? this.verdictOf(moves) : "insufficient_data",
+      moves,
       deltas: {
         errorRate: this.difference(before.errorRate, after.errorRate),
         correctionsPerSession: this.difference(before.correctionsPerSession, after.correctionsPerSession),
@@ -80,20 +89,37 @@ export class CompareService {
     };
   }
 
-  /** Lower is better for every tracked metric; a verdict needs all significant moves in one direction. */
-  private verdictOf(before: SideMetrics, after: SideMetrics): CompareVerdict {
-    const significantMoves = [
-      this.relativeChange(before.errorRate, after.errorRate),
-      this.relativeChange(before.correctionsPerSession, after.correctionsPerSession),
-      this.relativeChange(before.perInvocation?.usd, after.perInvocation?.usd),
-    ].filter((change) => Math.abs(change) >= this.config.minRelativeChange);
-    if (!significantMoves.length) {
+  /**
+   * Time counts as much as money: a change that keeps the cost but makes the work faster is an improvement.
+   * Lower is better for every metric.
+   */
+  private significantMoves(before: SideMetrics, after: SideMetrics): MetricMove[] {
+    const metricToValues: Record<ComparedMetric, [number | undefined, number | undefined]> = {
+      errorRate: [before.errorRate, after.errorRate],
+      correctionsPerSession: [before.correctionsPerSession, after.correctionsPerSession],
+      activeMinutesPerInvocation: [before.perInvocation?.activeMinutes, after.perInvocation?.activeMinutes],
+      usdPerInvocation: [before.perInvocation?.usd, after.perInvocation?.usd],
+    };
+    return (Object.entries(metricToValues) as [ComparedMetric, [number | undefined, number | undefined]][])
+      .map(([metric, [beforeValue, afterValue]]): MetricMove => {
+        const relativeChange = this.relativeChange(beforeValue, afterValue);
+        return {
+          metric,
+          relativeChange: NumberUtil.round(relativeChange, RELATIVE_CHANGE_DIGITS),
+          direction: relativeChange < 0 ? "better" : "worse",
+        };
+      })
+      .filter((move) => Math.abs(move.relativeChange) >= this.config.minRelativeChange);
+  }
+
+  private verdictOf(moves: MetricMove[]): CompareVerdict {
+    if (!moves.length) {
       return "no_clear_change";
     }
-    if (significantMoves.every((change) => change < 0)) {
+    if (moves.every((move) => move.direction === "better")) {
       return "improved";
     }
-    return significantMoves.every((change) => change > 0) ? "worse" : "no_clear_change";
+    return moves.every((move) => move.direction === "worse") ? "worse" : "mixed";
   }
 
   /** Usage of a global piece is the usage of the main thread. */

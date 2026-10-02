@@ -58,7 +58,7 @@ History: <transcriptsAvailable> transcripts since <oldestAt>; retention <retenti
 
 ### 1. <title>
 **Class:** … · **Piece:** `…` (`path`) · **Evidence:** session 3f2a91bc · line 14 · test-runner; … +4 more
-**What happens:** one or two sentences, with the numbers from the script.
+**What happens:** one or two sentences, with the numbers from the script, time first when it is the bigger cost.
 **Why this class:** one sentence (e.g. "CLAUDE.md line 3 already says to use pnpm").
 **Change:** the exact text, diff, hook or file to add.
 (**Partial:** reason — only when partial.)
@@ -70,7 +70,7 @@ History: <transcriptsAvailable> transcripts since <oldestAt>; retention <retenti
 - <piece> changed on <date>; <signal> may already be fixed. Run a comparison after a few sessions.
 
 ## Before/after
-- <piece>: <verdict and key deltas>, only for pieces with an applied suggestion.
+- <piece>: <verdict> — <moves, e.g. "same cost, 40% faster">, only for pieces with an applied suggestion.
 
 _Time and cost are estimates from transcript timestamps and token usage; idle time is excluded._
 

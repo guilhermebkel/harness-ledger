@@ -58,7 +58,7 @@ Before any flow, read `references/findings.md` in this skill's folder (`${CLAUDE
    - Also treat as already handled anything an open branch or PR already changes: check `git branch --list` and, if `gh` works, `gh pr list --state open --limit 20 --json title,headRefName,files`. Skip this silently when not a git repo or `gh` isn't available.
    - Classify it with exactly one class and write the change, following the rules in the reference.
 5. Group signals that share a cause into one finding (for example, `failed_command:npm test` and a correction saying "use pnpm").
-6. Write the report in the format from the reference, save it to `.imh/reports/<YYYY-MM-DD>.md`, and show it to the user. Keep it short: at most 7 suggestions, ordered by estimated cost.
+6. Write the report in the format from the reference, save it to `.imh/reports/<YYYY-MM-DD>.md`, and show it to the user. Keep it short: at most 7 suggestions, ordered by estimated cost (the script's `score`, which weighs time and money).
 7. Register each suggestion with `suggestions add --file <tmp.json>` (an array of `{title, class, piece, signals, change}`; `signals` are the signal ids the finding came from). Use the returned ids in the report.
 8. Ask which suggestions, if any, the user wants applied (see "Applying").
 
@@ -70,7 +70,8 @@ If `.imh/` is not in `.gitignore` and the project is a git repo, ask once whethe
 2. Run `compare --piece <id>`.
 3. Report before vs. after: sessions, error rate, corrections per session, time/tokens/cost per use, and the signals on each side. Use the script's `verdict`:
    - `insufficient_data`: say how many sessions each side has and that it needs `minSessions` per side. Don't conclude anything.
-   - `improved` / `worse` / `no_clear_change`: say it, and always add that this is an observational comparison of different tasks, not a controlled test.
+   - `improved` / `worse` / `mixed` / `no_clear_change`: say it, and always add that this is an observational comparison of different tasks, not a controlled test.
+   - Describe the verdict with `moves`, the metrics that changed: time per use counts as much as cost, so "same cost, 40% faster" is an improvement. For `mixed`, name the trade-off ("40% faster, 30% more expensive") and let the user weigh it.
 
 ## Flow 4: manage suggestions
 

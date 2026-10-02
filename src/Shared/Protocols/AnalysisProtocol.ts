@@ -158,7 +158,18 @@ export interface SideMetrics {
   signals: SideSignal[];
 }
 
-export type CompareVerdict = "insufficient_data" | "improved" | "worse" | "no_clear_change";
+/** `mixed`: some metrics got better and others worse, e.g. faster but more expensive. */
+export type CompareVerdict = "insufficient_data" | "improved" | "worse" | "mixed" | "no_clear_change";
+
+export type ComparedMetric = "errorRate" | "correctionsPerSession" | "activeMinutesPerInvocation" | "usdPerInvocation";
+
+/** A metric that moved by at least `minRelativeChange`. Lower is better for every compared metric. */
+export interface MetricMove {
+  metric: ComparedMetric;
+  /** (after - before) / before, e.g. -0.4 is 40% lower. */
+  relativeChange: number;
+  direction: "better" | "worse";
+}
 
 export interface CompareDeltas {
   errorRate: number | null;
@@ -176,6 +187,8 @@ export interface CompareResult {
   before: SideMetrics;
   after: SideMetrics;
   verdict: CompareVerdict;
+  /** The metrics behind the verdict, so a report can say "same cost, 40% faster". */
+  moves: MetricMove[];
   deltas: CompareDeltas;
   caveats: string[];
 }

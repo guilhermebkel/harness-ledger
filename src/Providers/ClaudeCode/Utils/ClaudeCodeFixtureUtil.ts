@@ -49,6 +49,11 @@ export interface ToolStepOptions {
   lineFields?: Record<string, unknown>;
 }
 
+export interface TestRunOptions {
+  commandSeconds?: number;
+  model?: string;
+}
+
 export interface ResultOptions {
   isError?: boolean;
   secondsLater?: number;
@@ -349,27 +354,31 @@ export class ClaudeCodeFixtureUtil {
       .write(join(fixture.claudeHome, "projects", "-somewhere-else", "other.jsonl"));
   }
 
-  /** A session where test-runner runs one command, for before/after tests. */
+  /**
+   * A session where test-runner runs one command, for before/after tests. `commandSeconds` is how long
+   * the command takes and `model` the subagent's model, to vary time and cost independently.
+   */
   static writeTestRunnerSession(
     fixture: Fixture,
     sessionId: string,
     startedAt: string,
     command: string,
     isFailing: boolean,
+    runOptions: TestRunOptions = {},
   ): void {
     const agentId = `x${sessionId}`;
     const delegationPrompt = `run tests for ${sessionId}`;
     const subagentOptions = { isSidechain: true, agentId };
     const subagent = new ClaudeCodeTranscriptBuilder(sessionId, fixture.projectDir, startedAt, subagentOptions)
       .user(delegationPrompt)
-      .tool(`b_${sessionId}`, "Bash", { command });
+      .tool(`b_${sessionId}`, "Bash", { command }, { model: runOptions.model });
     if (isFailing) {
       subagent
         .result(`b_${sessionId}`, "Exit code 1\nnpm ERR! Missing script", { isError: true })
         .tool(`c_${sessionId}`, "Bash", { command: "pnpm test" })
         .result(`c_${sessionId}`, "ok");
     } else {
-      subagent.result(`b_${sessionId}`, "ok");
+      subagent.result(`b_${sessionId}`, "ok", { secondsLater: runOptions.commandSeconds });
     }
     subagent.write(ClaudeCodeFixtureUtil.subagentPath(fixture, sessionId, agentId));
     new ClaudeCodeTranscriptBuilder(sessionId, fixture.projectDir, startedAt)
