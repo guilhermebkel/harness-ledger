@@ -7,6 +7,7 @@ export type CheckCategory
     | "cycles"
     | "boundaries"
     | "tests"
+    | "testLint"
     | "monorepo"
     | "package";
 

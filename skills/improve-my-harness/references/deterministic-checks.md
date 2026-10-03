@@ -40,6 +40,7 @@ Beyond the core categories, these fit only with specific evidence. Many have err
 | Corrections about importing from the wrong layer, or a layer rule in the instructions the agent keeps breaking | `no-restricted-imports` when ESLint exists; eslint-plugin-boundaries or dependency-cruiser otherwise | hook on the edited file |
 | `checks.isMonorepo` and version-mismatch errors (a duplicated React's `Invalid hook call`) | sherif; syncpack for rules per group | before commit |
 | `checks.isPublishedPackage` and `ERR_PACKAGE_PATH_NOT_EXPORTED`, `Could not find a declaration file`, ESM/CJS errors | publint and @arethetypeswrong/cli | after the build, on release |
+| Corrections about tests ("this test checks nothing", "you're testing the mock", a test that passed while the code was broken), with a test runner in `checks.tools` (`tests`) and nothing with `testLint` | the runner's lint rules: @vitest/eslint-plugin or eslint-plugin-jest (`no-conditional-expect`, `prefer-strict-equal`, `require-to-throw-message`, `no-disabled-tests`); ruff `PT`; golangci-lint `testifylint` and `thelper`. What lint can't check (expected values written by hand, no mocks of the project's own code) goes in a short tests section of the instructions | hook on the edited test file |
 | No knip, jscpd or sonarjs and the person prefers one tool | fallow (dead code, duplication, complexity and cycles in one binary) | before commit |
 
 Vulnerability scans (osv-scanner, audit-ci) rarely show up as friction in sessions: mention them only in "Starting a harness", as an option.

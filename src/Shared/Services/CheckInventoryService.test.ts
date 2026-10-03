@@ -74,9 +74,10 @@ describe("CheckInventoryService", () => {
           typecheck: "tsc --noEmit",
         },
         devDependencies: {
-          eslint: "^9",
-          knip: "^6",
-          typescript: "^5",
+          "eslint": "^9",
+          "knip": "^6",
+          "@vitest/eslint-plugin": "^1",
+          "typescript": "^5",
         },
       }),
       "eslint.config.mjs": "export default [{ rules: { \"complexity\": [\"error\", 10] } }];",
@@ -92,21 +93,24 @@ describe("CheckInventoryService", () => {
       runsIn: ["sessions", "ci"],
       sessions: 1,
     });
+    expect(checks.tools.find((tool) => tool.name === "@vitest/eslint-plugin")?.categories).toStrictEqual(["testLint"]);
+    expect(checks.unmappedTools).toStrictEqual([]);
     expect(checks.tools.find((tool) => tool.name === "typescript")?.runsIn).toStrictEqual(["sessions"]);
     expect(checks.missing).toStrictEqual([{ language: "typescript", category: "duplication" }]);
     expect(checks.isPublishedPackage).toBe(false);
     expect(checks.isMonorepo).toBe(false);
   });
 
-  it("reads Python and Go configs, including the rules that turn on complexity", async () => {
+  it("reads Python and Go configs, including the rules that turn on complexity and test linting", async () => {
     const projectDir = projectWith({
-      "pyproject.toml": "[tool.ruff.lint]\nselect = [\"E\", \"C901\"]\n",
+      "pyproject.toml": "[tool.ruff.lint]\nselect = [\"E\", \"C901\", \"PT\"]\n",
       "requirements-dev.txt": "vulture==2.11\n",
-      ".golangci.yml": "linters:\n  enable:\n    - gocognit\n",
+      ".golangci.yml": "linters:\n  enable:\n    - gocognit\n    - testifylint\n",
     });
     const sessions = [sessionEditing(".py", 5), sessionEditing(".go", 7)];
     const checks = await new CheckInventoryService(projectDir).inspect(sessions, inventoryWith());
-    expect(checks.tools.find((tool) => tool.name === "ruff")?.categories).toStrictEqual(["lint", "complexity"]);
+    expect(checks.tools.find((tool) => tool.name === "ruff")?.categories).toStrictEqual(["lint", "complexity", "testLint"]);
+    expect(checks.tools.find((tool) => tool.name === "golangci-lint")?.categories).toStrictEqual(["lint", "complexity", "testLint"]);
     expect(checks.missing).toStrictEqual([
       { language: "go", category: "deadCode" },
       { language: "go", category: "duplication" },

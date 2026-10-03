@@ -2417,6 +2417,30 @@ var CheckCatalogUtil = class _CheckCatalogUtil {
       packages: ["eslint-plugin-sonarjs"]
     },
     {
+      name: "@vitest/eslint-plugin",
+      languages: JS_LANGUAGES,
+      categories: ["testLint"],
+      packages: ["@vitest/eslint-plugin", "eslint-plugin-vitest"]
+    },
+    {
+      name: "eslint-plugin-jest",
+      languages: JS_LANGUAGES,
+      categories: ["testLint"],
+      packages: ["eslint-plugin-jest"]
+    },
+    {
+      name: "eslint-plugin-testing-library",
+      languages: JS_LANGUAGES,
+      categories: ["testLint"],
+      packages: ["eslint-plugin-testing-library"]
+    },
+    {
+      name: "eslint-plugin-playwright",
+      languages: JS_LANGUAGES,
+      categories: ["testLint"],
+      packages: ["eslint-plugin-playwright"]
+    },
+    {
       name: "eslint-plugin-boundaries",
       languages: JS_LANGUAGES,
       categories: ["boundaries"],
@@ -2540,7 +2564,16 @@ var CheckCatalogUtil = class _CheckCatalogUtil {
       categories: ["lint"],
       packages: ["ruff"],
       commands: ["ruff"],
-      configMarkers: [{ pattern: /\bC90\d?\b|mccabe/, categories: ["complexity"] }]
+      configMarkers: [
+        { pattern: /\bC90\d?\b|mccabe/, categories: ["complexity"] },
+        { pattern: /["']PT\d*["']|flake8-pytest-style/, categories: ["testLint"] }
+      ]
+    },
+    {
+      name: "flake8-pytest-style",
+      languages: ["python"],
+      categories: ["testLint"],
+      packages: ["flake8-pytest-style"]
     },
     {
       name: "flake8",
@@ -2607,7 +2640,8 @@ var CheckCatalogUtil = class _CheckCatalogUtil {
       configMarkers: [
         { pattern: /\b(gocognit|gocyclo|cyclop)\b/, categories: ["complexity"] },
         { pattern: /\b(unused|deadcode)\b/, categories: ["deadCode"] },
-        { pattern: /\bdupl\b/, categories: ["duplication"] }
+        { pattern: /\bdupl\b/, categories: ["duplication"] },
+        { pattern: /\b(testifylint|thelper|tparallel|paralleltest)\b/, categories: ["testLint"] }
       ]
     },
     {
