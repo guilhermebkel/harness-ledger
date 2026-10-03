@@ -1558,6 +1558,7 @@ var ContextLoadDetectorService = class _ContextLoadDetectorService {
 
 // src/Shared/Services/SignalService.ts
 var MAX_COUNTED_VALUES = 5;
+var OCCURRENCE_USD_DIGITS = 6;
 var MIN_SESSIONS_FOR_FULL_EVIDENCE = 2;
 var SELF_SKILL_NAME = /(^|:)improve-my-harness$/;
 var USAGE_KINDS = /* @__PURE__ */ new Set(["skill", "agent", "command", "mcp"]);
@@ -1910,10 +1911,22 @@ var SignalService = class _SignalService {
     const roundCount = Math.max(0, ...sessionsOccurrences.map((sessionOccurrences) => sessionOccurrences.length));
     const evidence = [];
     for (let roundIndex = 0; roundIndex < roundCount && evidence.length < maxEvidence; roundIndex++) {
-      const roundEvidence = sessionsOccurrences.map((sessionOccurrences) => sessionOccurrences[roundIndex]?.ref).filter((ref) => ref !== void 0);
+      const roundEvidence = sessionsOccurrences.map((sessionOccurrences) => sessionOccurrences[roundIndex]).filter((occurrence) => occurrence !== void 0).map((occurrence) => ({
+        ...occurrence.ref,
+        cost: this.occurrenceCost(occurrence)
+      }));
       evidence.push(...roundEvidence.slice(0, maxEvidence - evidence.length));
     }
     return evidence;
+  }
+  occurrenceCost(occurrence) {
+    return {
+      activeMs: occurrence.activeMs,
+      tokens: TokenUsageUtil.total(occurrence.usage),
+      inputTokens: TokenUsageUtil.input(occurrence.usage),
+      outputTokens: occurrence.usage.output,
+      usd: NumberUtil.round(this.costService.costUsd(occurrence.usage, occurrence.model), OCCURRENCE_USD_DIGITS)
+    };
   }
 };
 
@@ -5126,6 +5139,168 @@ var StatusCommand = class {
   }
 };
 
+// src/Shared/Services/SuggestionCostService.ts
+var MAX_ID_CHARS = 120;
+var ZERO_COST = {
+  activeMs: 0,
+  tokens: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  usd: 0
+};
+var SuggestionCostService = class _SuggestionCostService {
+  idToSignal;
+  constructor(signals) {
+    this.idToSignal = new Map(signals.map((signal) => [signal.id, signal]));
+  }
+  static keyOf(occurrence) {
+    return `${occurrence.sessionId}:${occurrence.line}`;
+  }
+  static keysOf(occurrences) {
+    return new Set(occurrences.map((occurrence) => _SuggestionCostService.keyOf(occurrence)));
+  }
+  static figuresOf(cost) {
+    return {
+      activeMinutes: TimeUtil.msToMinutes(cost.activeMs),
+      tokens: cost.tokens,
+      inputTokens: cost.inputTokens,
+      outputTokens: cost.outputTokens,
+      usd: NumberUtil.round(cost.usd)
+    };
+  }
+  static sum(costs) {
+    return costs.reduce((total, cost) => ({
+      activeMs: total.activeMs + cost.activeMs,
+      tokens: total.tokens + cost.tokens,
+      inputTokens: total.inputTokens + cost.inputTokens,
+      outputTokens: total.outputTokens + cost.outputTokens,
+      usd: total.usd + cost.usd
+    }), ZERO_COST);
+  }
+  static coveredBy(costs) {
+    const covered = costs.reduce((total, cost) => ({
+      activeMinutes: total.activeMinutes + cost.activeMinutes,
+      tokens: total.tokens + cost.tokens,
+      inputTokens: total.inputTokens + cost.inputTokens,
+      outputTokens: total.outputTokens + cost.outputTokens,
+      usd: total.usd + cost.usd
+    }), _SuggestionCostService.figuresOf(ZERO_COST));
+    return {
+      ...covered,
+      activeMinutes: NumberUtil.round(covered.activeMinutes, 1),
+      usd: NumberUtil.round(covered.usd)
+    };
+  }
+  costsOf(suggestions) {
+    const occurrenceKeyToPosition = this.claimedOccurrences(suggestions);
+    this.checkWholeSignals(suggestions);
+    return suggestions.map((suggestion) => this.costOf(suggestion, new Set(occurrenceKeyToPosition.keys())));
+  }
+  claimedOccurrences(suggestions) {
+    const occurrenceKeyToPosition = /* @__PURE__ */ new Map();
+    suggestions.forEach((suggestion, suggestionIndex) => {
+      const position = suggestionIndex + 1;
+      const evidenceKeys = _SuggestionCostService.keysOf(this.evidenceOf(suggestion.signals));
+      for (const occurrence of suggestion.occurrences ?? []) {
+        const key = _SuggestionCostService.keyOf(occurrence);
+        if (!evidenceKeys.has(key)) {
+          throw new Error(
+            `Suggestion ${position} lists session ${occurrence.sessionId} line ${occurrence.line}, which isn't in the evidence of its signals. Run \`imh evidence <signal-id>\` to see their occurrences.`
+          );
+        }
+        const otherPosition = occurrenceKeyToPosition.get(key);
+        if (otherPosition !== void 0 && otherPosition !== position) {
+          throw new Error(
+            `Session ${occurrence.sessionId} line ${occurrence.line} is in suggestions ${otherPosition} and ${position}. Each occurrence belongs to the one suggestion that would prevent it.`
+          );
+        }
+        occurrenceKeyToPosition.set(key, position);
+      }
+    });
+    return occurrenceKeyToPosition;
+  }
+  checkWholeSignals(suggestions) {
+    const signalIdToPosition = /* @__PURE__ */ new Map();
+    suggestions.forEach((suggestion, suggestionIndex) => {
+      const position = suggestionIndex + 1;
+      for (const signalId of this.wholeSignalsOf(suggestion)) {
+        const otherPosition = signalIdToPosition.get(signalId);
+        if (otherPosition !== void 0) {
+          const shownId = RedactUtil.excerpt(signalId, MAX_ID_CHARS);
+          throw new Error(
+            `Suggestions ${otherPosition} and ${position} both take all of ${shownId}. List the occurrences each one covers ("occurrences": [{"sessionId", "line"}], from \`imh evidence ${shownId}\`).`
+          );
+        }
+        signalIdToPosition.set(signalId, position);
+      }
+    });
+  }
+  wholeSignalsOf(suggestion) {
+    const listedKeys = _SuggestionCostService.keysOf(suggestion.occurrences ?? []);
+    return suggestion.signals.filter((signalId) => {
+      const evidence = this.idToSignal.get(signalId)?.evidence ?? [];
+      return !evidence.some((item) => listedKeys.has(_SuggestionCostService.keyOf(item)));
+    });
+  }
+  costOf(suggestion, claimedKeys) {
+    const listedKeys = _SuggestionCostService.keysOf(suggestion.occurrences ?? []);
+    const parts = [];
+    const partialReasons = [];
+    for (const signalId of suggestion.signals) {
+      const signal = this.idToSignal.get(signalId);
+      if (!signal) {
+        partialReasons.push(`signal not in the last analysis: ${RedactUtil.excerpt(signalId, MAX_ID_CHARS)}`);
+        continue;
+      }
+      const listed = signal.evidence.filter((item) => listedKeys.has(_SuggestionCostService.keyOf(item)));
+      parts.push(listed.length ? _SuggestionCostService.listedPart(signal, listed) : this.remainderPart(signal, claimedKeys));
+    }
+    const bounds = CollectionUtil.unique(parts.map((part) => part.bound));
+    const total = _SuggestionCostService.sum(parts.map((part) => part.cost));
+    return {
+      ..._SuggestionCostService.figuresOf(total),
+      partialReasons,
+      bound: bounds.length === 1 ? bounds[0] ?? "estimate" : "estimate",
+      occurrences: parts.reduce((count, part) => count + part.occurrences, 0),
+      isPartial: partialReasons.length > 0
+    };
+  }
+  static listedPart(signal, listed) {
+    return {
+      cost: _SuggestionCostService.sum(listed.map((item) => item.cost)),
+      occurrences: listed.length,
+      bound: signal.cost.bound
+    };
+  }
+  // Why: the signal's own cost minus what other suggestions claimed; occurrences past the saved evidence are in
+  // the signal's cost, so they stay with the suggestion that takes the rest.
+  remainderPart(signal, claimedKeys) {
+    const claimed = signal.evidence.filter((item) => claimedKeys.has(_SuggestionCostService.keyOf(item)));
+    const claimedCost = _SuggestionCostService.sum(claimed.map((item) => item.cost));
+    const signalCost = {
+      activeMs: signal.cost.activeMinutes * TimeUtil.MS_PER_MINUTE,
+      tokens: signal.cost.tokens,
+      inputTokens: signal.cost.inputTokens,
+      outputTokens: signal.cost.outputTokens,
+      usd: signal.cost.usd
+    };
+    return {
+      cost: {
+        activeMs: Math.max(0, signalCost.activeMs - claimedCost.activeMs),
+        tokens: Math.max(0, signalCost.tokens - claimedCost.tokens),
+        inputTokens: Math.max(0, signalCost.inputTokens - claimedCost.inputTokens),
+        outputTokens: Math.max(0, signalCost.outputTokens - claimedCost.outputTokens),
+        usd: Math.max(0, signalCost.usd - claimedCost.usd)
+      },
+      occurrences: signal.occurrences - claimed.length,
+      bound: signal.cost.bound
+    };
+  }
+  evidenceOf(signalIds) {
+    return signalIds.flatMap((signalId) => this.idToSignal.get(signalId)?.evidence ?? []);
+  }
+};
+
 // src/Shared/Services/SuggestionService.ts
 var SUGGESTION_ID_HASH_CHARS = 8;
 var MAX_TITLE_CHARS = 200;
@@ -5144,9 +5319,13 @@ var SuggestionService = class _SuggestionService {
     "already_handled"
   ];
   static STATUSES = ["pending", "accepted", "rejected", "applied"];
+  // Why: occurrences join the identity only when listed, so ids of suggestions without them never change.
   static idOf(suggestion) {
     const sortedSignals = [...suggestion.signals].sort(CollectionUtil.compareCodeUnits).join("|");
-    const identity = `${sortedSignals}@${suggestion.piece ?? ""}`;
+    const occurrenceKeys = (suggestion.occurrences ?? []).map((occurrence) => `${occurrence.sessionId}:${occurrence.line}`);
+    const sortedOccurrences = [...occurrenceKeys].sort(CollectionUtil.compareCodeUnits).join("|");
+    const occurrencePart = sortedOccurrences ? `#${sortedOccurrences}` : "";
+    const identity = `${sortedSignals}@${suggestion.piece ?? ""}${occurrencePart}`;
     return `sug-${HashUtil.sha(identity, SUGGESTION_ID_HASH_CHARS)}`;
   }
   static isStatus(value) {
@@ -5177,10 +5356,28 @@ var SuggestionService = class _SuggestionService {
         title,
         signals,
         status,
+        occurrences: _SuggestionService.parseOccurrences(record?.occurrences, position),
         class: findingClass,
         piece: GuardUtil.asString(record?.piece),
         change: GuardUtil.asString(record?.change),
         note: GuardUtil.asString(record?.note)
+      };
+    });
+  }
+  static parseOccurrences(value, position) {
+    if (value === void 0) {
+      return void 0;
+    }
+    return GuardUtil.asArray(value).map((item) => {
+      const record = GuardUtil.asRecord(item);
+      const sessionId = GuardUtil.asString(record?.sessionId);
+      const line = GuardUtil.asNumber(record?.line);
+      if (sessionId === void 0 || line === void 0) {
+        throw new Error(`Suggestion ${position} has an occurrence without a "sessionId" and a "line".`);
+      }
+      return {
+        sessionId,
+        line
       };
     });
   }
@@ -5189,16 +5386,21 @@ var SuggestionService = class _SuggestionService {
     return status ? suggestions.filter((suggestion) => suggestion.status === status) : suggestions;
   }
   // Why: a suggestion whose id already exists is left as is.
-  async add(newSuggestions) {
+  async add(newSuggestions, costs = []) {
     const suggestions = await this.store.loadSuggestions();
     const createdAt = (/* @__PURE__ */ new Date()).toISOString();
     const result = {
       added: [],
       existing: [],
-      total: 0
+      total: 0,
+      costs: {}
     };
-    for (const newSuggestion of newSuggestions) {
+    for (const [itemIndex, newSuggestion] of newSuggestions.entries()) {
       const id = _SuggestionService.idOf(newSuggestion);
+      const cost = costs[itemIndex];
+      if (cost) {
+        result.costs[id] = cost;
+      }
       const existing = suggestions.find((suggestion) => suggestion.id === id);
       if (existing) {
         result.existing.push({
@@ -5210,10 +5412,12 @@ var SuggestionService = class _SuggestionService {
       suggestions.push({
         id,
         createdAt,
+        cost,
         title: newSuggestion.title.slice(0, MAX_TITLE_CHARS),
         class: newSuggestion.class,
         piece: newSuggestion.piece,
         signals: newSuggestion.signals,
+        occurrences: newSuggestion.occurrences,
         status: newSuggestion.status ?? "pending",
         updatedAt: createdAt,
         change: newSuggestion.change?.slice(0, MAX_CHANGE_CHARS),
@@ -5251,10 +5455,17 @@ var SuggestionsCommand = class {
     const context = await ContextService.create(options);
     return new SuggestionService(context.store).list(options.status);
   }
+  // Why: costs are computed (and conflicts refused) before anything is saved, from the last analysis.
   async add(options) {
     const newSuggestions = SuggestionService.parse(options.items);
     const context = await ContextService.create(options);
-    return new SuggestionService(context.store).add(newSuggestions);
+    const analysis = await context.store.readJson(AnalysisService.LAST_ANALYSIS_FILE);
+    const costs = analysis ? new SuggestionCostService(analysis.signals).costsOf(newSuggestions) : [];
+    const result = await new SuggestionService(context.store).add(newSuggestions, costs);
+    return costs.length ? {
+      ...result,
+      covered: SuggestionCostService.coveredBy(costs)
+    } : result;
   }
   async setStatus(options) {
     const context = await ContextService.create(options);

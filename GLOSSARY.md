@@ -75,6 +75,10 @@ _Avoid_: issue, problem, insight
 A pointer to the exact place a signal came from: session, transcript line and thread, with a redacted excerpt.
 _Avoid_: proof, example, sample
 
+**Occurrence**:
+One time a signal happened, at one evidence line, with its own cost. A suggestion covers some occurrences of a signal, or all that no other suggestion took; each occurrence belongs to one suggestion.
+_Avoid_: instance, hit, case
+
 **Finding**:
 One or more signals with the same cause, classified and explained. Produced by the agent from signals, never from nothing.
 _Avoid_: insight, issue, recommendation

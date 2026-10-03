@@ -69,7 +69,7 @@ Before any flow, read `references/findings.md` in this skill's folder (`${CLAUDE
    - Classify it with exactly one class and write the change, following the rules in the reference.
 5. Group signals that share a cause into one finding (for example, `failed_command:npm test` and a correction saying "use pnpm").
 6. Write the report in the format from the reference, save it to `.imh/reports/<YYYY-MM-DD>.md`, and show it to the user. Keep it short: at most 7 suggestions, ordered by estimated cost (the script's `score`, which weighs time and money).
-7. Register each suggestion with `suggestions add --file <tmp.json>` (an array of `{title, class, piece, signals, change}`; `signals` are the signal ids the finding came from). Use the returned ids in the report.
+7. Register all suggestions in one `suggestions add --file <tmp.json>` call (an array of `{title, class, piece, signals, occurrences, change}`; `signals` are the signal ids the finding came from). When two suggestions come from the same signal, split it: in each, list in `occurrences` the evidence (`{sessionId, line}`, from `evidence <signal-id>`) that its change would have prevented; each occurrence goes to one suggestion, and at most one of them may leave `occurrences` out to take the rest. The script refuses overlaps. Use the returned ids, and take each suggestion's time, tokens and money from the returned `costs` (and `covered` for their sum), never from the signals.
 8. Ask which suggestions, if any, the user wants applied (see "Applying").
 
 If `.imh/` is not in `.gitignore` and the project is a git repo, ask once whether to add it there (or to `.git/info/exclude`). Don't add it without asking.

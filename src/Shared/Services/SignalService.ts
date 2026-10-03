@@ -1,17 +1,19 @@
 import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
 import type { SignalThresholds } from "@/Shared/Protocols/ConfigProtocol.js";
 import type { HarnessPiece, Inventory, PieceKind } from "@/Shared/Protocols/HarnessProtocol.js";
-import type { AssistantMessage, EvidenceRef, SessionFacts, TokenUsage, ToolCall } from "@/Shared/Protocols/SessionProtocol.js";
+import type { AssistantMessage, SessionFacts, TokenUsage, ToolCall } from "@/Shared/Protocols/SessionProtocol.js";
 import type {
   CostFigures,
   CountedDetail,
   CountedValue,
   Occurrence,
+  OccurrenceCost,
   OccurrenceGroup,
   PieceChange,
   Signal,
   SignalCost,
   SignalDetails,
+  SignalEvidence,
   SignalOptions,
   SignalType,
 } from "@/Shared/Protocols/SignalProtocol.js";
@@ -28,6 +30,7 @@ import { WorkflowDetectorService } from "./WorkflowDetectorService.js";
 import { ContextLoadDetectorService } from "./ContextLoadDetectorService.js";
 
 const MAX_COUNTED_VALUES = 5;
+const OCCURRENCE_USD_DIGITS = 6;
 // Why: evidence from fewer sessions is partial; re-reads within one session are still meaningful.
 const MIN_SESSIONS_FOR_FULL_EVIDENCE = 2;
 const SELF_SKILL_NAME = /(^|:)improve-my-harness$/;
@@ -436,7 +439,7 @@ export class SignalService {
   }
 
   // Why: round-robin across sessions shows the spread instead of the first N.
-  private spreadEvidence(sortedOccurrences: Occurrence[]): EvidenceRef[] {
+  private spreadEvidence(sortedOccurrences: Occurrence[]): SignalEvidence[] {
     const maxEvidence = this.options.maxEvidence;
     const sessionIdToOccurrences = new Map<string, Occurrence[]>();
     for (const occurrence of sortedOccurrences) {
@@ -444,13 +447,27 @@ export class SignalService {
     }
     const sessionsOccurrences = [...sessionIdToOccurrences.values()];
     const roundCount = Math.max(0, ...sessionsOccurrences.map((sessionOccurrences) => sessionOccurrences.length));
-    const evidence: EvidenceRef[] = [];
+    const evidence: SignalEvidence[] = [];
     for (let roundIndex = 0; roundIndex < roundCount && evidence.length < maxEvidence; roundIndex++) {
       const roundEvidence = sessionsOccurrences
-        .map((sessionOccurrences) => sessionOccurrences[roundIndex]?.ref)
-        .filter((ref) => ref !== undefined);
+        .map((sessionOccurrences) => sessionOccurrences[roundIndex])
+        .filter((occurrence) => occurrence !== undefined)
+        .map((occurrence) => ({
+          ...occurrence.ref,
+          cost: this.occurrenceCost(occurrence),
+        }));
       evidence.push(...roundEvidence.slice(0, maxEvidence - evidence.length));
     }
     return evidence;
+  }
+
+  private occurrenceCost(occurrence: Occurrence): OccurrenceCost {
+    return {
+      activeMs: occurrence.activeMs,
+      tokens: TokenUsageUtil.total(occurrence.usage),
+      inputTokens: TokenUsageUtil.input(occurrence.usage),
+      outputTokens: occurrence.usage.output,
+      usd: NumberUtil.round(this.costService.costUsd(occurrence.usage, occurrence.model), OCCURRENCE_USD_DIGITS),
+    };
   }
 }

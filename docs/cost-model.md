@@ -50,6 +50,14 @@ A chain starts at a failed call (not an interruption or a rejection) and follows
 
 `context_heavy`, `large_piece` and `repeated_workflow` stay out of the totals: they price what a structure change would save, not something lost.
 
+## Per suggestion
+
+Every evidence line carries the cost of its occurrence (`evidence[].cost`, unrounded: `activeMs`, tokens, `usd`). A suggestion's cost comes from the script when the skill registers it (`suggestions add`, which reads the last analysis), never from the skill:
+
+- For each of its signals, the occurrences it lists (`occurrences: [{sessionId, line}]`) add up; when it lists none of a signal's occurrences, it takes the rest of that signal: the signal's cost minus what other suggestions in the same call listed. Occurrences past the saved evidence are in the signal's cost, so they stay with the rest.
+- Each occurrence belongs to one suggestion, and one suggestion at most takes the rest of a signal; the call is refused otherwise. So the costs of one call never overlap, and `covered` is their sum.
+- The bound is the signals' bound when they agree, else `estimate`. A signal id missing from the last analysis makes the cost partial, with the reason.
+
 ## Before and after
 
 `compare` reports per piece: error rate, corrections per session, active minutes, input and output tokens, money per invocation, and `recoveryMinutesPerInvocation` (time in failure chains). Corrections and chains count only when the piece was running (its turn, or the failing call); global pieces (instructions, hooks, settings) answer for all of them. Token and recovery moves are reported but don't vote in the verdict: tokens are already in money, recovery time is already in active time.

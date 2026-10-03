@@ -94,6 +94,17 @@ export interface SignalCost extends CostFigures {
   fixLoop?: CostFigures;
 }
 
+// Why: unrounded, so the occurrences a suggestion covers add up without rounding drift; rounded only for display.
+export interface OccurrenceCost {
+  activeMs: number;
+  tokens: number;
+  inputTokens: number;
+  outputTokens: number;
+  usd: number;
+}
+
+export interface SignalEvidence extends EvidenceRef { cost: OccurrenceCost }
+
 export interface PieceChange {
   piece: string;
   modifiedAt: string;
@@ -116,7 +127,7 @@ export interface Signal {
   partialReasons: string[];
   cost: SignalCost;
   details: SignalDetails;
-  evidence: EvidenceRef[];
+  evidence: SignalEvidence[];
   evidenceTotal: number;
   firstSeenAt?: string;
   lastSeenAt?: string;

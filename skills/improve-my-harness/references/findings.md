@@ -80,7 +80,7 @@ Write the report in the language the person uses with you. Translate the labels 
 
 "Where to change" is the file the suggestion edits or creates, with a readable name: `test-runner agent (.claude/agents/test-runner.md)`, `new script (.claude/scripts/check.sh)`.
 
-Costs are the script's numbers for the whole analyzed period, adding up every occurrence; never per session and never your own estimate. Write tokens as `1.2M` / `340k`; input tokens include cache reads and writes.
+Costs are the script's numbers for the whole analyzed period, adding up every occurrence; never per session and never your own estimate. A suggestion's time, tokens and money are its `costs[id]` from `suggestions add`: every row has its own number, and the rows never share one, so never write "included in another suggestion" or leave a row without a cost. When two suggestions came from the same signal, each counts the occurrences it covers. Write tokens as `1.2M` / `340k`; input tokens include cache reads and writes.
 
 ```markdown
 # Harness report — <YYYY-MM-DD>
@@ -99,12 +99,12 @@ History: <transcriptsAvailable> transcripts since <oldestAt>; retention <retenti
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Enforce a rule that already exists | test-runner agent (`.claude/agents/test-runner.md`) | Runs `npm test` (fails), then `pnpm test` | 3 of 20 | ~38 min | 1.2M | 40k | ~$2.10 | sug-1a2b3c4d |
 
-_Time, tokens and cost add up the whole period (<N> sessions), not one session; they are estimates from transcript timestamps and token usage, with idle time left out._
+_Time, tokens and cost add up the whole period (<N> sessions), not one session; they are estimates from transcript timestamps and token usage, with idle time left out. Together the suggestions cover <covered>; no cost is counted in two rows._
 
 ### 1. <title>
 **What to do:** … · **Where:** `<path>` · **Evidence:** session 3f2a91bc · line 14 · test-runner; … +4 more
 **What happens:** one or two sentences, with the numbers from the script, time first when it is the bigger cost.
-**How we measured:** one plain sentence, from the signal's `cost.method` and `cost.bound`, saying what the numbers count and how sure they are ("from the first error until the command that worked, reasoning included; an estimate").
+**How we measured:** one plain sentence, from the signal's `cost.method` and `cost.bound`, saying what the numbers count, which occurrences they cover when the suggestion covers part of a signal (`costs[id].occurrences`: "the 5 corrections about the workspace's rules"), and how sure they are ("from the first error until the command that worked, reasoning included; an estimate").
 **Why:** one sentence on why this is the right kind of fix (e.g. "CLAUDE.md line 3 already says to use pnpm, so more text won't help").
 **Change:** the exact text, diff, hook or file to add.
 (**Partial:** reason — only when partial.)

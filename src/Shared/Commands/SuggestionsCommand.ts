@@ -4,7 +4,10 @@ import type {
   SetSuggestionStatusOptions,
 } from "@/Shared/Protocols/CommandProtocol.js";
 import type { AddSuggestionsResult, Suggestion } from "@/Shared/Protocols/SuggestionProtocol.js";
+import type { Analysis } from "@/Shared/Protocols/AnalysisProtocol.js";
+import { AnalysisService } from "@/Shared/Services/AnalysisService.js";
 import { ContextService } from "@/Shared/Services/ContextService.js";
+import { SuggestionCostService } from "@/Shared/Services/SuggestionCostService.js";
 import { SuggestionService } from "@/Shared/Services/SuggestionService.js";
 
 export class SuggestionsCommand {
@@ -13,10 +16,19 @@ export class SuggestionsCommand {
     return new SuggestionService(context.store).list(options.status);
   }
 
+  // Why: costs are computed (and conflicts refused) before anything is saved, from the last analysis.
   async add(options: AddSuggestionsOptions): Promise<AddSuggestionsResult> {
     const newSuggestions = SuggestionService.parse(options.items);
     const context = await ContextService.create(options);
-    return new SuggestionService(context.store).add(newSuggestions);
+    const analysis = await context.store.readJson<Analysis>(AnalysisService.LAST_ANALYSIS_FILE);
+    const costs = analysis ? new SuggestionCostService(analysis.signals).costsOf(newSuggestions) : [];
+    const result = await new SuggestionService(context.store).add(newSuggestions, costs);
+    return costs.length
+      ? {
+          ...result,
+          covered: SuggestionCostService.coveredBy(costs),
+        }
+      : result;
   }
 
   async setStatus(options: SetSuggestionStatusOptions): Promise<Suggestion> {

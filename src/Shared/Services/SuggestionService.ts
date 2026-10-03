@@ -2,7 +2,9 @@ import type {
   AddSuggestionsResult,
   FindingClass,
   NewSuggestion,
+  OccurrenceRef,
   Suggestion,
+  SuggestionCost,
   SuggestionStatus,
 } from "@/Shared/Protocols/SuggestionProtocol.js";
 import { GuardUtil } from "@/Shared/Utils/GuardUtil.js";
@@ -29,9 +31,13 @@ export class SuggestionService {
 
   constructor(private readonly store: StoreService) {}
 
-  static idOf(suggestion: Pick<NewSuggestion, "signals" | "piece">): string {
+  // Why: occurrences join the identity only when listed, so ids of suggestions without them never change.
+  static idOf(suggestion: Pick<NewSuggestion, "signals" | "piece" | "occurrences">): string {
     const sortedSignals = [...suggestion.signals].sort(CollectionUtil.compareCodeUnits).join("|");
-    const identity = `${sortedSignals}@${suggestion.piece ?? ""}`;
+    const occurrenceKeys = (suggestion.occurrences ?? []).map((occurrence) => `${occurrence.sessionId}:${occurrence.line}`);
+    const sortedOccurrences = [...occurrenceKeys].sort(CollectionUtil.compareCodeUnits).join("|");
+    const occurrencePart = sortedOccurrences ? `#${sortedOccurrences}` : "";
+    const identity = `${sortedSignals}@${suggestion.piece ?? ""}${occurrencePart}`;
     return `sug-${HashUtil.sha(identity, SUGGESTION_ID_HASH_CHARS)}`;
   }
 
@@ -68,10 +74,29 @@ export class SuggestionService {
         title,
         signals,
         status,
+        occurrences: SuggestionService.parseOccurrences(record?.occurrences, position),
         class: findingClass,
         piece: GuardUtil.asString(record?.piece),
         change: GuardUtil.asString(record?.change),
         note: GuardUtil.asString(record?.note),
+      };
+    });
+  }
+
+  private static parseOccurrences(value: unknown, position: number): OccurrenceRef[] | undefined {
+    if (value === undefined) {
+      return undefined;
+    }
+    return GuardUtil.asArray(value).map((item) => {
+      const record = GuardUtil.asRecord(item);
+      const sessionId = GuardUtil.asString(record?.sessionId);
+      const line = GuardUtil.asNumber(record?.line);
+      if (sessionId === undefined || line === undefined) {
+        throw new Error(`Suggestion ${position} has an occurrence without a "sessionId" and a "line".`);
+      }
+      return {
+        sessionId,
+        line,
       };
     });
   }
@@ -82,16 +107,24 @@ export class SuggestionService {
   }
 
   // Why: a suggestion whose id already exists is left as is.
-  async add(newSuggestions: NewSuggestion[]): Promise<AddSuggestionsResult> {
+  async add(
+    newSuggestions: NewSuggestion[],
+    costs: (SuggestionCost | undefined)[] = [],
+  ): Promise<AddSuggestionsResult> {
     const suggestions = await this.store.loadSuggestions();
     const createdAt = new Date().toISOString();
     const result: AddSuggestionsResult = {
       added: [],
       existing: [],
       total: 0,
+      costs: {},
     };
-    for (const newSuggestion of newSuggestions) {
+    for (const [itemIndex, newSuggestion] of newSuggestions.entries()) {
       const id = SuggestionService.idOf(newSuggestion);
+      const cost = costs[itemIndex];
+      if (cost) {
+        result.costs[id] = cost;
+      }
       const existing = suggestions.find((suggestion) => suggestion.id === id);
       if (existing) {
         result.existing.push({
@@ -103,10 +136,12 @@ export class SuggestionService {
       suggestions.push({
         id,
         createdAt,
+        cost,
         title: newSuggestion.title.slice(0, MAX_TITLE_CHARS),
         class: newSuggestion.class,
         piece: newSuggestion.piece,
         signals: newSuggestion.signals,
+        occurrences: newSuggestion.occurrences,
         status: newSuggestion.status ?? "pending",
         updatedAt: createdAt,
         change: newSuggestion.change?.slice(0, MAX_CHANGE_CHARS),
