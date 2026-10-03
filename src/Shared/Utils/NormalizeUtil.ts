@@ -144,9 +144,9 @@ export class NormalizeUtil {
     const errorIndex = nonWarningLines.slice(0, ERROR_LINES_TO_SCAN).findIndex((line) => ERROR_LOOKING_LINE.test(line));
     // "Encountered an error:" only announces the error; the next line is the error.
     const isHeaderOnly = errorIndex !== -1 && ERROR_HEADER_LINE.test(nonWarningLines[errorIndex] ?? "");
-    const errorLine = NormalizeUtil.pythonException(lines)
-      ?? (isHeaderOnly ? nonWarningLines[errorIndex + 1] : undefined)
-      ?? (errorIndex === -1 ? undefined : nonWarningLines[errorIndex]);
+    const announcedErrorLine = isHeaderOnly ? nonWarningLines[errorIndex + 1] : undefined;
+    const firstErrorLine = errorIndex === -1 ? undefined : nonWarningLines[errorIndex];
+    const errorLine = NormalizeUtil.pythonException(lines) ?? announcedErrorLine ?? firstErrorLine;
     const head = errorLine ?? nonWarningLines[0] ?? lines[0] ?? text.trim();
     const structuredReason = /"reason"\s*:\s*"([^"]{1,60})"/.exec(head)?.[1];
     const errorText = structuredReason ? `reason: ${structuredReason}` : head;

@@ -95,6 +95,12 @@ export default tseslint.config(
       "sonarjs/no-duplicated-branches": "error",
       "sonarjs/no-all-duplicated-branches": "error",
       "sonarjs/no-identical-conditions": "error",
+      "sonarjs/expression-complexity": "error",
+      "sonarjs/no-nested-template-literals": "error",
+      "sonarjs/no-nested-functions": "error",
+      "sonarjs/no-nested-switch": "error",
+      "sonarjs/no-nested-assignment": "error",
+      "sonarjs/no-nested-incdec": "error",
       "no-restricted-syntax": ["error", {
         selector: [
           "CallExpression > CallExpression.arguments:matches([arguments.length>=3], :has(> CallExpression.arguments))",

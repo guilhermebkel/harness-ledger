@@ -251,7 +251,9 @@ var NormalizeUtil = class _NormalizeUtil {
     const nonWarningLines = lines.filter((line) => !WARNING_LINE.test(line));
     const errorIndex = nonWarningLines.slice(0, ERROR_LINES_TO_SCAN).findIndex((line) => ERROR_LOOKING_LINE.test(line));
     const isHeaderOnly = errorIndex !== -1 && ERROR_HEADER_LINE.test(nonWarningLines[errorIndex] ?? "");
-    const errorLine = _NormalizeUtil.pythonException(lines) ?? (isHeaderOnly ? nonWarningLines[errorIndex + 1] : void 0) ?? (errorIndex === -1 ? void 0 : nonWarningLines[errorIndex]);
+    const announcedErrorLine = isHeaderOnly ? nonWarningLines[errorIndex + 1] : void 0;
+    const firstErrorLine = errorIndex === -1 ? void 0 : nonWarningLines[errorIndex];
+    const errorLine = _NormalizeUtil.pythonException(lines) ?? announcedErrorLine ?? firstErrorLine;
     const head = errorLine ?? nonWarningLines[0] ?? lines[0] ?? text.trim();
     const structuredReason = /"reason"\s*:\s*"([^"]{1,60})"/.exec(head)?.[1];
     const errorText = structuredReason ? `reason: ${structuredReason}` : head;
@@ -3420,15 +3422,22 @@ var ClaudeCodeSessionService = class {
       this.handlePrompt(context, line, prompt);
     }
   }
+  isHarnessGenerated(line) {
+    const record = line.record;
+    const harnessFlags = [record.isMeta, record.isCompactSummary, record.isVisibleInTranscriptOnly];
+    if (harnessFlags.some((flag) => flag === true)) {
+      return true;
+    }
+    const originKind = GuardUtil.asString(GuardUtil.asRecord(record.origin)?.kind);
+    return originKind !== void 0 && originKind !== HUMAN_ORIGIN;
+  }
   handlePrompt(context, line, rawText) {
     const threadId = line.thread.id;
     if (!context.threadIdToFirstPromptHash.has(threadId)) {
       const promptHash = HashUtil.sha(rawText.trim());
       context.threadIdToFirstPromptHash.set(threadId, promptHash);
     }
-    const originKind = GuardUtil.asString(GuardUtil.asRecord(line.record.origin)?.kind);
-    const isHarnessGenerated = line.record.isMeta === true || line.record.isCompactSummary === true || line.record.isVisibleInTranscriptOnly === true || originKind !== void 0 && originKind !== HUMAN_ORIGIN;
-    if (isHarnessGenerated || !SessionUtil.isMainThread(line.thread)) {
+    if (this.isHarnessGenerated(line) || !SessionUtil.isMainThread(line.thread)) {
       return;
     }
     const { text, command } = ClaudeCodeTranscriptUtil.cleanPrompt(rawText);
@@ -4053,7 +4062,8 @@ var SuggestionService = class _SuggestionService {
   static STATUSES = ["pending", "accepted", "rejected", "applied"];
   static idOf(suggestion) {
     const sortedSignals = [...suggestion.signals].sort().join("|");
-    return `sug-${HashUtil.sha(`${sortedSignals}@${suggestion.piece ?? ""}`, SUGGESTION_ID_HASH_CHARS)}`;
+    const identity = `${sortedSignals}@${suggestion.piece ?? ""}`;
+    return `sug-${HashUtil.sha(identity, SUGGESTION_ID_HASH_CHARS)}`;
   }
   static isStatus(value) {
     return _SuggestionService.STATUSES.includes(value);

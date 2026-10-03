@@ -31,7 +31,8 @@ export class SuggestionService {
 
   static idOf(suggestion: Pick<NewSuggestion, "signals" | "piece">): string {
     const sortedSignals = [...suggestion.signals].sort().join("|");
-    return `sug-${HashUtil.sha(`${sortedSignals}@${suggestion.piece ?? ""}`, SUGGESTION_ID_HASH_CHARS)}`;
+    const identity = `${sortedSignals}@${suggestion.piece ?? ""}`;
+    return `sug-${HashUtil.sha(identity, SUGGESTION_ID_HASH_CHARS)}`;
   }
 
   static isStatus(value: string): value is SuggestionStatus {

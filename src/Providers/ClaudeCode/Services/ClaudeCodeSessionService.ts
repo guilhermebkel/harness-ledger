@@ -557,20 +557,25 @@ export class ClaudeCodeSessionService {
     }
   }
 
+  private isHarnessGenerated(line: ClaudeCodeTranscriptLine): boolean {
+    const record = line.record;
+    const harnessFlags = [record.isMeta, record.isCompactSummary, record.isVisibleInTranscriptOnly];
+    if (harnessFlags.some((flag) => flag === true)) {
+      return true;
+    }
+    // Recent versions say where a user line came from; background-task notifications are not the person.
+    const originKind = GuardUtil.asString(GuardUtil.asRecord(record.origin)?.kind);
+    return originKind !== undefined && originKind !== HUMAN_ORIGIN;
+  }
+
   private handlePrompt(context: ClaudeCodeParseContext, line: ClaudeCodeTranscriptLine, rawText: string): void {
     const threadId = line.thread.id;
     if (!context.threadIdToFirstPromptHash.has(threadId)) {
       const promptHash = HashUtil.sha(rawText.trim());
       context.threadIdToFirstPromptHash.set(threadId, promptHash);
     }
-    // Recent versions say where a user line came from; background-task notifications are not the person.
-    const originKind = GuardUtil.asString(GuardUtil.asRecord(line.record.origin)?.kind);
-    const isHarnessGenerated = line.record.isMeta === true
-      || line.record.isCompactSummary === true
-      || line.record.isVisibleInTranscriptOnly === true
-      || (originKind !== undefined && originKind !== HUMAN_ORIGIN);
     // A subagent's "user" turn is the delegation prompt, not something the person typed.
-    if (isHarnessGenerated || !SessionUtil.isMainThread(line.thread)) {
+    if (this.isHarnessGenerated(line) || !SessionUtil.isMainThread(line.thread)) {
       return;
     }
     const { text, command } = ClaudeCodeTranscriptUtil.cleanPrompt(rawText);
