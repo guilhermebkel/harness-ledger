@@ -1,16 +1,16 @@
 // Why: MCP and hook entries keep names and shapes only (ADR 0007); env values, headers and arguments are hashed to detect changes, never stored.
 
-import { readdir, readFile, realpath, stat } from "node:fs/promises";
-import { basename, dirname, join, relative } from "node:path";
-import type { HarnessPiece, Inventory, PieceKind, PieceScope } from "@/Shared/Protocols/HarnessProtocol.ts";
+import { readdir, readFile, stat } from "node:fs/promises";
+import { basename, join, relative } from "node:path";
+import type { HarnessPiece, Inventory, PieceScope } from "@/Shared/Protocols/HarnessProtocol.ts";
 import type { InventoryOptions } from "@/Shared/Protocols/ProviderProtocol.ts";
-import type { GitChangeDates, UnknownRecord } from "@/Shared/Protocols/UtilProtocol.ts";
+import type { UnknownRecord } from "@/Shared/Protocols/UtilProtocol.ts";
 import { FrontmatterUtil } from "@/Shared/Utils/FrontmatterUtil.ts";
 import { GitUtil } from "@/Shared/Utils/GitUtil.ts";
 import { GuardUtil } from "@/Shared/Utils/GuardUtil.ts";
 import { HashUtil } from "@/Shared/Utils/HashUtil.ts";
-import { NumberUtil } from "@/Shared/Utils/NumberUtil.ts";
 import { PathUtil } from "@/Shared/Utils/PathUtil.ts";
+import { ClaudeCodePieceCollectorService } from "@/Providers/ClaudeCode/Services/ClaudeCodePieceCollectorService.ts";
 import type {
   ComponentOptions,
   FileChange,
@@ -19,116 +19,13 @@ import type {
   SettingsSummary,
 } from "@/Providers/ClaudeCode/Protocols/ClaudeCodeProtocol.ts";
 
-const PROJECT_SCOPES = new Set<PieceScope>(["project", "local"]);
-// Why: only an agent's frontmatter `skills:` preloads skills; elsewhere the key means something else or nothing.
-const KINDS_WITH_SKILLS = new Set<PieceKind>(["agent"]);
-// Why: plugin and managed pieces are rewritten by their owner on update, so a suggestion can't edit them.
-const READ_ONLY_SCOPES = new Set<PieceScope>(["plugin", "managed"]);
 const DEFAULT_RETENTION_DAYS = 30;
-const MAX_DESCRIPTION_CHARS = 300;
+const { MAX_DESCRIPTION_CHARS } = ClaudeCodePieceCollectorService;
 const MAX_COMPONENT_DEPTH = 4;
 const HARNESS_PATHS = ["CLAUDE.md", "CLAUDE.local.md", ".claude", ".mcp.json"];
 const MAX_SKILL_FILES = 50;
 const MAX_SKILL_FOLDER_DEPTH = 3;
-// Why: larger files are listed but not hashed, to keep the inventory fast.
-const MAX_HASHED_FILE_BYTES = 1_000_000;
 const SKIPPED_FOLDERS = new Set(["node_modules", ".git", "__pycache__", ".venv"]);
-
-// Why: files already seen are skipped, because the project can be the home directory.
-class InventoryBuilder {
-  readonly pieces: HarnessPiece[] = [];
-  readonly notes: string[] = [];
-  private readonly seenRealPaths = new Set<string>();
-
-  constructor(
-    readonly projectDir: string,
-    private readonly gitChangeDates: GitChangeDates,
-  ) {}
-
-  async markSeen(file: string): Promise<boolean> {
-    const realPath = await realpath(file).catch(() => file);
-    if (this.seenRealPaths.has(realPath)) {
-      return false;
-    }
-    this.seenRealPaths.add(realPath);
-    return true;
-  }
-
-  displayPath(file: string, scope: PieceScope): string {
-    const isProjectFile = PROJECT_SCOPES.has(scope);
-    return isProjectFile ? relative(this.projectDir, file) : PathUtil.tildify(file);
-  }
-
-  async changeOf(file: string, scope: PieceScope): Promise<FileChange> {
-    const projectRelativePath = relative(this.projectDir, file);
-    const isCommittedAsIs = scope === "project" && !this.gitChangeDates.dirtyPaths.has(projectRelativePath);
-    const committedAt = isCommittedAsIs ? this.gitChangeDates.pathToCommittedAt.get(projectRelativePath) : undefined;
-    if (committedAt) {
-      return {
-        modifiedAt: committedAt,
-        modifiedSource: "git",
-      };
-    }
-    const fileStat = await stat(file).catch(() => undefined);
-    return fileStat
-      ? {
-          modifiedAt: new Date(fileStat.mtimeMs).toISOString(),
-          modifiedSource: "mtime",
-        }
-      : {};
-  }
-
-  // Why: path and content both go in, so renaming a reference changes the skill's hash.
-  private async fileHash(file: string): Promise<string> {
-    const fileStat = await stat(file).catch(() => undefined);
-    const isHashable = fileStat !== undefined && fileStat.size <= MAX_HASHED_FILE_BYTES;
-    const content = isHashable ? await readFile(file).catch(() => Buffer.alloc(0)) : Buffer.from(`${fileStat?.size ?? 0}`);
-    return HashUtil.sha(`${relative(this.projectDir, file)}\n${content.toString("base64")}`);
-  }
-
-  // Why: the same name can exist in two scopes (a user and a project skill); both are kept, with distinct ids.
-  uniqueId(kind: PieceKind, name: string, scope: PieceScope): string {
-    const baseId = `${kind}:${name}`;
-    const isTaken = this.pieces.some((piece) => piece.id === baseId);
-    return isTaken ? `${baseId}@${scope}` : baseId;
-  }
-
-  async addFile(filePiece: FilePiece): Promise<void> {
-    const isNew = await this.markSeen(filePiece.file);
-    const text = isNew ? await readFile(filePiece.file, "utf8").catch(() => undefined) : undefined;
-    if (text === undefined) {
-      return;
-    }
-    const { data } = FrontmatterUtil.parse(text);
-    const extraFiles = filePiece.extraFiles ?? [];
-    const extraHashes = await Promise.all(extraFiles.map(async (extraFile) => this.fileHash(extraFile)));
-    const changes = await Promise.all(
-      [filePiece.file, ...extraFiles].map(async (pieceFile) => this.changeOf(pieceFile, filePiece.scope)),
-    );
-    const latestChange = changes
-      .filter((change) => change.modifiedAt !== undefined)
-      .sort((left, right) => (right.modifiedAt ?? "").localeCompare(left.modifiedAt ?? ""))[0];
-    const pieceFolder = dirname(filePiece.file);
-    this.pieces.push({
-      id: this.uniqueId(filePiece.kind, filePiece.name, filePiece.scope),
-      kind: filePiece.kind,
-      name: filePiece.name,
-      scope: filePiece.scope,
-      path: this.displayPath(filePiece.file, filePiece.scope),
-      hash: extraFiles.length ? HashUtil.sha([text, ...extraHashes].join("\n")) : HashUtil.sha(text),
-      bytes: Buffer.byteLength(text),
-      approxTokens: NumberUtil.approxTokens(text),
-      description: FrontmatterUtil.asText(data.description)?.slice(0, MAX_DESCRIPTION_CHARS),
-      model: FrontmatterUtil.asText(data.model),
-      tools: FrontmatterUtil.asList(data.tools ?? data["allowed-tools"]),
-      ...latestChange,
-      files: extraFiles.length ? extraFiles.map((extraFile) => relative(pieceFolder, extraFile)) : undefined,
-      preloadedSkills: KINDS_WITH_SKILLS.has(filePiece.kind) ? FrontmatterUtil.asList(data.skills) : undefined,
-      isEditable: !READ_ONLY_SCOPES.has(filePiece.scope),
-      plugin: filePiece.plugin,
-    });
-  }
-}
 
 export class ClaudeCodeInventoryService {
   constructor(
@@ -138,7 +35,8 @@ export class ClaudeCodeInventoryService {
 
   async takeInventory(options: InventoryOptions): Promise<Inventory> {
     const projectDir = options.projectDir;
-    const builder = new InventoryBuilder(projectDir, await GitUtil.readChangeDates(projectDir, HARNESS_PATHS));
+    const changeDates = await GitUtil.readChangeDates(projectDir, HARNESS_PATHS);
+    const builder = new ClaudeCodePieceCollectorService(projectDir, changeDates);
     const shouldIncludeUser = !options.isProjectOnly;
 
     await this.addInstructionFiles(builder, shouldIncludeUser);
@@ -165,7 +63,10 @@ export class ClaudeCodeInventoryService {
     };
   }
 
-  private async addInstructionFiles(builder: InventoryBuilder, shouldIncludeUser: boolean): Promise<void> {
+  private async addInstructionFiles(
+    builder: ClaudeCodePieceCollectorService,
+    shouldIncludeUser: boolean,
+  ): Promise<void> {
     const projectDir = builder.projectDir;
     const instructionFiles: FilePiece[] = [
       {
@@ -201,7 +102,7 @@ export class ClaudeCodeInventoryService {
   }
 
   private async addComponents(
-    builder: InventoryBuilder,
+    builder: ClaudeCodePieceCollectorService,
     baseDir: string,
     scope: PieceScope,
     componentOptions: ComponentOptions = {},
@@ -305,7 +206,10 @@ export class ClaudeCodeInventoryService {
   }
 
   // Why: settings are read from lowest to highest precedence, so later files win.
-  private async addSettings(builder: InventoryBuilder, shouldIncludeUser: boolean): Promise<SettingsSummary> {
+  private async addSettings(
+    builder: ClaudeCodePieceCollectorService,
+    shouldIncludeUser: boolean,
+  ): Promise<SettingsSummary> {
     const projectDir = builder.projectDir;
     const settingsFiles: SettingsFile[] = [];
     if (shouldIncludeUser) {
@@ -422,7 +326,7 @@ export class ClaudeCodeInventoryService {
     return pieces;
   }
 
-  private async addMcpServers(builder: InventoryBuilder, shouldIncludeUser: boolean): Promise<void> {
+  private async addMcpServers(builder: ClaudeCodePieceCollectorService, shouldIncludeUser: boolean): Promise<void> {
     const projectMcpFile = join(builder.projectDir, ".mcp.json");
     const projectMcp = await this.readJsonFile(projectMcpFile);
     const projectServers = GuardUtil.asRecord(projectMcp?.mcpServers);
@@ -474,7 +378,11 @@ export class ClaudeCodeInventoryService {
   }
 
   // Why: plugins are read-only for the user, so findings about them become recommendations, never edits.
-  private async addPlugins(builder: InventoryBuilder, pluginIdToIsEnabled: Map<string, boolean>): Promise<void> {
+  private async addPlugins(
+    builder: ClaudeCodePieceCollectorService,
+    pluginIdToIsEnabled: Map<string,
+      boolean>,
+  ): Promise<void> {
     for (const [pluginId, installPath] of await this.readInstalledPlugins()) {
       if (pluginIdToIsEnabled.get(pluginId) === false) {
         continue;

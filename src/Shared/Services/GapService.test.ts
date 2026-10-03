@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectChecks } from "@/Shared/Protocols/CheckProtocol.ts";
 import type { IssueVersions } from "@/Shared/Protocols/GapProtocol.ts";
-import { SessionFactsBuilder } from "@/Shared/Utils/SessionFactsFixtureUtil.ts";
+import { SessionFactsBuilder } from "@/Shared/Utils/SessionFactsBuilder.ts";
 import { GapService } from "@/Shared/Services/GapService.ts";
 
 const VERSIONS: IssueVersions = {

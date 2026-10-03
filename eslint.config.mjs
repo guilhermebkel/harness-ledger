@@ -143,6 +143,8 @@ export default tseslint.config(
       "sonarjs/no-identical-conditions": "error",
       "local/comment-marker": "error",
       "local/literal-dispatch": "error",
+      "max-classes-per-file": ["error", 1],
+      "local/class-matches-file": "error",
       "sonarjs/expression-complexity": "error",
       "sonarjs/no-nested-template-literals": "error",
       "sonarjs/no-nested-functions": "error",
@@ -208,7 +210,7 @@ export default tseslint.config(
   ...layerConfigs,
   ...layerExceptionConfigs,
   {
-    files: [...TEST_FILES, "src/Providers/*/Utils/*FixtureUtil.ts"],
+    files: [...TEST_FILES, "src/Providers/*/Utils/*FixtureUtil.ts", "src/Providers/*/Utils/*TranscriptBuilder.ts"],
     rules: {
       "@typescript-eslint/no-magic-numbers": "off",
       "no-restricted-properties": "off",

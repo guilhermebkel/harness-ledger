@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.ts";
-import { SessionFactsBuilder } from "@/Shared/Utils/SessionFactsFixtureUtil.ts";
+import { SessionFactsBuilder } from "@/Shared/Utils/SessionFactsBuilder.ts";
 import { AttributionService } from "@/Shared/Services/AttributionService.ts";
 import { FailureChainService } from "@/Shared/Services/FailureChainService.ts";
 

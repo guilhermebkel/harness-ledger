@@ -2,7 +2,8 @@ import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { SessionFacts, ToolCall } from "@/Shared/Protocols/SessionProtocol.ts";
-import { ClaudeCodeFixtureUtil, type Fixture } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.ts";
+import type { Fixture } from "@/Providers/ClaudeCode/Protocols/ClaudeCodeFixtureProtocol.ts";
+import { ClaudeCodeFixtureUtil } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.ts";
 import { ClaudeCodeProviderAdapter } from "@/Providers/ClaudeCode/Adapters/ClaudeCodeProviderAdapter.ts";
 import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
 

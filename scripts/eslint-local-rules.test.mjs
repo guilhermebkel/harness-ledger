@@ -108,3 +108,32 @@ ruleTester.run("comment-marker", localRules.rules["comment-marker"], {
     },
   ],
 });
+
+ruleTester.run("class-matches-file", localRules.rules["class-matches-file"], {
+  valid: [
+    {
+      name: "one exported class named after its file",
+      filename: "src/Shared/Utils/TimeUtil.ts",
+      code: "export class TimeUtil {}",
+    },
+    {
+      name: "a class expression inside a function is not the file's class",
+      filename: "src/Shared/Utils/TimeUtil.ts",
+      code: "export class TimeUtil { static make() { return class {}; } }",
+    },
+  ],
+  invalid: [
+    {
+      name: "a second class in the file",
+      filename: "src/Providers/ClaudeCode/Services/ClaudeCodeInventoryService.ts",
+      code: "class InventoryBuilder {} export class ClaudeCodeInventoryService {}",
+      errors: [{ messageId: "mismatch", data: { name: "InventoryBuilder", file: "ClaudeCodeInventoryService" } }],
+    },
+    {
+      name: "a file named after something else",
+      filename: "src/Shared/Utils/SessionFactsFixtureUtil.ts",
+      code: "export class SessionFactsBuilder {}",
+      errors: [{ messageId: "mismatch", data: { name: "SessionFactsBuilder", file: "SessionFactsFixtureUtil" } }],
+    },
+  ],
+});

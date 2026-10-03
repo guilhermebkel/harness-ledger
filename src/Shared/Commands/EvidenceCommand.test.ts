@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ClaudeCodeFixtureUtil, ClaudeCodeTranscriptBuilder } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.ts";
+import { ClaudeCodeFixtureUtil } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.ts";
+import { ClaudeCodeTranscriptBuilder } from "@/Providers/ClaudeCode/Utils/ClaudeCodeTranscriptBuilder.ts";
 import { AnalyzeCommand } from "@/Shared/Commands/AnalyzeCommand.ts";
 import { EvidenceCommand } from "@/Shared/Commands/EvidenceCommand.ts";
 
@@ -26,7 +27,7 @@ const history = ClaudeCodeFixtureUtil.useHistoryFixture((fixture) => {
       .result(`g_${sessionId}`, "Exit code 2\nmake: *** No rule to make target 'build'.", { isError: true })
       .tool(`h_${sessionId}`, "Bash", { command: "make" })
       .result(`h_${sessionId}`, "Exit code 2\nmake: *** No targets.", { isError: true })
-      .write(ClaudeCodeFixtureUtil.sessionPath(fixture, sessionId));
+      .write(ClaudeCodeTranscriptBuilder.sessionPath(fixture, sessionId));
   }
 });
 

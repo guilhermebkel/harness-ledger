@@ -141,9 +141,33 @@ const literalDispatch = {
   },
 };
 
+function fileStemOf(filename) {
+  const base = filename.split(/[\\/]/).at(-1) ?? "";
+  return base.replace(/\.[^.]+$/, "");
+}
+
+const classMatchesFile = {
+  meta: {
+    type: "suggestion",
+    messages: { mismatch: "Class \"{{name}}\" lives in \"{{file}}\"; name the file after its one class." },
+  },
+  create(context) {
+    const stem = fileStemOf(context.filename);
+    return {
+      "Program > ClassDeclaration, Program > ExportNamedDeclaration > ClassDeclaration"(node) {
+        const name = node.id?.name;
+        if (name && name !== stem) {
+          context.report({ node: node.id, messageId: "mismatch", data: { name, file: stem } });
+        }
+      },
+    };
+  },
+};
+
 export const localRules = {
   rules: {
     "comment-marker": commentMarker,
     "literal-dispatch": literalDispatch,
+    "class-matches-file": classMatchesFile,
   },
 };

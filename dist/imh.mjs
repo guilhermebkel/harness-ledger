@@ -2,7 +2,7 @@
 // improve-my-harness — generated file, edit src/ and run `pnpm build`.
 
 // src/Shared/Modules/CLIModule.ts
-import { readFile as readFile6 } from "node:fs/promises";
+import { readFile as readFile7 } from "node:fs/promises";
 import { parseArgs } from "node:util";
 
 // src/Shared/Utils/CollectionUtil.ts
@@ -434,10 +434,10 @@ var TimeUtil = class _TimeUtil {
     if (!value) {
       return void 0;
     }
-    const relative3 = /^(\d+)\s*([hdwm])$/i.exec(value.trim());
-    if (relative3) {
-      const amount = Number(relative3[1]);
-      const unit = (relative3[2] ?? "d").toLowerCase();
+    const relative4 = /^(\d+)\s*([hdwm])$/i.exec(value.trim());
+    if (relative4) {
+      const amount = Number(relative4[1]);
+      const unit = (relative4[2] ?? "d").toLowerCase();
       return nowAtMs - amount * _TimeUtil.PERIOD_UNIT_TO_MS[unit];
     }
     const absoluteAtMs = Date.parse(value);
@@ -3485,8 +3485,8 @@ var BaseProviderAdapter = class {
 };
 
 // src/Providers/ClaudeCode/Services/ClaudeCodeInventoryService.ts
-import { readdir as readdir2, readFile as readFile3, realpath, stat } from "node:fs/promises";
-import { basename, dirname, join as join3, relative } from "node:path";
+import { readdir as readdir2, readFile as readFile4, stat as stat2 } from "node:fs/promises";
+import { basename, join as join3, relative as relative2 } from "node:path";
 
 // src/Shared/Utils/FrontmatterUtil.ts
 var BLOCK_TEXT_MARKERS = /* @__PURE__ */ new Set(["|", ">", "|-", ">-"]);
@@ -3636,23 +3636,20 @@ var GitUtil = class {
   }
 };
 
-// src/Providers/ClaudeCode/Services/ClaudeCodeInventoryService.ts
+// src/Providers/ClaudeCode/Services/ClaudeCodePieceCollectorService.ts
+import { readFile as readFile3, realpath, stat } from "node:fs/promises";
+import { dirname, relative } from "node:path";
 var PROJECT_SCOPES = /* @__PURE__ */ new Set(["project", "local"]);
 var KINDS_WITH_SKILLS = /* @__PURE__ */ new Set(["agent"]);
 var READ_ONLY_SCOPES = /* @__PURE__ */ new Set(["plugin", "managed"]);
-var DEFAULT_RETENTION_DAYS = 30;
 var MAX_DESCRIPTION_CHARS = 300;
-var MAX_COMPONENT_DEPTH = 4;
-var HARNESS_PATHS = ["CLAUDE.md", "CLAUDE.local.md", ".claude", ".mcp.json"];
-var MAX_SKILL_FILES = 50;
-var MAX_SKILL_FOLDER_DEPTH = 3;
 var MAX_HASHED_FILE_BYTES = 1e6;
-var SKIPPED_FOLDERS = /* @__PURE__ */ new Set(["node_modules", ".git", "__pycache__", ".venv"]);
-var InventoryBuilder = class {
+var ClaudeCodePieceCollectorService = class {
   constructor(projectDir, gitChangeDates) {
     this.projectDir = projectDir;
     this.gitChangeDates = gitChangeDates;
   }
+  static MAX_DESCRIPTION_CHARS = MAX_DESCRIPTION_CHARS;
   pieces = [];
   notes = [];
   seenRealPaths = /* @__PURE__ */ new Set();
@@ -3732,6 +3729,15 @@ ${content.toString("base64")}`);
     });
   }
 };
+
+// src/Providers/ClaudeCode/Services/ClaudeCodeInventoryService.ts
+var DEFAULT_RETENTION_DAYS = 30;
+var { MAX_DESCRIPTION_CHARS: MAX_DESCRIPTION_CHARS2 } = ClaudeCodePieceCollectorService;
+var MAX_COMPONENT_DEPTH = 4;
+var HARNESS_PATHS = ["CLAUDE.md", "CLAUDE.local.md", ".claude", ".mcp.json"];
+var MAX_SKILL_FILES = 50;
+var MAX_SKILL_FOLDER_DEPTH = 3;
+var SKIPPED_FOLDERS = /* @__PURE__ */ new Set(["node_modules", ".git", "__pycache__", ".venv"]);
 var ClaudeCodeInventoryService = class {
   constructor(homeDir, claudeJsonPath) {
     this.homeDir = homeDir;
@@ -3739,7 +3745,8 @@ var ClaudeCodeInventoryService = class {
   }
   async takeInventory(options) {
     const projectDir = options.projectDir;
-    const builder = new InventoryBuilder(projectDir, await GitUtil.readChangeDates(projectDir, HARNESS_PATHS));
+    const changeDates = await GitUtil.readChangeDates(projectDir, HARNESS_PATHS);
+    const builder = new ClaudeCodePieceCollectorService(projectDir, changeDates);
     const shouldIncludeUser = !options.isProjectOnly;
     await this.addInstructionFiles(builder, shouldIncludeUser);
     await this.addComponents(builder, join3(projectDir, ".claude"), "project");
@@ -3815,7 +3822,7 @@ var ClaudeCodeInventoryService = class {
       });
     }
     const rootSkill = join3(baseDir, "SKILL.md");
-    const rootSkillStat = componentOptions.canBeRootSkill ? await stat(rootSkill).catch(() => void 0) : void 0;
+    const rootSkillStat = componentOptions.canBeRootSkill ? await stat2(rootSkill).catch(() => void 0) : void 0;
     if (rootSkillStat !== void 0) {
       await builder.addFile({
         file: rootSkill,
@@ -3848,12 +3855,12 @@ var ClaudeCodeInventoryService = class {
     }
   }
   async declaredNameOf(file) {
-    const text = await readFile3(file, "utf8").catch(() => "");
+    const text = await readFile4(file, "utf8").catch(() => "");
     return FrontmatterUtil.asText(FrontmatterUtil.parse(text).data.name);
   }
   // Why: Claude Code names nested components with `:` (`agents/review/security.md` → `review:security`).
   nameFromPath(baseDir, file) {
-    return relative(baseDir, file).replace(/\.md$/, "").replace(/[\\/]/g, ":");
+    return relative2(baseDir, file).replace(/\.md$/, "").replace(/[\\/]/g, ":");
   }
   async skillFolderFiles(dir, depth = 0) {
     if (depth > MAX_SKILL_FOLDER_DEPTH) {
@@ -4059,7 +4066,7 @@ var ClaudeCodeInventoryService = class {
         hash: HashUtil.sha(serialized),
         bytes: serialized.length,
         approxTokens: 0,
-        description: GuardUtil.asString(manifest?.description)?.slice(0, MAX_DESCRIPTION_CHARS),
+        description: GuardUtil.asString(manifest?.description)?.slice(0, MAX_DESCRIPTION_CHARS2),
         isEditable: false,
         plugin: pluginId
       });
@@ -4087,14 +4094,14 @@ var ClaudeCodeInventoryService = class {
     return pluginIdToInstallPath;
   }
   async readJsonFile(file) {
-    const text = await readFile3(file, "utf8").catch(() => void 0);
+    const text = await readFile4(file, "utf8").catch(() => void 0);
     return text === void 0 ? void 0 : GuardUtil.asRecord(GuardUtil.parseJson(text));
   }
 };
 
 // src/Providers/ClaudeCode/Services/ClaudeCodeSessionService.ts
-import { readdir as readdir3, readFile as readFile4, stat as stat2 } from "node:fs/promises";
-import { basename as basename2, isAbsolute as isAbsolute2, join as join5, relative as relative2 } from "node:path";
+import { readdir as readdir3, readFile as readFile5, stat as stat3 } from "node:fs/promises";
+import { basename as basename2, isAbsolute as isAbsolute2, join as join5, relative as relative3 } from "node:path";
 
 // src/Shared/Utils/JsonlUtil.ts
 import { createReadStream } from "node:fs";
@@ -4438,7 +4445,7 @@ var ClaudeCodeSessionService = class {
     return stats.filter((fileStat) => fileStat !== void 0);
   }
   async statFile(file) {
-    const fileStat = await stat2(file).catch(() => void 0);
+    const fileStat = await stat3(file).catch(() => void 0);
     if (!fileStat?.isFile()) {
       return void 0;
     }
@@ -4512,7 +4519,7 @@ var ClaudeCodeSessionService = class {
   }
   async readSubagentMetaType(subagentFile) {
     const metaFile = subagentFile.replace(/\.jsonl$/, ".meta.json");
-    const metaText = await readFile4(metaFile, "utf8").catch(() => void 0);
+    const metaText = await readFile5(metaFile, "utf8").catch(() => void 0);
     if (metaText === void 0) {
       return void 0;
     }
@@ -4943,7 +4950,7 @@ var ClaudeCodeSessionService = class {
   }
   toProjectRelative(filePath, projectDir) {
     const isInsideProject = projectDir !== void 0 && isAbsolute2(filePath) && (filePath === projectDir || filePath.startsWith(`${projectDir}/`));
-    return isInsideProject ? relative2(projectDir, filePath) || "." : PathUtil.tildify(filePath);
+    return isInsideProject ? relative3(projectDir, filePath) || "." : PathUtil.tildify(filePath);
   }
 };
 
@@ -5079,7 +5086,7 @@ var ConfigService = class _ConfigService {
 import { cpus } from "node:os";
 
 // src/Shared/Services/StoreService.ts
-import { mkdir, readFile as readFile5, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile as readFile6, rename, writeFile } from "node:fs/promises";
 import { dirname as dirname2, join as join6 } from "node:path";
 var DATA_DIR_NAME = ".imh";
 var JSON_INDENT = 2;
@@ -5100,7 +5107,7 @@ var StoreService = class _StoreService {
    * files people may edit by hand (config.json) are validated by their reader.
    */
   async readJson(relativePath) {
-    const text = await readFile5(join6(this.root, relativePath), "utf8").catch(() => void 0);
+    const text = await readFile6(join6(this.root, relativePath), "utf8").catch(() => void 0);
     return text === void 0 ? void 0 : GuardUtil.parseJson(text);
   }
   // Why: writes atomically (temp file + rename), so a crash never leaves a half-written file.
@@ -5943,7 +5950,7 @@ Output is JSON on stdout. Nothing leaves your machine.`;
     });
   }
   async addSuggestions({ values, common }) {
-    const rawJson = values.file ? await readFile6(values.file, "utf8") : await this.readStdin();
+    const rawJson = values.file ? await readFile7(values.file, "utf8") : await this.readStdin();
     const items = GuardUtil.parseJson(rawJson);
     if (items === void 0) {
       throw new Error("Suggestions must be valid JSON.");

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.ts";
-import { SessionFactsBuilder } from "@/Shared/Utils/SessionFactsFixtureUtil.ts";
+import { SessionFactsBuilder } from "@/Shared/Utils/SessionFactsBuilder.ts";
 import { CheckInventoryService } from "@/Shared/Services/CheckInventoryService.ts";
 
 const FAKE_TOKEN = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";

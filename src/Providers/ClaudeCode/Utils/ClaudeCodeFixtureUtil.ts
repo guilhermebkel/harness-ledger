@@ -1,217 +1,19 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { afterAll, beforeAll } from "vitest";
+import type { Fixture, HistoryFixture, TestRun } from "@/Providers/ClaudeCode/Protocols/ClaudeCodeFixtureProtocol.ts";
 import { ClaudeCodePathUtil } from "@/Providers/ClaudeCode/Utils/ClaudeCodePathUtil.ts";
+import { ClaudeCodeTranscriptBuilder } from "@/Providers/ClaudeCode/Utils/ClaudeCodeTranscriptBuilder.ts";
 
 const TEST_RUNNER_AGENT = "test-runner";
-const TASK_NOTIFICATION = "task-notification";
 const COST_STATE_ATTACHMENT = "cost-state";
-
-export interface Fixture {
-  root: string;
-  claudeHome: string;
-  projectDir: string;
-  claudeJson: string;
-  dataDir: string;
-}
-
-export interface HistoryFixture {
-  readonly fixture: Fixture;
-  commonOptions: () => {
-    projectDir: string;
-    dataDir: string;
-  };
-}
 
 const FAKE_SECRETS = {
   bearerToken: "abcdefghijklmnop1234567",
   githubToken: "ghp_abcdefghijklmnopqrstuvwxyz123456",
   anthropicKey: "sk-ant-secretsecretsecret123",
 };
-
-let uuidCounter = 0;
-
-const DEFAULT_TOOL_USAGE = {
-  input_tokens: 100,
-  output_tokens: 50,
-  cache_read_input_tokens: 1000,
-  cache_creation_input_tokens: 0,
-};
-const DEFAULT_TEXT_USAGE = {
-  input_tokens: 80,
-  output_tokens: 40,
-  cache_read_input_tokens: 500,
-  cache_creation_input_tokens: 0,
-};
-const DEFAULT_MODEL = "claude-sonnet-4-6";
-
-export interface TranscriptOptions {
-  isSidechain?: boolean;
-  agentId?: string;
-}
-
-export interface ToolStepOptions {
-  secondsLater?: number;
-  model?: string;
-  lineFields?: Record<string, unknown>;
-  outputTokens?: number;
-}
-
-export interface TestRunOptions {
-  commandSeconds?: number;
-  model?: string;
-  outputTokens?: number;
-}
-
-export interface TestRun extends TestRunOptions {
-  command: string;
-  isFailing?: boolean;
-}
-
-export interface ResultOptions {
-  isError?: boolean;
-  secondsLater?: number;
-  toolUseResult?: unknown;
-  denialKind?: string;
-}
-
-export class ClaudeCodeTranscriptBuilder {
-  readonly lines: unknown[] = [];
-  private currentAtMs: number;
-
-  constructor(
-    readonly sessionId: string,
-    readonly cwd: string,
-    startedAt: string,
-    readonly options: TranscriptOptions = {},
-  ) {
-    this.currentAtMs = Date.parse(startedAt);
-  }
-
-  private lineBase(type: string, secondsLater: number) {
-    this.currentAtMs += secondsLater * 1000;
-    return {
-      type,
-      uuid: ClaudeCodeFixtureUtil.nextUuid(),
-      sessionId: this.sessionId,
-      cwd: this.cwd,
-      gitBranch: "main",
-      version: "2.1.287",
-      isSidechain: this.options.isSidechain === true,
-      ...(this.options.agentId ? { agentId: this.options.agentId } : {}),
-      timestamp: new Date(this.currentAtMs).toISOString(),
-    };
-  }
-
-  user(text: string, secondsLater = 5): this {
-    this.lines.push({
-      ...this.lineBase("user", secondsLater),
-      message: { role: "user", content: text },
-    });
-    return this;
-  }
-
-  // Why: Claude Code writes text and tool_use as two lines that share the usage.
-  tool(id: string, name: string, input: Record<string, unknown>, stepOptions: ToolStepOptions = {}): this {
-    const messageId = `msg_${id}`;
-    const model = stepOptions.model ?? DEFAULT_MODEL;
-    const outputTokens = stepOptions.outputTokens ?? DEFAULT_TOOL_USAGE.output_tokens;
-    const usage = { ...DEFAULT_TOOL_USAGE, output_tokens: outputTokens };
-    const message = { id: messageId, role: "assistant", model, usage };
-    this.lines.push({
-      ...this.lineBase("assistant", stepOptions.secondsLater ?? 3),
-      ...stepOptions.lineFields,
-      message: { ...message, content: [{ type: "text", text: "Working." }] },
-    });
-    this.lines.push({
-      ...this.lineBase("assistant", 0),
-      ...stepOptions.lineFields,
-      message: { ...message, content: [{ type: "tool_use", id, name, input }] },
-    });
-    return this;
-  }
-
-  result(id: string, content: string, resultOptions: ResultOptions = {}): this {
-    const block = {
-      type: "tool_result",
-      tool_use_id: id,
-      content,
-      ...(resultOptions.isError ? { is_error: true } : {}),
-    };
-    this.lines.push({
-      ...this.lineBase("user", resultOptions.secondsLater ?? 2),
-      message: { role: "user", content: [block] },
-      ...(resultOptions.toolUseResult ? { toolUseResult: resultOptions.toolUseResult } : {}),
-      ...(resultOptions.denialKind ? { toolDenialKind: resultOptions.denialKind } : {}),
-    });
-    return this;
-  }
-
-  say(text: string, secondsLater = 3): this {
-    const message = {
-      id: `msg_${ClaudeCodeFixtureUtil.nextUuid()}`,
-      role: "assistant",
-      model: DEFAULT_MODEL,
-      content: [{ type: "text", text }],
-      usage: DEFAULT_TEXT_USAGE,
-    };
-    this.lines.push({ ...this.lineBase("assistant", secondsLater), message });
-    return this;
-  }
-
-  systemUser(text: string, originKind: string, secondsLater = 5): this {
-    this.lines.push({
-      ...this.lineBase("user", secondsLater),
-      origin: { kind: originKind },
-      promptSource: "system",
-      message: { role: "user", content: text },
-    });
-    return this;
-  }
-
-  queued(prompt: string, commandMode: "prompt" | typeof TASK_NOTIFICATION, originKind = "human", secondsLater = 5): this {
-    this.lines.push({
-      ...this.lineBase("attachment", secondsLater),
-      attachment: { commandMode, prompt, type: "queued_command", origin: { kind: originKind } },
-    });
-    return this;
-  }
-
-  apiError(text: string, secondsLater = 3, lineFields: Record<string, unknown> = {}): this {
-    const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
-    this.lines.push({
-      ...this.lineBase("assistant", secondsLater),
-      isApiErrorMessage: true,
-      ...lineFields,
-      message: { id: `msg_${ClaudeCodeFixtureUtil.nextUuid()}`, role: "assistant", model: "<synthetic>", content: [{ type: "text", text }], usage },
-    });
-    return this;
-  }
-
-  record(type: string, fields: Record<string, unknown>, secondsLater = 1): this {
-    this.lines.push({ ...this.lineBase(type, secondsLater), ...fields });
-    return this;
-  }
-
-  idle(seconds: number): this {
-    this.currentAtMs += seconds * 1000;
-    return this;
-  }
-
-  write(file: string): void {
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, `${this.lines.map((line) => JSON.stringify(line)).join("\n")}\n`);
-  }
-
-  writeTo(fixture: Fixture): void {
-    const agentId = this.options.agentId;
-    const file = agentId === undefined
-      ? ClaudeCodeFixtureUtil.sessionPath(fixture, this.sessionId)
-      : ClaudeCodeFixtureUtil.subagentPath(fixture, this.sessionId, agentId);
-    this.write(file);
-  }
-}
 
 type SubagentTypeSource = "meta" | "result" | "prompt";
 
@@ -293,23 +95,9 @@ export class ClaudeCodeFixtureUtil {
     );
   }
 
-  static nextUuid(): string {
-    uuidCounter++;
-    return `00000000-0000-4000-8000-${String(uuidCounter).padStart(12, "0")}`;
-  }
-
-  static sessionPath(fixture: Fixture, sessionId: string): string {
-    return join(fixture.claudeHome, "projects", ClaudeCodePathUtil.encodeProjectDir(fixture.projectDir), `${sessionId}.jsonl`);
-  }
-
-  static subagentPath(fixture: Fixture, sessionId: string, agentId: string): string {
-    const projectFolder = join(fixture.claudeHome, "projects", ClaudeCodePathUtil.encodeProjectDir(fixture.projectDir));
-    return join(projectFolder, sessionId, "subagents", `agent-${agentId}.jsonl`);
-  }
-
   private static readonly TYPE_SOURCE_TO_TOOL_USE_RESULT: Record<SubagentTypeSource, SubagentTypeSetup> = {
     meta: ({ fixture, sessionId, agentId }) => {
-      const metaFile = ClaudeCodeFixtureUtil.subagentPath(fixture, sessionId, agentId).replace(/\.jsonl$/, ".meta.json");
+      const metaFile = ClaudeCodeTranscriptBuilder.subagentPath(fixture, sessionId, agentId).replace(/\.jsonl$/, ".meta.json");
       writeFileSync(metaFile, JSON.stringify({ agentType: TEST_RUNNER_AGENT }));
       return undefined;
     },
@@ -363,7 +151,7 @@ export class ClaudeCodeFixtureUtil {
       .tool("sk1", "Skill", { skill: "changelog" })
       .result("sk1", "Launching skill")
       .say("Here is the entry.")
-      .write(ClaudeCodeFixtureUtil.sessionPath(fixture, "s1"));
+      .write(ClaudeCodeTranscriptBuilder.sessionPath(fixture, "s1"));
 
     const s2Main = ClaudeCodeFixtureUtil.testRunSession(fixture, "s2", dayAt(1), "result", changelogRequest)
       .tool("r_main", "Read", { file_path: authFile })
@@ -376,9 +164,9 @@ export class ClaudeCodeFixtureUtil {
       reviewer.tool(`rr${readIndex}`, "Read", { file_path: authFile }).result(`rr${readIndex}`, authContent);
     }
     reviewer.say("Looks good.").writeTo(fixture);
-    s2Main.result("task_rev", "Looks good.", { secondsLater: 60 }).say("Reviewed.").write(ClaudeCodeFixtureUtil.sessionPath(fixture, "s2"));
+    s2Main.result("task_rev", "Looks good.", { secondsLater: 60 }).say("Reviewed.").write(ClaudeCodeTranscriptBuilder.sessionPath(fixture, "s2"));
 
-    ClaudeCodeFixtureUtil.testRunSession(fixture, "s3", dayAt(2), "prompt", "Fix the failing login test").write(ClaudeCodeFixtureUtil.sessionPath(fixture, "s3"));
+    ClaudeCodeFixtureUtil.testRunSession(fixture, "s3", dayAt(2), "prompt", "Fix the failing login test").write(ClaudeCodeTranscriptBuilder.sessionPath(fixture, "s3"));
 
     new ClaudeCodeTranscriptBuilder("s4", fixture.projectDir, dayAt(3))
       .user("<command-name>/changelog</command-name><command-args>for v2</command-args>")
@@ -393,7 +181,7 @@ export class ClaudeCodeFixtureUtil {
       .say("Updated.")
       .idle(3600)
       .user("<system-reminder>ignore me</system-reminder>[Request interrupted by user]")
-      .write(ClaudeCodeFixtureUtil.sessionPath(fixture, "s4"));
+      .write(ClaudeCodeTranscriptBuilder.sessionPath(fixture, "s4"));
 
     for (const [sessionId, dayOffset] of [["s5", 4], ["s6", 5]] as const) {
       new ClaudeCodeTranscriptBuilder(sessionId, fixture.projectDir, dayAt(dayOffset))
@@ -401,7 +189,7 @@ export class ClaudeCodeFixtureUtil {
         .tool(`g_${sessionId}`, "Bash", { command: "gh pr list --state merged" })
         .result(`g_${sessionId}`, "#12 feat: login")
         .say("Entry ready.")
-        .write(ClaudeCodeFixtureUtil.sessionPath(fixture, sessionId));
+        .write(ClaudeCodeTranscriptBuilder.sessionPath(fixture, sessionId));
     }
 
     const otherProjectFile = join(fixture.claudeHome, "projects", "-somewhere-else", "other.jsonl");
@@ -435,7 +223,7 @@ export class ClaudeCodeFixtureUtil {
       .user("run the tests")
       .tool(`task_${sessionId}`, "Task", { subagent_type: TEST_RUNNER_AGENT, prompt: delegationPrompt })
       .result(`task_${sessionId}`, "ok", { secondsLater: 30, toolUseResult: { agentId } })
-      .write(ClaudeCodeFixtureUtil.sessionPath(fixture, sessionId));
+      .write(ClaudeCodeTranscriptBuilder.sessionPath(fixture, sessionId));
   }
 
   /**
@@ -493,8 +281,8 @@ export class ClaudeCodeFixtureUtil {
         "Exit code 1\nwarning: ignoring dangling symref refs/remotes/origin/HEAD\nerror: 'stash@{0}' is not a stash reference",
         { isError: true },
       )
-      .queued("Background task finished: lint", TASK_NOTIFICATION, TASK_NOTIFICATION)
-      .systemUser("<task-notification><status>completed</status><summary>lint done</summary></task-notification>", TASK_NOTIFICATION)
+      .queued("Background task finished: lint", ClaudeCodeTranscriptBuilder.TASK_NOTIFICATION, ClaudeCodeTranscriptBuilder.TASK_NOTIFICATION)
+      .systemUser("<task-notification><status>completed</status><summary>lint done</summary></task-notification>", ClaudeCodeTranscriptBuilder.TASK_NOTIFICATION)
       .tool(`loop_${sessionId}`, "Bash", { command: "for f in jobs/*.py; do python3 -m py_compile $f; done" })
       .result(`loop_${sessionId}`, "")
       .tool(`home_${sessionId}`, "Read", { file_path: join(homedir(), ".claude", "skills", "review", "SKILL.md") })
@@ -504,7 +292,7 @@ export class ClaudeCodeFixtureUtil {
       .result(`glm_${sessionId}`, "export const billing = 1;")
       .apiError("API Error: 404 model_not_found")
       .say("Done.")
-      .write(ClaudeCodeFixtureUtil.sessionPath(fixture, sessionId));
+      .write(ClaudeCodeTranscriptBuilder.sessionPath(fixture, sessionId));
   }
 
   /**
@@ -548,7 +336,7 @@ export class ClaudeCodeFixtureUtil {
         startTime: runStartAtMs + 3_600_000,
         hasUnknownModelCost: false,
       })
-      .write(ClaudeCodeFixtureUtil.sessionPath(fixture, sessionId));
+      .write(ClaudeCodeTranscriptBuilder.sessionPath(fixture, sessionId));
   }
 
   /**
@@ -570,7 +358,7 @@ export class ClaudeCodeFixtureUtil {
       .tool(`bad_${sessionId}`, "; the getAll call uses userId from the request.<tool_call>Edit", { file_path: "x" })
       .result(`bad_${sessionId}`, "<tool_use_error>Error: No such tool available</tool_use_error>", { isError: true })
       .say("Shipped.")
-      .write(ClaudeCodeFixtureUtil.sessionPath(fixture, sessionId));
+      .write(ClaudeCodeTranscriptBuilder.sessionPath(fixture, sessionId));
   }
 
   static useHistoryFixture(setUpMore?: (fixture: Fixture) => void): HistoryFixture {

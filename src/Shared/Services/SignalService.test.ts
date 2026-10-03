@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SessionFactsBuilder } from "@/Shared/Utils/SessionFactsFixtureUtil.ts";
+import { SessionFactsBuilder } from "@/Shared/Utils/SessionFactsBuilder.ts";
 import { ConfigService } from "@/Shared/Services/ConfigService.ts";
 import { SignalService } from "@/Shared/Services/SignalService.ts";
 

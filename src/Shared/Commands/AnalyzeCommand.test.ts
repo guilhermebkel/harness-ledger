@@ -3,7 +3,9 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ClaudeCodeFixtureUtil, ClaudeCodeTranscriptBuilder, type Fixture } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.ts";
+import type { Fixture } from "@/Providers/ClaudeCode/Protocols/ClaudeCodeFixtureProtocol.ts";
+import { ClaudeCodeFixtureUtil } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.ts";
+import { ClaudeCodeTranscriptBuilder } from "@/Providers/ClaudeCode/Utils/ClaudeCodeTranscriptBuilder.ts";
 import type { Signal } from "@/Shared/Protocols/SignalProtocol.ts";
 import { AnalyzeCommand } from "@/Shared/Commands/AnalyzeCommand.ts";
 import { IssueCommand } from "@/Shared/Commands/IssueCommand.ts";
@@ -306,7 +308,7 @@ describe("AnalyzeCommand on work that could be a skill, a script or a subagent",
       }
       loop.tool(`e${round}`, "Edit", { file_path: join(workflowFixture.projectDir, "src/a.js") }).result(`e${round}`, "ok");
     }
-    loop.write(ClaudeCodeFixtureUtil.sessionPath(workflowFixture, "loop1"));
+    loop.write(ClaudeCodeTranscriptBuilder.sessionPath(workflowFixture, "loop1"));
     const analysis = await analyzeWorkflows();
     const lintLoop = analysis.signals.find((signal) => signal.details.steps?.includes("npm run eslint"));
     expect(lintLoop).toMatchObject({ type: "repeated_workflow", occurrences: 6, sessions: 1, isPartial: true });
@@ -357,7 +359,7 @@ describe("AnalyzeCommand on pieces that keep filling their context", () => {
         .user("Review the change")
         .tool(`t_${sessionId}`, "Task", { subagent_type: "reviewer", prompt: `Review ${sessionId}` })
         .result(`t_${sessionId}`, "Looks good.", { secondsLater: 60, toolUseResult: { agentId } })
-        .write(ClaudeCodeFixtureUtil.sessionPath(contextFixture, sessionId));
+        .write(ClaudeCodeTranscriptBuilder.sessionPath(contextFixture, sessionId));
     }
     restoreContextEnv = ClaudeCodeFixtureUtil.useFixtureEnv(contextFixture);
   });

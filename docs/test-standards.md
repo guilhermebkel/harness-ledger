@@ -8,7 +8,7 @@ Some ideas are adapted from `writing-good-tests` in [obra/superpowers](https://g
 
 - **Next to the code (ADR 0008).** A test lives beside the file it tests and shares its name: `ClaudeCodeProviderAdapter.ts` → `ClaudeCodeProviderAdapter.test.ts`. There is no `test/` folder.
 - **Through the highest seam.** Test behavior through the command classes in `src/Shared/Commands/`, end to end, and through each provider's adapter. Test a lower module directly only for logic with many cases (normalization, redaction, time, failure chains, costs).
-- **Fixtures in the real format.** A provider's fixture builds its real on-disk format and lives in that provider's `Utils/` (`ClaudeCodeFixtureUtil`); command tests use it, which is why test files may import a provider. Shared services that need no files use `SessionFactsBuilder` (`src/Shared/Utils/SessionFactsFixtureUtil.ts`).
+- **Fixtures in the real format.** A provider's fixture builds its real on-disk format and lives in that provider's `Utils/` (`ClaudeCodeFixtureUtil`); command tests use it, which is why test files may import a provider. Shared services that need no files use `SessionFactsBuilder` (`src/Shared/Utils/SessionFactsBuilder.ts`).
 - **Every new behavior brings its test.** Each new signal, format case or output path gets a fixture case and a test, including a fake secret where output is involved (`ClaudeCodeFixtureUtil.FAKE_SECRETS`).
 
 ## What a test checks
