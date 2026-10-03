@@ -33,7 +33,7 @@ jobs:
     permissions:
       contents: write
     concurrency:
-      group: publish-dist
+      group: master-writes
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4

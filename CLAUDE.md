@@ -17,7 +17,7 @@ ADR 0008 has the reasons; `docs/code-standards.md` ("Architecture") has the rule
 - `src/Providers/<Provider>/`: one agentic coding tool (Claude Code today), with the same folders as Shared. `Adapters/<Provider>ProviderAdapter.ts` extends `BaseProviderAdapter`; `Utils/<Provider>FixtureUtil.ts` builds a fake home and project in the tool's real format, for tests.
 - Tests sit next to the file they test (`*.test.ts`). There is no `test/` folder.
 - `dist/imh.mjs`: the bundled script the skill runs. Generated; CI rebuilds and commits it on `master` after each merge (ADR 0004). Never commit it by hand.
-- `.github/workflows/`: `ci.yml` (shared checks) and one workflow per provider (`claude-code.yml` validates the plugin and skill).
+- `.github/workflows/`: `ci.yml` (shared checks, and `dist/` on `master`), `release.yml` (cuts a version, by hand) and one workflow per provider (`claude-code.yml` validates the plugin and skill).
 - `scripts/`: `build.mjs` (bundle), `survey-transcripts.mjs` (the shape of a folder of transcripts, without their content) and `eslint-local-rules.mjs` (this repo's own lint rules, tested next to it).
 - Adding a provider (Codex, Cursor, ...): follow `docs/adding-a-provider.md`. It covers finding the sessions, exporting a sample of the last 7 days, learning the format, mapping it to the shared model and checking it on real sessions.
 
@@ -58,7 +58,7 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 - Every string that can reach output passes through `RedactUtil.redact()` / `RedactUtil.excerpt()`. Hook and MCP entries keep names and shapes only (ADR 0007). Add a test with a fake secret for any new output path.
 - Transcript formats are internal: parse defensively, count unknown lines, never throw on a bad line. Add new format cases to the provider's fixture (`ClaudeCodeFixtureUtil`).
 - `skills/improve-my-harness/SKILL.md` description is loaded in every user session: keep it short.
-- Bump `version` in `.claude-plugin/plugin.json` and `package.json` together on release, and run `pnpm release:check` (adds publint: `package.json` matches what gets packed).
+- Never change `version` in a pull request. Users get an update only when `version` in `.claude-plugin/plugin.json` changes, so a release is cut by the `Release` workflow (`.github/workflows/release.yml`, run by hand from the Actions tab on `master`, choosing patch, minor or major): in one commit it bumps `plugin.json` and `package.json`, runs `pnpm release:check` (adds publint), rebuilds `dist/`, then tags `vX.Y.Z` and publishes a GitHub Release with generated notes.
 
 ## Agent skills
 
