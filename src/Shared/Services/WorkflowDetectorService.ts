@@ -164,15 +164,35 @@ export class WorkflowDetectorService {
     return endedAtMs - (calls[0]?.calledAtMs ?? endedAtMs);
   }
 
+  // Why: a script still runs the commands and still takes one call; what it saves is everything the agent did
+  // around them: the other messages in the window (reasoning, reading logs, rebuilding the next step).
   private workflowCost(calls: ToolCall[], index: SessionIndex): StepCost {
-    const messageIds = new Set(calls.map((call) => call.messageId));
-    const stepMessages = (index.threadIdToMessages.get(calls[0]?.thread.id ?? "") ?? [])
-      .filter((message) => messageIds.has(message.id));
-    const spanMs = Math.max(0, this.spanOf(calls));
+    const first = calls[0];
+    const last = calls.at(-1);
+    const startAtMs = first?.calledAtMs;
+    const endAtMs = last?.result?.returnedAtMs ?? last?.calledAtMs;
+    if (!first || startAtMs === undefined || endAtMs === undefined) {
+      return {
+        activeMs: 0,
+        usage: TokenUsageUtil.zero(),
+      };
+    }
+    const windowMessages = (index.threadIdToMessages.get(first.thread.id) ?? []).filter((message) => {
+      const sentAtMs = message.sentAtMs ?? 0;
+      return message.id !== first.messageId && sentAtMs >= startAtMs && sentAtMs <= endAtMs;
+    });
+    const eventsAtMs = [startAtMs, ...windowMessages.map((message) => message.sentAtMs ?? startAtMs), endAtMs]
+      .sort((left, right) => left - right);
+    const executionMs = calls.reduce((total, call) => total + this.executionMsOf(call), 0);
     return {
-      activeMs: Math.min(this.options.idleMs * calls.length, spanMs),
-      usage: stepMessages.reduce((total, message) => TokenUsageUtil.add(total, message.usage), TokenUsageUtil.zero()),
-      model: stepMessages[0]?.model,
+      activeMs: Math.max(0, TimeUtil.activeTime(eventsAtMs, this.options.idleMs) - executionMs),
+      usage: TokenUsageUtil.sum(windowMessages.map((message) => message.usage)),
+      model: windowMessages[0]?.model,
     };
+  }
+
+  private executionMsOf(call: ToolCall): number {
+    const durationMs = (call.result?.returnedAtMs ?? call.calledAtMs ?? 0) - (call.calledAtMs ?? 0);
+    return Math.min(this.options.idleMs, Math.max(0, durationMs));
   }
 }

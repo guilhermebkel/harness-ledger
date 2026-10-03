@@ -450,7 +450,7 @@ var TimeUtil = class _TimeUtil {
 };
 
 // src/Shared/Utils/TokenUsageUtil.ts
-var TokenUsageUtil = class {
+var TokenUsageUtil = class _TokenUsageUtil {
   static zero() {
     return {
       input: 0,
@@ -466,6 +466,17 @@ var TokenUsageUtil = class {
       cacheRead: left.cacheRead + right.cacheRead,
       cacheWrite: left.cacheWrite + right.cacheWrite
     };
+  }
+  static scale(usage, factor) {
+    return {
+      input: usage.input * factor,
+      output: usage.output * factor,
+      cacheRead: usage.cacheRead * factor,
+      cacheWrite: usage.cacheWrite * factor
+    };
+  }
+  static sum(usages) {
+    return usages.reduce((total, usage) => _TokenUsageUtil.add(total, usage), _TokenUsageUtil.zero());
   }
   // Why: includes cache reads and writes.
   static input(usage) {
@@ -676,6 +687,143 @@ var HashUtil = class {
   }
 };
 
+// src/Shared/Services/FailureChainService.ts
+var MAX_CHAIN_ATTEMPTS = 10;
+var MAX_CALLS_BETWEEN_ATTEMPTS = 10;
+var FailureChainService = class _FailureChainService {
+  constructor(idleMs) {
+    this.idleMs = idleMs;
+  }
+  chainsOf(session, index) {
+    const threadIdToCalls = /* @__PURE__ */ new Map();
+    for (const call of session.tools) {
+      CollectionUtil.pushTo(threadIdToCalls, call.thread.id, call);
+    }
+    const chainedCallIds = /* @__PURE__ */ new Set();
+    const chains = [];
+    for (const calls of threadIdToCalls.values()) {
+      calls.forEach((call, callIndex) => {
+        if (!_FailureChainService.isChainableFailure(call) || chainedCallIds.has(call.id)) {
+          return;
+        }
+        const chain = this.chainFrom(call, calls.slice(callIndex + 1), index);
+        for (const failure of chain.failures) {
+          chainedCallIds.add(failure.id);
+        }
+        chains.push(chain);
+      });
+    }
+    return chains;
+  }
+  static isChainableFailure(call) {
+    const result = call.result;
+    return result?.isError === true && result.kind !== "interrupted" && result.kind !== "user_rejected";
+  }
+  chainFrom(first, laterCalls, index) {
+    const failures = [first];
+    let recovery;
+    let callsSinceAttempt = 0;
+    laterCalls.some((candidate) => {
+      const lastAttempt = failures.at(-1) ?? first;
+      const isTooFar = callsSinceAttempt >= MAX_CALLS_BETWEEN_ATTEMPTS || (candidate.calledAtMs ?? 0) - (lastAttempt.calledAtMs ?? 0) > this.idleMs;
+      const step = isTooFar ? "stop" : this.stepOf(first, candidate);
+      callsSinceAttempt = step === "skip" ? callsSinceAttempt + 1 : 0;
+      if (step === "failure") {
+        failures.push(candidate);
+      }
+      if (step === "recovery") {
+        recovery = candidate;
+      }
+      return step === "stop" || step === "recovery" || failures.length >= MAX_CHAIN_ATTEMPTS;
+    });
+    return {
+      failures,
+      recovery,
+      kind: _FailureChainService.kindOf(first, recovery),
+      cost: this.chainCost(first, failures, recovery, index)
+    };
+  }
+  stepOf(first, candidate) {
+    if (!_FailureChainService.doesSameJob(first, candidate)) {
+      return _FailureChainService.hasMovedOn(first, candidate) ? "stop" : "skip";
+    }
+    const result = candidate.result;
+    if (result === void 0) {
+      return "skip";
+    }
+    if (result.kind === "interrupted" || result.kind === "user_rejected") {
+      return "stop";
+    }
+    return result.isError ? "failure" : "recovery";
+  }
+  // Why: a recovery does the same job another way (`npm test` → `pnpm test`) or reruns it after a fix; looking
+  // around (`ls`, `cat`) or moving on to other work (`git add` after a failed script) is not one.
+  static doesSameJob(first, candidate) {
+    if (candidate.category !== first.category) {
+      return false;
+    }
+    if (first.category !== "shell") {
+      return candidate.key === first.key && candidate.filePath === first.filePath;
+    }
+    if (candidate.key === first.key) {
+      return true;
+    }
+    if (NormalizeUtil.isExplorationCommand(candidate.key)) {
+      return false;
+    }
+    const failedStage = NormalizeUtil.commandStage(first.key);
+    if (failedStage !== void 0) {
+      return NormalizeUtil.commandStage(candidate.key) === failedStage;
+    }
+    return candidate.key.split(" ")[0] === first.key.split(" ")[0];
+  }
+  static hasMovedOn(first, candidate) {
+    const isOtherWork = candidate.category === "shell" && !NormalizeUtil.isExplorationCommand(candidate.key);
+    return candidate.category === first.category && (first.category !== "shell" || isOtherWork);
+  }
+  // Why: a fix loop reruns the identical command after changes; the same key with other arguments
+  // (`python3 a.py`, `python3 b.py`) is a different command.
+  static kindOf(first, recovery) {
+    if (recovery === void 0) {
+      return "unrecovered";
+    }
+    if (first.category !== "shell") {
+      return "retry";
+    }
+    return recovery.summary === first.summary ? "fix_loop" : "wrong_command";
+  }
+  // Why: the cost runs from the first failed call until the call that worked was issued, with every message in
+  // between (reasoning, looking around, fixes); the working call's own run is not waste. Unrecovered chains end
+  // at the agent's reaction to the last failure.
+  chainCost(first, failures, recovery, index) {
+    const startAtMs = first.calledAtMs;
+    const messages = index.threadIdToMessages.get(first.thread.id) ?? [];
+    if (startAtMs === void 0) {
+      return {
+        activeMs: 0,
+        usage: TokenUsageUtil.zero()
+      };
+    }
+    const lastFailure = failures.at(-1) ?? first;
+    const endAtMs = recovery?.calledAtMs ?? _FailureChainService.reactionAtMs(lastFailure, messages);
+    const windowMessages = messages.filter((message) => {
+      const sentAtMs = message.sentAtMs ?? 0;
+      return message.id !== first.messageId && sentAtMs > startAtMs && sentAtMs <= endAtMs;
+    });
+    const eventsAtMs = [startAtMs, ...windowMessages.map((message) => message.sentAtMs ?? startAtMs), endAtMs].sort((left, right) => left - right);
+    return {
+      activeMs: TimeUtil.activeTime(eventsAtMs, this.idleMs),
+      usage: TokenUsageUtil.sum(windowMessages.map((message) => message.usage)),
+      model: windowMessages[0]?.model
+    };
+  }
+  static reactionAtMs(call, messages) {
+    const resultAtMs = call.result?.returnedAtMs ?? call.calledAtMs ?? 0;
+    const reaction = messages.find((message) => (message.sentAtMs ?? 0) >= resultAtMs && message.id !== call.messageId);
+    return reaction?.sentAtMs ?? resultAtMs;
+  }
+};
+
 // src/Shared/Services/SignalDetectorService.ts
 var ERROR_HASH_CHARS = 6;
 var REQUEST_HASH_CHARS = 8;
@@ -684,16 +832,17 @@ var ASKED_EXCERPT_CHARS = 90;
 var REPLY_EXCERPT_CHARS = 110;
 var TITLE_EXCERPT_CHARS = 80;
 var EXAMPLE_EXCERPT_CHARS = 200;
-var RECOVERY_WINDOW_CALLS = 3;
 var MIN_REQUEST_WORDS = 3;
 var MAX_REQUEST_CHARS = 600;
 var FILE_CHANGING_COMMAND = /\b(git (checkout|pull|merge|rebase|stash)|sed -i|prettier|eslint --fix|npm run format)/;
-var SignalDetectorService = class {
+var SignalDetectorService = class _SignalDetectorService {
   constructor(options, attribution, collector) {
     this.options = options;
     this.attribution = attribution;
     this.collector = collector;
+    this.failureChains = new FailureChainService(options.idleMs);
   }
+  failureChains;
   detectInSession(session, index) {
     this.detectToolFailures(session, index);
     this.detectRepeatedReads(session, index);
@@ -743,15 +892,18 @@ var SignalDetectorService = class {
     }
   }
   detectToolFailures(session, index) {
-    const threadIdToCommands = /* @__PURE__ */ new Map();
-    for (const call of session.tools.filter((toolCall) => toolCall.category === "shell")) {
-      CollectionUtil.pushTo(threadIdToCommands, call.thread.id, call);
+    const callIdToChain = /* @__PURE__ */ new Map();
+    for (const chain of this.failureChains.chainsOf(session, index)) {
+      for (const failure of chain.failures) {
+        callIdToChain.set(failure.id, chain);
+      }
     }
     for (const call of session.tools) {
       const result = call.result;
       if (!result?.isError || result.kind === "interrupted") {
         continue;
       }
+      const chain = callIdToChain.get(call.id);
       const occurrence = {
         session,
         ref: {
@@ -759,39 +911,71 @@ var SignalDetectorService = class {
           excerpt: `${call.summary} \u2192 ${result.ref.excerpt ?? ""}`.slice(0, MAX_FAILURE_EXCERPT_CHARS)
         },
         pieces: index.toolCallIdToPieces.get(call.id) ?? [AttributionService.MAIN_PIECE],
-        ...this.reactionCost(call, index)
+        ...chain ? _SignalDetectorService.shareOf(chain) : this.reactionCost(call, index)
       };
-      const errorHead = result.errorHead ?? "error";
-      if (result.kind === "user_rejected") {
-        const attributedTo = occurrence.pieces.join(",");
-        const title = `User corrected the agent (${attributedTo})`;
-        this.collector.add(`user_correction:${attributedTo}`, "user_correction", title, {
-          ...occurrence,
-          ref: {
-            ...occurrence.ref,
-            excerpt: `rejected ${call.summary} \u2192 ${result.ref.excerpt ?? ""}`.slice(0, MAX_FAILURE_EXCERPT_CHARS)
-          }
-        });
-      } else if (result.kind === "permission_denied") {
-        const title = `Permission denied for ${call.key}`;
-        const group = this.collector.add(`permission_denied:${call.key}`, "permission_denied", title, occurrence);
-        this.collector.count(group, "errors", errorHead);
-      } else if (result.kind === "hook_blocked") {
-        this.collector.add(`hook_blocked:${call.key}`, "hook_blocked", `Hook blocked ${call.key}`, occurrence);
-      } else if (call.category === "shell") {
-        const title = `Command fails: ${call.key}`;
-        const group = this.collector.add(`failed_command:${call.key}`, "failed_command", title, occurrence);
-        this.collector.count(group, "errors", errorHead);
-        const recoveredWith = this.recoveryOf(call, threadIdToCommands.get(call.thread.id) ?? []);
-        if (recoveredWith) {
-          this.collector.count(group, "recoveredWith", recoveredWith);
-        }
-      } else {
-        const signalId = `tool_error:${call.key}:${HashUtil.sha(errorHead, ERROR_HASH_CHARS)}`;
-        const group = this.collector.add(signalId, "tool_error", `${call.key} error: ${errorHead}`, occurrence);
-        group.details.tool = call.key;
-        group.details.error = errorHead;
+      const group = this.addFailure(call, occurrence);
+      if (group && chain?.failures[0] === call) {
+        this.addChainDetails(group, chain);
       }
+    }
+  }
+  addFailure(call, occurrence) {
+    const result = call.result;
+    const errorHead = result?.errorHead ?? "error";
+    if (result?.kind === "user_rejected") {
+      const attributedTo = occurrence.pieces.join(",");
+      const title = `User corrected the agent (${attributedTo})`;
+      this.collector.add(`user_correction:${attributedTo}`, "user_correction", title, {
+        ...occurrence,
+        ref: {
+          ...occurrence.ref,
+          excerpt: `rejected ${call.summary} \u2192 ${result.ref.excerpt ?? ""}`.slice(0, MAX_FAILURE_EXCERPT_CHARS)
+        }
+      });
+      return void 0;
+    }
+    if (result?.kind === "permission_denied") {
+      const group2 = this.collector.add(`permission_denied:${call.key}`, "permission_denied", `Permission denied for ${call.key}`, occurrence);
+      this.collector.count(group2, "errors", errorHead);
+      return group2;
+    }
+    if (result?.kind === "hook_blocked") {
+      return this.collector.add(`hook_blocked:${call.key}`, "hook_blocked", `Hook blocked ${call.key}`, occurrence);
+    }
+    if (call.category === "shell") {
+      const group2 = this.collector.add(`failed_command:${call.key}`, "failed_command", `Command fails: ${call.key}`, occurrence);
+      this.collector.count(group2, "errors", errorHead);
+      return group2;
+    }
+    const signalId = `tool_error:${call.key}:${HashUtil.sha(errorHead, ERROR_HASH_CHARS)}`;
+    const group = this.collector.add(signalId, "tool_error", `${call.key} error: ${errorHead}`, occurrence);
+    group.details.tool = call.key;
+    group.details.error = errorHead;
+    return group;
+  }
+  // Why: a chain's cost is shared equally by its failures, so the totals add up to the chain once.
+  static shareOf(chain) {
+    const share = 1 / chain.failures.length;
+    return {
+      activeMs: chain.cost.activeMs * share,
+      usage: TokenUsageUtil.scale(chain.cost.usage, share),
+      model: chain.cost.model
+    };
+  }
+  addChainDetails(group, chain) {
+    const summary = group.details.chains ?? {
+      chains: 0,
+      recovered: 0,
+      attempts: 0,
+      fixLoops: 0
+    };
+    summary.chains++;
+    summary.attempts += chain.failures.length;
+    summary.recovered += chain.recovery ? 1 : 0;
+    summary.fixLoops += chain.kind === "fix_loop" ? 1 : 0;
+    group.details.chains = summary;
+    if (chain.kind === "wrong_command" && chain.recovery && chain.recovery.key !== chain.failures[0]?.key) {
+      this.collector.count(group, "recoveredWith", chain.recovery.key);
     }
   }
   detectCompactions(session) {
@@ -986,27 +1170,6 @@ var SignalDetectorService = class {
       model: turnMessages[0]?.model
     };
   }
-  // Why: only a different command counts as a recovery.
-  recoveryOf(failedCall, threadCommands) {
-    const failedIndex = threadCommands.indexOf(failedCall);
-    const nextCommands = threadCommands.slice(failedIndex + 1, failedIndex + 1 + RECOVERY_WINDOW_CALLS);
-    const firstSuccess = nextCommands.find((call) => call.result !== void 0 && !call.result.isError && this.isPlausibleRecovery(failedCall, call));
-    return firstSuccess && firstSuccess.key !== failedCall.key ? firstSuccess.key : void 0;
-  }
-  /**
-   * Why: A recovery does the same job another way (`npm test` → `pnpm test`). Looking around (`ls`, `cat`) or
-   * moving on to other work (`git add` after a failed script) is not one.
-   */
-  isPlausibleRecovery(failedCall, candidate) {
-    if (NormalizeUtil.isExplorationCommand(candidate.key)) {
-      return false;
-    }
-    const failedStage = NormalizeUtil.commandStage(failedCall.key);
-    if (failedStage !== void 0) {
-      return NormalizeUtil.commandStage(candidate.key) === failedStage;
-    }
-    return candidate.key.split(" ")[0] === failedCall.key.split(" ")[0];
-  }
   // Why: reading a file again is legitimate after it was edited or changed by a command in between.
   wasChangedBetween(session, firstRead, laterRead) {
     const fromAtMs = firstRead.calledAtMs ?? 0;
@@ -1156,15 +1319,34 @@ var WorkflowDetectorService = class {
     const endedAtMs = lastCall?.result?.returnedAtMs ?? lastCall?.calledAtMs ?? 0;
     return endedAtMs - (calls[0]?.calledAtMs ?? endedAtMs);
   }
+  // Why: a script still runs the commands and still takes one call; what it saves is everything the agent did
+  // around them: the other messages in the window (reasoning, reading logs, rebuilding the next step).
   workflowCost(calls, index) {
-    const messageIds = new Set(calls.map((call) => call.messageId));
-    const stepMessages = (index.threadIdToMessages.get(calls[0]?.thread.id ?? "") ?? []).filter((message) => messageIds.has(message.id));
-    const spanMs = Math.max(0, this.spanOf(calls));
+    const first = calls[0];
+    const last = calls.at(-1);
+    const startAtMs = first?.calledAtMs;
+    const endAtMs = last?.result?.returnedAtMs ?? last?.calledAtMs;
+    if (!first || startAtMs === void 0 || endAtMs === void 0) {
+      return {
+        activeMs: 0,
+        usage: TokenUsageUtil.zero()
+      };
+    }
+    const windowMessages = (index.threadIdToMessages.get(first.thread.id) ?? []).filter((message) => {
+      const sentAtMs = message.sentAtMs ?? 0;
+      return message.id !== first.messageId && sentAtMs >= startAtMs && sentAtMs <= endAtMs;
+    });
+    const eventsAtMs = [startAtMs, ...windowMessages.map((message) => message.sentAtMs ?? startAtMs), endAtMs].sort((left, right) => left - right);
+    const executionMs = calls.reduce((total, call) => total + this.executionMsOf(call), 0);
     return {
-      activeMs: Math.min(this.options.idleMs * calls.length, spanMs),
-      usage: stepMessages.reduce((total, message) => TokenUsageUtil.add(total, message.usage), TokenUsageUtil.zero()),
-      model: stepMessages[0]?.model
+      activeMs: Math.max(0, TimeUtil.activeTime(eventsAtMs, this.options.idleMs) - executionMs),
+      usage: TokenUsageUtil.sum(windowMessages.map((message) => message.usage)),
+      model: windowMessages[0]?.model
     };
+  }
+  executionMsOf(call) {
+    const durationMs = (call.result?.returnedAtMs ?? call.calledAtMs ?? 0) - (call.calledAtMs ?? 0);
+    return Math.min(this.options.idleMs, Math.max(0, durationMs));
   }
 };
 

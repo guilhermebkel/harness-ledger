@@ -1,5 +1,5 @@
 import type { PriceTable, SignalThresholds } from "./ConfigProtocol.js";
-import type { EvidenceRef, SessionFacts, TokenUsage } from "./SessionProtocol.js";
+import type { EvidenceRef, SessionFacts, TokenUsage, ToolCall } from "./SessionProtocol.js";
 import type { SuggestionStatus } from "./SuggestionProtocol.js";
 
 export type SignalType
@@ -32,7 +32,24 @@ export interface Mention {
   term: string;
 }
 
+export type FailureChainKind = "wrong_command" | "fix_loop" | "retry" | "unrecovered";
+
+export interface FailureChain {
+  failures: ToolCall[];
+  recovery?: ToolCall;
+  kind: FailureChainKind;
+  cost: StepCost;
+}
+
+export interface ChainSummary {
+  chains: number;
+  recovered: number;
+  attempts: number;
+  fixLoops: number;
+}
+
 export interface SignalDetails {
+  chains?: ChainSummary;
   models?: CountedValue[];
   errors?: CountedValue[];
   recoveredWith?: CountedValue[];

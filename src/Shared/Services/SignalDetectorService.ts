@@ -1,6 +1,13 @@
 import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
 import type { ApiError, SessionFacts, ToolCall, UserPrompt } from "@/Shared/Protocols/SessionProtocol.js";
-import type { Occurrence, SignalOptions, SignalType, StepCost } from "@/Shared/Protocols/SignalProtocol.js";
+import type {
+  FailureChain,
+  Occurrence,
+  OccurrenceGroup,
+  SignalOptions,
+  SignalType,
+  StepCost,
+} from "@/Shared/Protocols/SignalProtocol.js";
 import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
 import { HashUtil } from "@/Shared/Utils/HashUtil.js";
 import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.js";
@@ -10,6 +17,7 @@ import { SessionUtil } from "@/Shared/Utils/SessionUtil.js";
 import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
 import { TokenUsageUtil } from "@/Shared/Utils/TokenUsageUtil.js";
 import { AttributionService } from "./AttributionService.js";
+import { FailureChainService } from "./FailureChainService.js";
 import type { OccurrenceCollectorService } from "./OccurrenceCollectorService.js";
 
 const ERROR_HASH_CHARS = 6;
@@ -19,8 +27,6 @@ const ASKED_EXCERPT_CHARS = 90;
 const REPLY_EXCERPT_CHARS = 110;
 const TITLE_EXCERPT_CHARS = 80;
 const EXAMPLE_EXCERPT_CHARS = 200;
-// Why: a failure counts as recovered only when one of the next few commands in the thread succeeds.
-const RECOVERY_WINDOW_CALLS = 3;
 const MIN_REQUEST_WORDS = 3;
 const MAX_REQUEST_CHARS = 600;
 // Why: after these commands, reading a file again is legitimate.
@@ -33,11 +39,15 @@ interface CandidateRequest {
 }
 
 export class SignalDetectorService {
+  private readonly failureChains: FailureChainService;
+
   constructor(
     private readonly options: SignalOptions,
     private readonly attribution: AttributionService,
     private readonly collector: OccurrenceCollectorService,
-  ) {}
+  ) {
+    this.failureChains = new FailureChainService(options.idleMs);
+  }
 
   detectInSession(session: SessionFacts, index: SessionIndex): void {
     this.detectToolFailures(session, index);
@@ -90,9 +100,11 @@ export class SignalDetectorService {
   }
 
   private detectToolFailures(session: SessionFacts, index: SessionIndex): void {
-    const threadIdToCommands = new Map<string, ToolCall[]>();
-    for (const call of session.tools.filter((toolCall) => toolCall.category === "shell")) {
-      CollectionUtil.pushTo(threadIdToCommands, call.thread.id, call);
+    const callIdToChain = new Map<string, FailureChain>();
+    for (const chain of this.failureChains.chainsOf(session, index)) {
+      for (const failure of chain.failures) {
+        callIdToChain.set(failure.id, chain);
+      }
     }
     for (const call of session.tools) {
       const result = call.result;
@@ -100,6 +112,7 @@ export class SignalDetectorService {
       if (!result?.isError || result.kind === "interrupted") {
         continue;
       }
+      const chain = callIdToChain.get(call.id);
       const occurrence: Occurrence = {
         session,
         ref: {
@@ -107,40 +120,75 @@ export class SignalDetectorService {
           excerpt: `${call.summary} → ${result.ref.excerpt ?? ""}`.slice(0, MAX_FAILURE_EXCERPT_CHARS),
         },
         pieces: index.toolCallIdToPieces.get(call.id) ?? [AttributionService.MAIN_PIECE],
-        ...this.reactionCost(call, index),
+        ...(chain ? SignalDetectorService.shareOf(chain) : this.reactionCost(call, index)),
       };
-      const errorHead = result.errorHead ?? "error";
-      if (result.kind === "user_rejected") {
-        // Why: the person said no to the call (a plan, a command): that is a correction of the turn, not a failure.
-        const attributedTo = occurrence.pieces.join(",");
-        const title = `User corrected the agent (${attributedTo})`;
-        this.collector.add(`user_correction:${attributedTo}`, "user_correction", title, {
-          ...occurrence,
-          ref: {
-            ...occurrence.ref,
-            excerpt: `rejected ${call.summary} → ${result.ref.excerpt ?? ""}`.slice(0, MAX_FAILURE_EXCERPT_CHARS),
-          },
-        });
-      } else if (result.kind === "permission_denied") {
-        const title = `Permission denied for ${call.key}`;
-        const group = this.collector.add(`permission_denied:${call.key}`, "permission_denied", title, occurrence);
-        this.collector.count(group, "errors", errorHead);
-      } else if (result.kind === "hook_blocked") {
-        this.collector.add(`hook_blocked:${call.key}`, "hook_blocked", `Hook blocked ${call.key}`, occurrence);
-      } else if (call.category === "shell") {
-        const title = `Command fails: ${call.key}`;
-        const group = this.collector.add(`failed_command:${call.key}`, "failed_command", title, occurrence);
-        this.collector.count(group, "errors", errorHead);
-        const recoveredWith = this.recoveryOf(call, threadIdToCommands.get(call.thread.id) ?? []);
-        if (recoveredWith) {
-          this.collector.count(group, "recoveredWith", recoveredWith);
-        }
-      } else {
-        const signalId = `tool_error:${call.key}:${HashUtil.sha(errorHead, ERROR_HASH_CHARS)}`;
-        const group = this.collector.add(signalId, "tool_error", `${call.key} error: ${errorHead}`, occurrence);
-        group.details.tool = call.key;
-        group.details.error = errorHead;
+      const group = this.addFailure(call, occurrence);
+      if (group && chain?.failures[0] === call) {
+        this.addChainDetails(group, chain);
       }
+    }
+  }
+
+  private addFailure(call: ToolCall, occurrence: Occurrence): OccurrenceGroup | undefined {
+    const result = call.result;
+    const errorHead = result?.errorHead ?? "error";
+    if (result?.kind === "user_rejected") {
+      // Why: the person said no to the call (a plan, a command): that is a correction of the turn, not a failure.
+      const attributedTo = occurrence.pieces.join(",");
+      const title = `User corrected the agent (${attributedTo})`;
+      this.collector.add(`user_correction:${attributedTo}`, "user_correction", title, {
+        ...occurrence,
+        ref: {
+          ...occurrence.ref,
+          excerpt: `rejected ${call.summary} → ${result.ref.excerpt ?? ""}`.slice(0, MAX_FAILURE_EXCERPT_CHARS),
+        },
+      });
+      return undefined;
+    }
+    if (result?.kind === "permission_denied") {
+      const group = this.collector.add(`permission_denied:${call.key}`, "permission_denied", `Permission denied for ${call.key}`, occurrence);
+      this.collector.count(group, "errors", errorHead);
+      return group;
+    }
+    if (result?.kind === "hook_blocked") {
+      return this.collector.add(`hook_blocked:${call.key}`, "hook_blocked", `Hook blocked ${call.key}`, occurrence);
+    }
+    if (call.category === "shell") {
+      const group = this.collector.add(`failed_command:${call.key}`, "failed_command", `Command fails: ${call.key}`, occurrence);
+      this.collector.count(group, "errors", errorHead);
+      return group;
+    }
+    const signalId = `tool_error:${call.key}:${HashUtil.sha(errorHead, ERROR_HASH_CHARS)}`;
+    const group = this.collector.add(signalId, "tool_error", `${call.key} error: ${errorHead}`, occurrence);
+    group.details.tool = call.key;
+    group.details.error = errorHead;
+    return group;
+  }
+
+  // Why: a chain's cost is shared equally by its failures, so the totals add up to the chain once.
+  private static shareOf(chain: FailureChain): StepCost {
+    const share = 1 / chain.failures.length;
+    return {
+      activeMs: chain.cost.activeMs * share,
+      usage: TokenUsageUtil.scale(chain.cost.usage, share),
+      model: chain.cost.model,
+    };
+  }
+
+  private addChainDetails(group: OccurrenceGroup, chain: FailureChain): void {
+    const summary = group.details.chains ?? {
+      chains: 0,
+      recovered: 0,
+      attempts: 0,
+      fixLoops: 0,
+    };
+    summary.chains++;
+    summary.attempts += chain.failures.length;
+    summary.recovered += chain.recovery ? 1 : 0;
+    summary.fixLoops += chain.kind === "fix_loop" ? 1 : 0;
+    group.details.chains = summary;
+    if (chain.kind === "wrong_command" && chain.recovery && chain.recovery.key !== chain.failures[0]?.key) {
+      this.collector.count(group, "recoveredWith", chain.recovery.key);
     }
   }
 
@@ -362,30 +410,6 @@ export class SignalDetectorService {
       usage: turnMessages.reduce((total, message) => TokenUsageUtil.add(total, message.usage), TokenUsageUtil.zero()),
       model: turnMessages[0]?.model,
     };
-  }
-
-  // Why: only a different command counts as a recovery.
-  private recoveryOf(failedCall: ToolCall, threadCommands: ToolCall[]): string | undefined {
-    const failedIndex = threadCommands.indexOf(failedCall);
-    const nextCommands = threadCommands.slice(failedIndex + 1, failedIndex + 1 + RECOVERY_WINDOW_CALLS);
-    const firstSuccess = nextCommands.find((call) => call.result !== undefined && !call.result.isError
-      && this.isPlausibleRecovery(failedCall, call));
-    return firstSuccess && firstSuccess.key !== failedCall.key ? firstSuccess.key : undefined;
-  }
-
-  /**
-   * Why: A recovery does the same job another way (`npm test` → `pnpm test`). Looking around (`ls`, `cat`) or
-   * moving on to other work (`git add` after a failed script) is not one.
-   */
-  private isPlausibleRecovery(failedCall: ToolCall, candidate: ToolCall): boolean {
-    if (NormalizeUtil.isExplorationCommand(candidate.key)) {
-      return false;
-    }
-    const failedStage = NormalizeUtil.commandStage(failedCall.key);
-    if (failedStage !== undefined) {
-      return NormalizeUtil.commandStage(candidate.key) === failedStage;
-    }
-    return candidate.key.split(" ")[0] === failedCall.key.split(" ")[0];
   }
 
   // Why: reading a file again is legitimate after it was edited or changed by a command in between.

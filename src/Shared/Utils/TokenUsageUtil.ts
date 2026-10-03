@@ -19,6 +19,19 @@ export class TokenUsageUtil {
     };
   }
 
+  static scale(usage: TokenUsage, factor: number): TokenUsage {
+    return {
+      input: usage.input * factor,
+      output: usage.output * factor,
+      cacheRead: usage.cacheRead * factor,
+      cacheWrite: usage.cacheWrite * factor,
+    };
+  }
+
+  static sum(usages: TokenUsage[]): TokenUsage {
+    return usages.reduce((total, usage) => TokenUsageUtil.add(total, usage), TokenUsageUtil.zero());
+  }
+
   // Why: includes cache reads and writes.
   static input(usage: TokenUsage): number {
     return usage.input + usage.cacheRead + usage.cacheWrite;
