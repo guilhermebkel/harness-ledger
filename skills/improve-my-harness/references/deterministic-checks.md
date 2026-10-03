@@ -12,6 +12,15 @@ Checked in October 2026. Before recommending a tool, confirm it still exists and
 - **Fix loops**: a `failed_command` on a lint, type, test or build command with `details.chains.fixLoops`, or a `repeated_workflow` in the validation stage. `cost.fixLoop` is what the loop took. A script the agent reruns after fixing it (`python3 report.py`) is ordinary work, not evidence.
 - **No checks at all** for a language with many edits (`checks.languages`) and every core category in `checks.missing` for it. Weakest evidence: suggest once, as part of the validation stage, not as its own top finding.
 
+## When the script couldn't map something
+
+`checks.isMissingPartial` means `missing` may be wrong: `partialReasons` says why. Before claiming a category is uncovered, resolve each item:
+
+- An `unmapped` language (`extension`): name the language yourself (search the web if you don't know the extension) and say which checks fit it; the script lists no `missing` for it.
+- An `unmappedTools` entry: find out what it checks (its README or registry page). If it covers a `missing` category, drop that category from the suggestion and name the tool as what the project already has.
+
+Interpret, never count: the numbers still come only from the script (ADR 0002).
+
 ## What to suggest, by language
 
 Prefer turning on a rule in a linter the project already has (`checks.tools`) over adding a tool.

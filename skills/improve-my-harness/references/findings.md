@@ -22,7 +22,7 @@ These are starting points, not rules; read the piece and what it loads (skill fi
 | `failed_command` with `recoveredWith` and `mentions` | Rule exists, but is ignored |
 | `failed_command` with `recoveredWith`, no mentions | Missing instruction, or a script/hook if it repeats a lot |
 | `failed_command` with `details.chains.fixLoops`, on a check command (lint, types, tests, build) | The agent reruns the check until it passes after fixing the code: a deterministic check in a `PostToolUse` hook on the edited file catches it earlier. Time and tokens until it worked are in `cost.fixLoop`. See `references/deterministic-checks.md` |
-| `checks.missing` | Not a finding alone. With corrections about code quality or fix loops as evidence, a deterministic check: read `references/deterministic-checks.md` |
+| `checks.missing` | Not a finding alone. With corrections about code quality or fix loops as evidence, a deterministic check: read `references/deterministic-checks.md`. With `checks.isMissingPartial`, resolve the unmapped languages and tools first (same reference) |
 | `failed_command` / `tool_error` without recovery | Partial instruction, or out of scope if it's a tool/plugin problem |
 | `permission_denied` | Missing instruction (the agent keeps trying something not allowed) or a permission rule the user may want; ask, never widen permissions on your own. `errors` holds the reason, e.g. the auto-mode classifier's category |
 | `api_error` | Structure change: a model name that doesn't exist, expired credentials or a proxy failing. `details.models` names the model; check the `model:` of the attributed agent or the settings |

@@ -125,6 +125,36 @@ describe("CheckInventoryService", () => {
     expect(checks.missing).toEqual([]);
   });
 
+  it("lists edits in unknown languages as unmapped instead of dropping them, and ignores files that aren't code", async () => {
+    const projectDir = projectWith({});
+    const sessions = [sessionEditing(".ex", 6), sessionEditing(".md", 9), sessionEditing(".ts", 5)];
+    const checks = await new CheckInventoryService(projectDir).inspect(sessions, inventoryWith());
+    expect(checks.languages).toEqual([
+      { language: "unmapped", extension: ".ex", edits: 6 },
+      { language: "typescript", edits: 5 },
+    ]);
+    expect(checks.missing.map((entry) => entry.language)).not.toContain("unmapped");
+    expect(checks.isMissingPartial).toBe(true);
+    expect(checks.partialReasons).toEqual(["edits in files with no known language: .ex"]);
+  });
+
+  it("lists dependencies that look like checks but aren't in the catalog, and calls the missing list partial", async () => {
+    const projectDir = projectWith({
+      "package.json": JSON.stringify({ devDependencies: { "eslint": "^9", "eslint-plugin-unicorn": "^56", "react": "^19" } }),
+      "requirements-dev.txt": "pydocstyle==6.3\nrequests==2.32\n",
+    });
+    const checks = await new CheckInventoryService(projectDir).inspect([sessionEditing(".ts", 5)], inventoryWith());
+    expect(checks.unmappedTools).toEqual(["eslint-plugin-unicorn", "pydocstyle"]);
+    expect(checks.isMissingPartial).toBe(true);
+  });
+
+  it("calls the missing list complete when everything is mapped", async () => {
+    const projectDir = projectWith({ "package.json": JSON.stringify({ devDependencies: { eslint: "^9" } }) });
+    const checks = await new CheckInventoryService(projectDir).inspect([sessionEditing(".ts", 5)], inventoryWith());
+    expect(checks.isMissingPartial).toBe(false);
+    expect(checks.partialReasons).toEqual([]);
+  });
+
   it("never outputs script text or secrets from hooks", async () => {
     const projectDir = projectWith({
       "package.json": JSON.stringify({ scripts: { lint: `eslint . --token ${FAKE_TOKEN}` } }),

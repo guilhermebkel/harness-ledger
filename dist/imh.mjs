@@ -2337,9 +2337,68 @@ var EXTENSION_TO_LANGUAGE = {
   ".rs": "rust",
   ".php": "php",
   ".cs": "csharp",
-  ".swift": "swift"
+  ".swift": "swift",
+  ".sh": "shell",
+  ".bash": "shell",
+  ".sql": "sql"
 };
-var CheckCatalogUtil = class {
+var NOT_CODE_EXTENSIONS = /* @__PURE__ */ new Set([
+  "",
+  ".md",
+  ".mdx",
+  ".txt",
+  ".json",
+  ".jsonc",
+  ".yml",
+  ".yaml",
+  ".toml",
+  ".ini",
+  ".cfg",
+  ".env",
+  ".lock",
+  ".csv",
+  ".xml",
+  ".html",
+  ".htm",
+  ".css",
+  ".scss",
+  ".sass",
+  ".less",
+  ".svg",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".ico",
+  ".pdf",
+  ".log"
+]);
+var LANGUAGES_WITH_CORE_CHECKS = /* @__PURE__ */ new Set(["javascript", "typescript", "python", "go"]);
+var CHECK_LIKE_WORDS = [
+  "lint",
+  "eslint-plugin",
+  "eslint-config",
+  "prettier",
+  "sonar",
+  "complex",
+  "cpd",
+  "dupl",
+  "dead",
+  "unused",
+  "prune",
+  "cruiser",
+  "boundar",
+  "circular",
+  "cycle",
+  "depcheck",
+  "check",
+  "analyz",
+  "analys",
+  "audit",
+  "style"
+];
+var CHECK_LIKE_NAME = new RegExp(CHECK_LIKE_WORDS.join("|"), "i");
+var CheckCatalogUtil = class _CheckCatalogUtil {
   // Why: every language with edits should have these; a missing one is what the skill may suggest.
   static CORE_CATEGORIES = ["complexity", "deadCode", "duplication"];
   static TOOLS = [
@@ -2560,7 +2619,27 @@ var CheckCatalogUtil = class {
     }
   ];
   static languageOf(filePath) {
-    return EXTENSION_TO_LANGUAGE[extname(filePath).toLowerCase()];
+    const extension = extname(filePath).toLowerCase();
+    const language = EXTENSION_TO_LANGUAGE[extension];
+    if (language !== void 0) {
+      return {
+        language,
+        kind: "language"
+      };
+    }
+    return NOT_CODE_EXTENSIONS.has(extension) ? { kind: "notCode" } : {
+      extension,
+      kind: "unmapped"
+    };
+  }
+  static hasCoreChecks(language) {
+    return LANGUAGES_WITH_CORE_CHECKS.has(language);
+  }
+  static isCheckLikeName(packageName) {
+    return CHECK_LIKE_NAME.test(packageName);
+  }
+  static knownPackages() {
+    return new Set(_CheckCatalogUtil.TOOLS.flatMap((tool) => [tool.name, ...tool.packages ?? []]));
   }
   static coversLanguage(tool, language) {
     return tool.languages.includes("*") || tool.languages.includes(language);
@@ -2628,6 +2707,7 @@ var GOLANGCI_CONFIG_FILES = [".golangci.yml", ".golangci.yaml", ".golangci.toml"
 var MONOREPO_FILES = ["pnpm-workspace.yaml", "lerna.json", "turbo.json", "nx.json"];
 var MIN_LANGUAGE_EDITS = 5;
 var PACKAGE_ENTRY_FIELDS = ["exports", "main", "module", "bin"];
+var UNMAPPED_PREFIX = "unmapped:";
 var CheckInventoryService = class _CheckInventoryService {
   constructor(projectDir) {
     this.projectDir = projectDir;
@@ -2643,22 +2723,53 @@ var CheckInventoryService = class _CheckInventoryService {
       hooks: inventory.pieces.filter((piece) => piece.kind === "hook").map((piece) => RedactUtil.redact(`${piece.name}: ${piece.description ?? ""}`)),
       isMonorepo: files.hasMonorepoFile || packageJson?.workspaces !== void 0,
       isPublishedPackage: _CheckInventoryService.isPublished(packageJson),
-      missing: _CheckInventoryService.missingChecks(languages, tools)
+      missing: _CheckInventoryService.missingChecks(languages, tools),
+      ..._CheckInventoryService.unmappedPart(languages, _CheckInventoryService.unmappedToolsOf(files))
     };
   }
+  static unmappedPart(languages, unmappedTools) {
+    const unmappedExtensions = languages.map((entry) => entry.extension).filter((extension) => extension !== void 0);
+    const partialReasons = [
+      ...unmappedExtensions.length ? [`edits in files with no known language: ${unmappedExtensions.join(", ")}`] : [],
+      ...unmappedTools.length ? [`dependencies that may be checks outside the catalog: ${unmappedTools.join(", ")}`] : []
+    ];
+    return {
+      unmappedTools,
+      partialReasons,
+      isMissingPartial: partialReasons.length > 0
+    };
+  }
+  // Why: a check the catalog doesn't know must not let `missing` claim the category is uncovered, so dependencies
+  // whose names look like checks are listed for the skill to look up.
+  static unmappedToolsOf(files) {
+    const requirementNames = files.sourceToText["python config"].split("\n").map((line) => /^([A-Za-z0-9_.-]+)\s*(?:[=<>~!]|$)/.exec(line.trim())?.[1]).filter((name) => name !== void 0);
+    const knownPackages = CheckCatalogUtil.knownPackages();
+    const names = [..._CheckInventoryService.dependencyNames(files.packageJson), ...requirementNames];
+    return CollectionUtil.unique(names).filter((name) => CheckCatalogUtil.isCheckLikeName(name) && !knownPackages.has(name)).map((name) => RedactUtil.redact(name)).sort(CollectionUtil.compareCodeUnits);
+  }
   static languagesOf(sessions) {
-    const languages = sessions.flatMap((session) => session.tools).filter((call) => call.category === "edit" && call.filePath !== void 0).map((call) => CheckCatalogUtil.languageOf(call.filePath ?? "")).filter((language) => language !== void 0);
-    return Object.entries(CollectionUtil.countBy(languages)).map(([language, edits]) => ({
-      language,
-      edits
-    })).sort((left, right) => right.edits - left.edits);
+    const matches = sessions.flatMap((session) => session.tools).filter((call) => call.category === "edit" && call.filePath !== void 0).map((call) => CheckCatalogUtil.languageOf(call.filePath ?? ""));
+    const keys = matches.flatMap((match) => {
+      if (match.kind === "notCode") {
+        return [];
+      }
+      return [match.kind === "language" ? match.language : `${UNMAPPED_PREFIX}${match.extension}`];
+    });
+    return Object.entries(CollectionUtil.countBy(keys)).map(([key, edits]) => key.startsWith(UNMAPPED_PREFIX) ? {
+      edits,
+      language: "unmapped",
+      extension: RedactUtil.redact(key.slice(UNMAPPED_PREFIX.length))
+    } : {
+      edits,
+      language: key
+    }).sort((left, right) => right.edits - left.edits);
   }
   static missingChecks(languages, tools) {
     const toolDefinitions = tools.map((tool) => ({
       tool,
       definition: CheckCatalogUtil.TOOLS.find((definition) => definition.name === tool.name)
     }));
-    return languages.filter((entry) => entry.edits >= MIN_LANGUAGE_EDITS).flatMap(({ language }) => CheckCatalogUtil.CORE_CATEGORIES.filter((category) => !toolDefinitions.some(({ tool, definition }) => definition !== void 0 && CheckCatalogUtil.coversLanguage(definition, language) && tool.categories.includes(category))).map((category) => ({
+    return languages.filter((entry) => entry.edits >= MIN_LANGUAGE_EDITS && CheckCatalogUtil.hasCoreChecks(entry.language)).flatMap(({ language }) => CheckCatalogUtil.CORE_CATEGORIES.filter((category) => !toolDefinitions.some(({ tool, definition }) => definition !== void 0 && CheckCatalogUtil.coversLanguage(definition, language) && tool.categories.includes(category))).map((category) => ({
       language,
       category
     })));

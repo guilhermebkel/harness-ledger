@@ -46,6 +46,7 @@ const MONOREPO_FILES = ["pnpm-workspace.yaml", "lerna.json", "turbo.json", "nx.j
 // Why: a language with fewer edits than this is a side note in the period, not where checks would pay off.
 const MIN_LANGUAGE_EDITS = 5;
 const PACKAGE_ENTRY_FIELDS = ["exports", "main", "module", "bin"];
+const UNMAPPED_PREFIX = "unmapped:";
 
 interface ProjectFiles {
   packageJson?: UnknownRecord;
@@ -72,20 +73,65 @@ export class CheckInventoryService {
       isMonorepo: files.hasMonorepoFile || packageJson?.workspaces !== undefined,
       isPublishedPackage: CheckInventoryService.isPublished(packageJson),
       missing: CheckInventoryService.missingChecks(languages, tools),
+      ...CheckInventoryService.unmappedPart(languages, CheckInventoryService.unmappedToolsOf(files)),
     };
   }
 
+  private static unmappedPart(
+    languages: LanguageEdits[],
+    unmappedTools: string[],
+  ): Pick<ProjectChecks, "unmappedTools" | "isMissingPartial" | "partialReasons"> {
+    const unmappedExtensions = languages
+      .map((entry) => entry.extension)
+      .filter((extension) => extension !== undefined);
+    const partialReasons = [
+      ...(unmappedExtensions.length ? [`edits in files with no known language: ${unmappedExtensions.join(", ")}`] : []),
+      ...(unmappedTools.length ? [`dependencies that may be checks outside the catalog: ${unmappedTools.join(", ")}`] : []),
+    ];
+    return {
+      unmappedTools,
+      partialReasons,
+      isMissingPartial: partialReasons.length > 0,
+    };
+  }
+
+  // Why: a check the catalog doesn't know must not let `missing` claim the category is uncovered, so dependencies
+  // whose names look like checks are listed for the skill to look up.
+  private static unmappedToolsOf(files: ProjectFiles): string[] {
+    const requirementNames = files.sourceToText["python config"]
+      .split("\n")
+      .map((line) => /^([A-Za-z0-9_.-]+)\s*(?:[=<>~!]|$)/.exec(line.trim())?.[1])
+      .filter((name) => name !== undefined);
+    const knownPackages = CheckCatalogUtil.knownPackages();
+    const names = [...CheckInventoryService.dependencyNames(files.packageJson), ...requirementNames];
+    return CollectionUtil.unique(names)
+      .filter((name) => CheckCatalogUtil.isCheckLikeName(name) && !knownPackages.has(name))
+      .map((name) => RedactUtil.redact(name))
+      .sort(CollectionUtil.compareCodeUnits);
+  }
+
   private static languagesOf(sessions: SessionFacts[]): LanguageEdits[] {
-    const languages = sessions
+    const matches = sessions
       .flatMap((session) => session.tools)
       .filter((call) => call.category === "edit" && call.filePath !== undefined)
-      .map((call) => CheckCatalogUtil.languageOf(call.filePath ?? ""))
-      .filter((language) => language !== undefined);
-    return Object.entries(CollectionUtil.countBy(languages))
-      .map(([language, edits]) => ({
-        language,
-        edits,
-      }))
+      .map((call) => CheckCatalogUtil.languageOf(call.filePath ?? ""));
+    const keys = matches.flatMap((match) => {
+      if (match.kind === "notCode") {
+        return [];
+      }
+      return [match.kind === "language" ? match.language : `${UNMAPPED_PREFIX}${match.extension}`];
+    });
+    return Object.entries(CollectionUtil.countBy(keys))
+      .map(([key, edits]) => (key.startsWith(UNMAPPED_PREFIX)
+        ? {
+            edits,
+            language: "unmapped",
+            extension: RedactUtil.redact(key.slice(UNMAPPED_PREFIX.length)),
+          }
+        : {
+            edits,
+            language: key,
+          }))
       .sort((left, right) => right.edits - left.edits);
   }
 
@@ -95,7 +141,7 @@ export class CheckInventoryService {
       definition: CheckCatalogUtil.TOOLS.find((definition) => definition.name === tool.name),
     }));
     return languages
-      .filter((entry) => entry.edits >= MIN_LANGUAGE_EDITS)
+      .filter((entry) => entry.edits >= MIN_LANGUAGE_EDITS && CheckCatalogUtil.hasCoreChecks(entry.language))
       .flatMap(({ language }) => CheckCatalogUtil.CORE_CATEGORIES
         .filter((category) => !toolDefinitions.some(({ tool, definition }) =>
           definition !== undefined && CheckCatalogUtil.coversLanguage(definition, language)

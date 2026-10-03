@@ -99,7 +99,7 @@ Only when the user explicitly asks for a specific suggestion. Then:
 ## Hard rules
 
 - Every finding cites its evidence: session id (first 8 characters), transcript line and thread. No evidence, no finding.
-- Numbers come only from the script. Time and cost are always labeled as estimates. If `totals.unpricedModels` is not empty, say that those models' cost is not included. `totals.reportedByProvider` holds the agent's own cost and turn time; show it beside the estimate, never summed with it. Each signal's `cost.bound` says whether to write "at least", "at most" or "about".
+- Numbers come only from the script. Time and cost are always labeled as estimates. If `totals.unpricedModels` is not empty, say that those models' cost is not included; you may look up a model's price and propose it as an entry in `.imh/config.json` (`prices`) with its source, but use it only after the person confirms and the script recomputes. `totals.reportedByProvider` holds the agent's own cost and turn time; show it beside the estimate, never summed with it. Each signal's `cost.bound` says whether to write "at least", "at most" or "about".
 - Never show secret values. The script redacts excerpts; if you read a transcript line yourself, don't copy credentials, tokens, keys or personal data into the report, suggestions or commits. If you notice an exposed secret, tell the user privately in one line and don't turn it into a suggestion.
 - Stay in scope: unrelated bugs or code issues you notice in transcripts are not harness findings. Mention them in one line at most, outside the suggestion list.
 - Don't apply anything without explicit confirmation for that specific suggestion.

@@ -1,5 +1,5 @@
 import { extname } from "node:path";
-import type { CheckCategory, CheckToolDefinition } from "@/Shared/Protocols/CheckProtocol.js";
+import type { CheckCategory, CheckToolDefinition, LanguageMatch } from "@/Shared/Protocols/CheckProtocol.js";
 
 const JS_LANGUAGES = ["javascript", "typescript"];
 
@@ -23,7 +23,68 @@ const EXTENSION_TO_LANGUAGE: Record<string, string> = {
   ".php": "php",
   ".cs": "csharp",
   ".swift": "swift",
+  ".sh": "shell",
+  ".bash": "shell",
+  ".sql": "sql",
 };
+const NOT_CODE_EXTENSIONS = new Set([
+  "",
+  ".md",
+  ".mdx",
+  ".txt",
+  ".json",
+  ".jsonc",
+  ".yml",
+  ".yaml",
+  ".toml",
+  ".ini",
+  ".cfg",
+  ".env",
+  ".lock",
+  ".csv",
+  ".xml",
+  ".html",
+  ".htm",
+  ".css",
+  ".scss",
+  ".sass",
+  ".less",
+  ".svg",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".ico",
+  ".pdf",
+  ".log",
+]);
+// Why: the core checks are only expected where the catalog knows tools for them; other languages are listed
+// without a "missing" claim.
+const LANGUAGES_WITH_CORE_CHECKS = new Set(["javascript", "typescript", "python", "go"]);
+const CHECK_LIKE_WORDS = [
+  "lint",
+  "eslint-plugin",
+  "eslint-config",
+  "prettier",
+  "sonar",
+  "complex",
+  "cpd",
+  "dupl",
+  "dead",
+  "unused",
+  "prune",
+  "cruiser",
+  "boundar",
+  "circular",
+  "cycle",
+  "depcheck",
+  "check",
+  "analyz",
+  "analys",
+  "audit",
+  "style",
+];
+const CHECK_LIKE_NAME = new RegExp(CHECK_LIKE_WORDS.join("|"), "i");
 
 export class CheckCatalogUtil {
   // Why: every language with edits should have these; a missing one is what the skill may suggest.
@@ -247,8 +308,33 @@ export class CheckCatalogUtil {
     },
   ];
 
-  static languageOf(filePath: string): string | undefined {
-    return EXTENSION_TO_LANGUAGE[extname(filePath).toLowerCase()];
+  static languageOf(filePath: string): LanguageMatch {
+    const extension = extname(filePath).toLowerCase();
+    const language = EXTENSION_TO_LANGUAGE[extension];
+    if (language !== undefined) {
+      return {
+        language,
+        kind: "language",
+      };
+    }
+    return NOT_CODE_EXTENSIONS.has(extension)
+      ? { kind: "notCode" }
+      : {
+          extension,
+          kind: "unmapped",
+        };
+  }
+
+  static hasCoreChecks(language: string): boolean {
+    return LANGUAGES_WITH_CORE_CHECKS.has(language);
+  }
+
+  static isCheckLikeName(packageName: string): boolean {
+    return CHECK_LIKE_NAME.test(packageName);
+  }
+
+  static knownPackages(): Set<string> {
+    return new Set(CheckCatalogUtil.TOOLS.flatMap((tool) => [tool.name, ...(tool.packages ?? [])]));
   }
 
   static coversLanguage(tool: Pick<CheckToolDefinition, "languages">, language: string): boolean {

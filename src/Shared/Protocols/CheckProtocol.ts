@@ -39,9 +39,22 @@ export interface ProjectCheckTool {
   sessions: number;
 }
 
+export type LanguageMatch
+  = | {
+    kind: "language";
+    language: string;
+  }
+  | { kind: "notCode" }
+  | {
+    kind: "unmapped";
+    extension: string;
+  };
+
+// Why: an extension with no known language is listed as "unmapped" with the extension itself, never dropped.
 export interface LanguageEdits {
   language: string;
   edits: number;
+  extension?: string;
 }
 
 export interface MissingCheck {
@@ -58,4 +71,8 @@ export interface ProjectChecks {
   isMonorepo: boolean;
   isPublishedPackage: boolean;
   missing: MissingCheck[];
+  // Why: dependencies whose names look like checks but aren't in the catalog; they may cover a "missing" category.
+  unmappedTools: string[];
+  isMissingPartial: boolean;
+  partialReasons: string[];
 }
