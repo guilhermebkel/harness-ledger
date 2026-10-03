@@ -64,7 +64,7 @@ afterEach(() => {
   }
 });
 
-describe("CheckInventoryService", () => {
+describe("CheckInventoryService.inspect()", () => {
   it("finds a JavaScript project's checks, where they run, and what's missing", async () => {
     const projectDir = projectWith({
       "package.json": JSON.stringify({

@@ -48,7 +48,7 @@ function toolByKey(sessionId: string, key: string): ToolCall {
   return call;
 }
 
-describe("discoverTranscripts", () => {
+describe("ClaudeCodeProviderAdapter.discoverTranscripts()", () => {
   it("finds only this project's sessions, with their subagent files", async () => {
     expect([...sessionIdToFacts.keys()].sort(CollectionUtil.compareCodeUnits)).toStrictEqual(["s1", "s2", "s3", "s4", "s5", "s6"]);
     const allTranscripts = await adapter.discoverTranscripts({
@@ -63,7 +63,7 @@ describe("discoverTranscripts", () => {
   });
 });
 
-describe("parseSession", () => {
+describe("ClaudeCodeProviderAdapter.parseSession()", () => {
   it.each([
     ["s1", "the meta file"],
     ["s2", "the delegation result"],
@@ -124,9 +124,147 @@ describe("parseSession", () => {
     expect(npmTest.ref.file).toMatch(/subagents\/agent-as1\.jsonl$/);
     expect(npmTest.ref.line).toBe(3);
   });
+
+  describe("on cases seen in real sessions", () => {
+    let realFacts: SessionFacts;
+
+    beforeAll(async () => {
+      ClaudeCodeFixtureUtil.writeRealCasesSession(fixture, "real1", "2026-09-20T10:00:00.000Z");
+      const transcripts = await adapter.discoverTranscripts({ projectDir: fixture.projectDir });
+      const transcript = transcripts.find((candidate) => candidate.sessionId === "real1");
+      realFacts = await adapter.parseSession(transcript!, { idleMs: 5 * 60_000, projectDir: fixture.projectDir });
+    });
+
+    function realCall(name: string, key?: string): ToolCall {
+      const call = realFacts.tools.find(
+        (candidate) => candidate.name === name && (key === undefined || candidate.key === key),
+      );
+      if (!call) {
+        throw new Error(`Missing ${name} ${key ?? ""}`);
+      }
+      return call;
+    }
+
+    it("tells a rejected plan apart from a permission denial, keeping only the person's feedback", () => {
+      const rejectedPlan = realCall("ExitPlanMode").result;
+      expect(rejectedPlan?.kind).toBe("user_rejected");
+      expect(rejectedPlan?.ref.excerpt).toBe("use the existing queue");
+    });
+
+    it("reads auto-mode classifier blocks as permission denials", () => {
+      expect(realCall("Bash", "cat").result?.kind).toBe("permission_denied");
+    });
+
+    it("keys a Python failure by its exception, not the warning printed before it", () => {
+      expect(realCall("Bash", "python3 report.py").result?.errorHead).toBe("ModuleNotFoundError: No module named '…'");
+    });
+
+    it("keys git by its subcommand even after -C and skips git warnings", () => {
+      const gitCall = realCall("Bash", "git stash");
+      expect(gitCall.result?.errorHead).toBe("error: '…' is not a stash reference");
+    });
+
+    it("reads prompts typed while the agent was busy, but not task notifications", () => {
+      const promptTexts = realFacts.prompts.map((prompt) => prompt.text);
+      expect(promptTexts).toContain("não, usa a fila que já existe");
+      expect(promptTexts.some((text) => text.includes("Background task finished"))).toBe(false);
+      expect(realFacts.prompts.find((prompt) => prompt.text.startsWith("não"))?.isCorrection).toBe(true);
+    });
+
+    it("keeps the shape of a line type it doesn't know, and skips the ones Claude Code writes for its interface", () => {
+      expect(realFacts.unknownLines).toStrictEqual([{
+        type: "workspace-sync",
+        keys: ["cwd", "files", "gitBranch", "isSidechain", "sessionId", "syncId", "timestamp", "type", "uuid", "version"],
+        count: 1,
+      }]);
+      expect(realFacts.agentVersion).toBe("2.1.287");
+    });
+
+    it("reads the platform and shell the session ran on", () => {
+      expect(realFacts.environment).toStrictEqual({ platform: "darwin", shell: "zsh" });
+    });
+
+    it("never reads a background-task notification as something the person typed", () => {
+      expect(realFacts.prompts.some((prompt) => prompt.text.includes("lint done"))).toBe(false);
+    });
+
+    it("keys a shell loop by the command inside it", () => {
+      expect(realFacts.tools.some((call) => call.key === "python3 -m py_compile")).toBe(true);
+    });
+
+    it("writes paths outside the project from ~, without the user's home folder", () => {
+      const homeRead = realFacts.tools.find((call) => call.filePath?.endsWith("review/SKILL.md"));
+      expect(homeRead?.filePath).toBe("~/.claude/skills/review/SKILL.md");
+    });
+
+    it("keeps the model of every message except Claude Code's synthetic API-error messages", () => {
+      const models = realFacts.messages.map((message) => message.model);
+      expect(models).toContain("glm-5.2");
+      expect(models).not.toContain("<synthetic>");
+    });
+  });
+
+  describe("on data Claude Code computes itself", () => {
+    let reportFacts: SessionFacts;
+
+    beforeAll(async () => {
+      ClaudeCodeFixtureUtil.writeProviderReportSession(fixture, "rep1", "2026-09-22T10:00:00.000Z");
+      const transcripts = await adapter.discoverTranscripts({ projectDir: fixture.projectDir });
+      const transcript = transcripts.find((candidate) => candidate.sessionId === "rep1");
+      reportFacts = await adapter.parseSession(transcript!, { idleMs: 5 * 60_000, projectDir: fixture.projectDir });
+    });
+
+    it("reads API errors with their code, status, thread and model", () => {
+      expect(reportFacts.apiErrors).toHaveLength(2);
+      expect(reportFacts.apiErrors[0]).toMatchObject({
+        status: 404,
+        code: "model_not_found",
+        model: "glm-5.3",
+        thread: { agentType: "migrations-writer" },
+      });
+    });
+
+    it("adds the last cost of each run of a resumed session and keeps the partial flag", () => {
+      expect(reportFacts.reported.costUsd).toBe(2);
+      expect(reportFacts.reported.isCostPartial).toBe(true);
+    });
+
+    it("reads the main thread's turn durations", () => {
+      expect(reportFacts.reported.turns.map((turn) => turn.durationMs)).toStrictEqual([90_000, 30_000]);
+    });
+
+    it("takes the subagent type from attributionAgent and the running skill from attributionSkill", () => {
+      const write = reportFacts.tools.find((call) => call.name === "Write");
+      expect(write?.thread.agentType).toBe("migrations-writer");
+      expect(write?.skillInUse).toBe("db-migrations");
+    });
+  });
+
+  describe("on long sessions and malformed calls", () => {
+    let workflowFacts: SessionFacts;
+
+    beforeAll(async () => {
+      ClaudeCodeFixtureUtil.writeWorkflowSession(fixture, "wf1", "2026-09-24T10:00:00.000Z");
+      const transcripts = await adapter.discoverTranscripts({ projectDir: fixture.projectDir });
+      const transcript = transcripts.find((candidate) => candidate.sessionId === "wf1");
+      workflowFacts = await adapter.parseSession(transcript!, { idleMs: 5 * 60_000, projectDir: fixture.projectDir });
+    });
+
+    it("reads context compactions with their trigger and size", () => {
+      expect(workflowFacts.compactions).toStrictEqual([
+        expect.objectContaining({ trigger: "auto", contextTokens: 950_000 }),
+      ]);
+    });
+
+    it("never carries text leaked into a tool name", () => {
+      const malformed = workflowFacts.tools.find((call) => call.name === "(malformed tool name)");
+      expect(malformed?.key).toBe("(malformed tool name)");
+      expect(JSON.stringify(workflowFacts.tools)).not.toContain("getAll");
+    });
+  });
 });
 
-describe("takeInventory", () => {
+describe("ClaudeCodeProviderAdapter.takeInventory()", () => {
   it("maps project and user pieces without storing secret values", async () => {
     const inventory = await adapter.takeInventory({ projectDir: fixture.projectDir });
     expect(inventory.provider).toBe("claude-code");
@@ -174,143 +312,5 @@ describe("takeInventory", () => {
   it("can leave out user-level pieces", async () => {
     const inventory = await adapter.takeInventory({ projectDir: fixture.projectDir, isProjectOnly: true });
     expect(inventory.pieces.some((piece) => piece.scope === "user")).toBe(false);
-  });
-});
-
-describe("parseSession on cases seen in real sessions", () => {
-  let realFacts: SessionFacts;
-
-  beforeAll(async () => {
-    ClaudeCodeFixtureUtil.writeRealCasesSession(fixture, "real1", "2026-09-20T10:00:00.000Z");
-    const transcripts = await adapter.discoverTranscripts({ projectDir: fixture.projectDir });
-    const transcript = transcripts.find((candidate) => candidate.sessionId === "real1");
-    realFacts = await adapter.parseSession(transcript!, { idleMs: 5 * 60_000, projectDir: fixture.projectDir });
-  });
-
-  function realCall(name: string, key?: string): ToolCall {
-    const call = realFacts.tools.find(
-      (candidate) => candidate.name === name && (key === undefined || candidate.key === key),
-    );
-    if (!call) {
-      throw new Error(`Missing ${name} ${key ?? ""}`);
-    }
-    return call;
-  }
-
-  it("tells a rejected plan apart from a permission denial, keeping only the person's feedback", () => {
-    const rejectedPlan = realCall("ExitPlanMode").result;
-    expect(rejectedPlan?.kind).toBe("user_rejected");
-    expect(rejectedPlan?.ref.excerpt).toBe("use the existing queue");
-  });
-
-  it("reads auto-mode classifier blocks as permission denials", () => {
-    expect(realCall("Bash", "cat").result?.kind).toBe("permission_denied");
-  });
-
-  it("keys a Python failure by its exception, not the warning printed before it", () => {
-    expect(realCall("Bash", "python3 report.py").result?.errorHead).toBe("ModuleNotFoundError: No module named '…'");
-  });
-
-  it("keys git by its subcommand even after -C and skips git warnings", () => {
-    const gitCall = realCall("Bash", "git stash");
-    expect(gitCall.result?.errorHead).toBe("error: '…' is not a stash reference");
-  });
-
-  it("reads prompts typed while the agent was busy, but not task notifications", () => {
-    const promptTexts = realFacts.prompts.map((prompt) => prompt.text);
-    expect(promptTexts).toContain("não, usa a fila que já existe");
-    expect(promptTexts.some((text) => text.includes("Background task finished"))).toBe(false);
-    expect(realFacts.prompts.find((prompt) => prompt.text.startsWith("não"))?.isCorrection).toBe(true);
-  });
-
-  it("keeps the shape of a line type it doesn't know, and skips the ones Claude Code writes for its interface", () => {
-    expect(realFacts.unknownLines).toStrictEqual([{
-      type: "workspace-sync",
-      keys: ["cwd", "files", "gitBranch", "isSidechain", "sessionId", "syncId", "timestamp", "type", "uuid", "version"],
-      count: 1,
-    }]);
-    expect(realFacts.agentVersion).toBe("2.1.287");
-  });
-
-  it("reads the platform and shell the session ran on", () => {
-    expect(realFacts.environment).toStrictEqual({ platform: "darwin", shell: "zsh" });
-  });
-
-  it("never reads a background-task notification as something the person typed", () => {
-    expect(realFacts.prompts.some((prompt) => prompt.text.includes("lint done"))).toBe(false);
-  });
-
-  it("keys a shell loop by the command inside it", () => {
-    expect(realFacts.tools.some((call) => call.key === "python3 -m py_compile")).toBe(true);
-  });
-
-  it("writes paths outside the project from ~, without the user's home folder", () => {
-    const homeRead = realFacts.tools.find((call) => call.filePath?.endsWith("review/SKILL.md"));
-    expect(homeRead?.filePath).toBe("~/.claude/skills/review/SKILL.md");
-  });
-
-  it("keeps the model of every message except Claude Code's synthetic API-error messages", () => {
-    const models = realFacts.messages.map((message) => message.model);
-    expect(models).toContain("glm-5.2");
-    expect(models).not.toContain("<synthetic>");
-  });
-});
-
-describe("parseSession on data Claude Code computes itself", () => {
-  let reportFacts: SessionFacts;
-
-  beforeAll(async () => {
-    ClaudeCodeFixtureUtil.writeProviderReportSession(fixture, "rep1", "2026-09-22T10:00:00.000Z");
-    const transcripts = await adapter.discoverTranscripts({ projectDir: fixture.projectDir });
-    const transcript = transcripts.find((candidate) => candidate.sessionId === "rep1");
-    reportFacts = await adapter.parseSession(transcript!, { idleMs: 5 * 60_000, projectDir: fixture.projectDir });
-  });
-
-  it("reads API errors with their code, status, thread and model", () => {
-    expect(reportFacts.apiErrors).toHaveLength(2);
-    expect(reportFacts.apiErrors[0]).toMatchObject({
-      status: 404,
-      code: "model_not_found",
-      model: "glm-5.3",
-      thread: { agentType: "migrations-writer" },
-    });
-  });
-
-  it("adds the last cost of each run of a resumed session and keeps the partial flag", () => {
-    expect(reportFacts.reported.costUsd).toBe(2);
-    expect(reportFacts.reported.isCostPartial).toBe(true);
-  });
-
-  it("reads the main thread's turn durations", () => {
-    expect(reportFacts.reported.turns.map((turn) => turn.durationMs)).toStrictEqual([90_000, 30_000]);
-  });
-
-  it("takes the subagent type from attributionAgent and the running skill from attributionSkill", () => {
-    const write = reportFacts.tools.find((call) => call.name === "Write");
-    expect(write?.thread.agentType).toBe("migrations-writer");
-    expect(write?.skillInUse).toBe("db-migrations");
-  });
-});
-
-describe("parseSession on long sessions and malformed calls", () => {
-  let workflowFacts: SessionFacts;
-
-  beforeAll(async () => {
-    ClaudeCodeFixtureUtil.writeWorkflowSession(fixture, "wf1", "2026-09-24T10:00:00.000Z");
-    const transcripts = await adapter.discoverTranscripts({ projectDir: fixture.projectDir });
-    const transcript = transcripts.find((candidate) => candidate.sessionId === "wf1");
-    workflowFacts = await adapter.parseSession(transcript!, { idleMs: 5 * 60_000, projectDir: fixture.projectDir });
-  });
-
-  it("reads context compactions with their trigger and size", () => {
-    expect(workflowFacts.compactions).toStrictEqual([
-      expect.objectContaining({ trigger: "auto", contextTokens: 950_000 }),
-    ]);
-  });
-
-  it("never carries text leaked into a tool name", () => {
-    const malformed = workflowFacts.tools.find((call) => call.name === "(malformed tool name)");
-    expect(malformed?.key).toBe("(malformed tool name)");
-    expect(JSON.stringify(workflowFacts.tools)).not.toContain("getAll");
   });
 });

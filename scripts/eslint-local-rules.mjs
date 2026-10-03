@@ -1,4 +1,8 @@
-// Why: each rule is documented in docs/code-standards.md; change both together.
+// Why: each rule is documented in docs/code-standards.md (describe-target: docs/test-standards.md); change both together.
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import tseslint from "typescript-eslint";
+
 const COMMENT_MARKER = /^Why: \S/;
 const TOOL_DIRECTIVE = /^(eslint-disable|eslint-enable|@ts-expect-error|global )/;
 const EQUALITY_OPERATORS = new Set(["===", "==", "!==", "!="]);
@@ -164,10 +168,84 @@ const classMatchesFile = {
   },
 };
 
+const DESCRIBE_TARGET = /^([A-Z]\w*)\.(\w+)\(\)$/;
+const HIDDEN_ACCESSIBILITY = new Set(["private", "protected"]);
+const TEST_SUFFIX = /\.test$/;
+const SOURCE_EXTENSION = ".ts";
+
+function isPublicMember(member) {
+  const isNamed = member.key?.type === "Identifier";
+  return isNamed && !HIDDEN_ACCESSIBILITY.has(member.accessibility) && member.kind !== "constructor";
+}
+
+function publicMethodsOf(sourcePath, className) {
+  const { ast: program } = tseslint.parser.parseForESLint(readFileSync(sourcePath, "utf8"), { sourceType: "module" });
+  const declarations = program.body.map((node) => node.declaration ?? node);
+  const classNode = declarations.find((node) => node.type === "ClassDeclaration" && node.id?.name === className);
+  const members = classNode?.body.body ?? [];
+  return new Set(members.filter((member) => isPublicMember(member)).map((member) => member.key.name));
+}
+
+function calleeNameOf(statement) {
+  return statement.expression?.callee?.name;
+}
+
+const describeTarget = {
+  meta: {
+    type: "suggestion",
+    messages: {
+      format: "Name the outer describe \"{{className}}.<method>()\": the class this file tests and the public method the tests go through.",
+      otherClass: "This file tests {{className}}; the outer describe names \"{{named}}\".",
+      notPublic: "{{className}} has no public method \"{{method}}\" in {{source}}; test through a public method.",
+      outside: "Put this test inside a describe named \"{{className}}.<method>()\".",
+    },
+  },
+  create(context) {
+    const className = fileStemOf(context.filename).replace(TEST_SUFFIX, "");
+    const testFolder = dirname(resolve(context.filename));
+    const sourcePath = join(testFolder, `${className}${SOURCE_EXTENSION}`);
+    let publicMethods;
+    const methodsOfSource = () => {
+      publicMethods ??= existsSync(sourcePath) ? publicMethodsOf(sourcePath, className) : new Set();
+      return publicMethods;
+    };
+    const checkDescribe = (call) => {
+      const title = call.arguments[0];
+      const match = DESCRIBE_TARGET.exec(typeof title?.value === "string" ? title.value : "");
+      if (!match) {
+        context.report({ node: title ?? call, messageId: "format", data: { className } });
+        return;
+      }
+      const [, named, method] = match;
+      if (named !== className) {
+        context.report({ node: title, messageId: "otherClass", data: { className, named } });
+        return;
+      }
+      if (!methodsOfSource().has(method)) {
+        context.report({ node: title, messageId: "notPublic", data: { className, method, source: `${className}${SOURCE_EXTENSION}` } });
+      }
+    };
+    const reportOutside = (call) => {
+      context.report({ node: call, messageId: "outside", data: { className } });
+    };
+    const CALLEE_TO_CHECK = { describe: checkDescribe, it: reportOutside, test: reportOutside };
+    return {
+      "Program"(program) {
+        for (const statement of program.body) {
+          const name = calleeNameOf(statement);
+          const check = Object.hasOwn(CALLEE_TO_CHECK, name ?? "") ? CALLEE_TO_CHECK[name] : undefined;
+          check?.(statement.expression);
+        }
+      },
+    };
+  },
+};
+
 export const localRules = {
   rules: {
     "comment-marker": commentMarker,
     "literal-dispatch": literalDispatch,
     "class-matches-file": classMatchesFile,
+    "describe-target": describeTarget,
   },
 };

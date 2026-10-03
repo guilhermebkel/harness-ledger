@@ -31,7 +31,7 @@ const history = ClaudeCodeFixtureUtil.useHistoryFixture((fixture) => {
   }
 });
 
-describe("EvidenceCommand", () => {
+describe("EvidenceCommand.run()", () => {
   it("returns the exact signal even when a longer id starts with it", async () => {
     const analysis = await new AnalyzeCommand().run(history.commonOptions());
     const ids = analysis.signals.map((signal) => signal.id);
@@ -39,14 +39,14 @@ describe("EvidenceCommand", () => {
     const evidence = await new EvidenceCommand().run({ ...history.commonOptions(), signalId: MAKE_FAILURE_SIGNAL });
     expect(evidence.id).toBe(MAKE_FAILURE_SIGNAL);
   });
-});
 
-describe("recoveries", () => {
-  it("counts the same job done another way, not looking around or moving on", async () => {
-    const analysis = await new AnalyzeCommand().run(history.commonOptions());
-    const npmTest = analysis.signals.find((signal) => signal.id === "failed_command:npm test");
-    expect(npmTest?.details.recoveredWith).toStrictEqual(expect.arrayContaining([{ value: "pnpm test", count: 5 }]));
-    const script = analysis.signals.find((signal) => signal.id === "failed_command:python3 report.py");
-    expect(script?.details.recoveredWith).toBeUndefined();
+  describe("on recoveries", () => {
+    it("counts the same job done another way, not looking around or moving on", async () => {
+      const analysis = await new AnalyzeCommand().run(history.commonOptions());
+      const npmTest = analysis.signals.find((signal) => signal.id === "failed_command:npm test");
+      expect(npmTest?.details.recoveredWith).toStrictEqual(expect.arrayContaining([{ value: "pnpm test", count: 5 }]));
+      const script = analysis.signals.find((signal) => signal.id === "failed_command:python3 report.py");
+      expect(script?.details.recoveredWith).toBeUndefined();
+    });
   });
 });

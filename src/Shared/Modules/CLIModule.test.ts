@@ -6,7 +6,7 @@ afterEach(() => {
   process.exitCode = undefined;
 });
 
-describe("CLIModule", () => {
+describe("CLIModule.run()", () => {
   it("sets the exit code instead of exiting, so piped output is never cut short", async () => {
     const exit = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
     const stdoutWrite = vi.spyOn(process.stdout, "write").mockImplementation(() => true);

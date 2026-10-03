@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { IssueLinkUtil } from "@/Shared/Utils/IssueLinkUtil.ts";
 
-describe("IssueLinkUtil", () => {
+describe("IssueLinkUtil.linkOf()", () => {
   it("cuts the longest field to fit the link and keeps the short ones whole", () => {
     const link = IssueLinkUtil.linkOf({
       template: "rule-question",
@@ -18,7 +18,9 @@ describe("IssueLinkUtil", () => {
     expect(params.get("explanation")).toMatch(/\(cut to fit the link\)$/);
     expect(link.title).toBe("[rule] user_correction · abcd1234");
   });
+});
 
+describe("IssueLinkUtil.versionsText()", () => {
   it("shows many agent versions as a range", () => {
     const text = IssueLinkUtil.versionsText({
       imh: "0.1.0",

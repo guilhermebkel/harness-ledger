@@ -12,7 +12,7 @@ function chainsOf(session: SessionFacts) {
   return new FailureChainService(IDLE_MS).chainsOf(session, index);
 }
 
-describe("FailureChainService", () => {
+describe("FailureChainService.chainsOf()", () => {
   it("costs a wrong command from the first failure until the working call is issued, with every message between", () => {
     const session = new SessionFactsBuilder()
       .call("npm test", { isError: true, runSeconds: 2 })

@@ -32,7 +32,7 @@ function paramsOf(url: string): URLSearchParams {
   return new URL(url).searchParams;
 }
 
-describe("GapService", () => {
+describe("GapService.gapsOf()", () => {
   it("turns each mapping gap into a prefilled mapping-gap issue", () => {
     const [gap] = new GapService(VERSIONS).gapsOf({
       sessions: [],
@@ -87,7 +87,9 @@ describe("GapService", () => {
     expect(first?.kind).toBe("unpriced_model");
     expect(again?.fingerprint).toBe(first?.fingerprint);
   });
+});
 
+describe("GapService.versionsOf()", () => {
   it("orders agent versions by number, oldest first", () => {
     const sessions = ["2.1.100", "2.1.99", "2.1.100"].map((agentVersion, index) => {
       const session = new SessionFactsBuilder(`s${index}`).build();

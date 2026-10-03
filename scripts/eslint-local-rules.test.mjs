@@ -137,3 +137,62 @@ ruleTester.run("class-matches-file", localRules.rules["class-matches-file"], {
     },
   ],
 });
+
+const TIME_UTIL_TEST = "src/Shared/Utils/TimeUtil.test.ts";
+const ADAPTER_TEST = "src/Providers/ClaudeCode/Adapters/ClaudeCodeProviderAdapter.test.ts";
+
+ruleTester.run("describe-target", localRules.rules["describe-target"], {
+  valid: [
+    {
+      name: "the outer describe names the class and a public static method, with contexts inside",
+      filename: TIME_UTIL_TEST,
+      code: "describe(\"TimeUtil.parsePointInTime()\", () => { describe(\"on a period\", () => { it(\"reads days\", () => {}); }); });",
+    },
+    {
+      name: "a public instance method, next to hooks at the top level",
+      filename: ADAPTER_TEST,
+      code: "beforeEach(() => {}); describe(\"ClaudeCodeProviderAdapter.parseSession()\", () => {});",
+    },
+  ],
+  invalid: [
+    {
+      name: "a method without the class",
+      filename: TIME_UTIL_TEST,
+      code: "describe(\"parsePointInTime\", () => {});",
+      errors: [{ messageId: "format", data: { className: "TimeUtil" } }],
+    },
+    {
+      name: "a theme instead of a method",
+      filename: TIME_UTIL_TEST,
+      code: "describe(\"TimeUtil\", () => {});",
+      errors: [{ messageId: "format", data: { className: "TimeUtil" } }],
+    },
+    {
+      name: "another class than the file's",
+      filename: TIME_UTIL_TEST,
+      code: "describe(\"RedactUtil.redact()\", () => {});",
+      errors: [{ messageId: "otherClass", data: { className: "TimeUtil", named: "RedactUtil" } }],
+    },
+    {
+      name: "a private method",
+      filename: ADAPTER_TEST,
+      code: "describe(\"ClaudeCodeProviderAdapter.sessionService()\", () => {});",
+      errors: [{
+        messageId: "notPublic",
+        data: { className: "ClaudeCodeProviderAdapter", method: "sessionService", source: "ClaudeCodeProviderAdapter.ts" },
+      }],
+    },
+    {
+      name: "a method the class doesn't have, as after a rename",
+      filename: TIME_UTIL_TEST,
+      code: "describe(\"TimeUtil.parseDate()\", () => {});",
+      errors: [{ messageId: "notPublic", data: { className: "TimeUtil", method: "parseDate", source: "TimeUtil.ts" } }],
+    },
+    {
+      name: "a test outside any describe",
+      filename: TIME_UTIL_TEST,
+      code: "it(\"reads days\", () => {});",
+      errors: [{ messageId: "outside", data: { className: "TimeUtil" } }],
+    },
+  ],
+});

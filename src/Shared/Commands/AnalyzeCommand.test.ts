@@ -23,7 +23,7 @@ function signalById(signals: Signal[], id: string): Signal {
   return signal;
 }
 
-describe("AnalyzeCommand", () => {
+describe("AnalyzeCommand.run()", () => {
   it("finds the enforcement gap, the command that worked and the instruction that already covers it", async () => {
     const analysis = await command.run(history.commonOptions());
     const npmTest = signalById(analysis.signals, "failed_command:npm test");
@@ -99,290 +99,290 @@ describe("AnalyzeCommand", () => {
     const analysis = await command.run({ ...history.commonOptions(), since: "2026-09-13" });
     expect(analysis.analyzed.sessions).toBe(3);
   });
-});
 
-describe("AnalyzeCommand on cases seen in real sessions", () => {
-  let realFixture: Fixture;
-  let restoreRealEnv: () => void;
+  describe("on cases seen in real sessions", () => {
+    let realFixture: Fixture;
+    let restoreRealEnv: () => void;
 
-  beforeAll(() => {
-    realFixture = ClaudeCodeFixtureUtil.makeFixture();
-    ClaudeCodeFixtureUtil.writeHarness(realFixture);
-    ClaudeCodeFixtureUtil.writeRealCasesSession(realFixture, "real1", "2026-09-20T10:00:00.000Z");
-    ClaudeCodeFixtureUtil.writeRealCasesSession(realFixture, "real2", "2026-09-21T10:00:00.000Z");
-    restoreRealEnv = ClaudeCodeFixtureUtil.useFixtureEnv(realFixture);
-  });
-
-  afterAll(() => {
-    restoreRealEnv();
-    rmSync(realFixture.root, { recursive: true, force: true });
-  });
-
-  async function analyzeReal() {
-    return command.run({ projectDir: realFixture.projectDir, dataDir: realFixture.dataDir });
-  }
-
-  it("reports the platforms the sessions ran on, for scripts that work there", async () => {
-    const analysis = await analyzeReal();
-    expect(analysis.environment).toStrictEqual({
-      platforms: [{ value: "darwin", count: 2 }],
-      shells: [{ value: "zsh", count: 2 }],
+    beforeAll(() => {
+      realFixture = ClaudeCodeFixtureUtil.makeFixture();
+      ClaudeCodeFixtureUtil.writeHarness(realFixture);
+      ClaudeCodeFixtureUtil.writeRealCasesSession(realFixture, "real1", "2026-09-20T10:00:00.000Z");
+      ClaudeCodeFixtureUtil.writeRealCasesSession(realFixture, "real2", "2026-09-21T10:00:00.000Z");
+      restoreRealEnv = ClaudeCodeFixtureUtil.useFixtureEnv(realFixture);
     });
-    const exploration = analysis.process.find((profile) => profile.stage === "exploration");
-    expect(exploration?.contextTokens).toBeGreaterThan(0);
-  });
 
-  it("profiles the work by stage, with rejected plans as planning failures", async () => {
-    const analysis = await analyzeReal();
-    const stageToProfile = new Map(analysis.process.map((profile) => [profile.stage, profile]));
-    expect(analysis.process.map((profile) => profile.stage)).toStrictEqual(["setup", "planning", "exploration"]);
-    expect(stageToProfile.get("planning")).toMatchObject({ sessions: 2, steps: 2, failures: 2 });
-    expect(stageToProfile.get("setup")?.commands).toStrictEqual(["git stash"]);
-  });
-
-  it("counts rejected plans and queued pushback as corrections, not permission problems", async () => {
-    const analysis = await analyzeReal();
-    expect(analysis.signals.some((signal) => signal.id === "permission_denied:ExitPlanMode")).toBe(false);
-    const correction = signalById(analysis.signals, "user_correction:main");
-    expect(correction).toMatchObject({ occurrences: 4, sessions: 2 });
-    expect(correction.evidence.map((evidence) => evidence.excerpt)).toContain("rejected ExitPlanMode → use the existing queue");
-  });
-
-  it("reports auto-mode blocks as permission denials with the classifier's reason", async () => {
-    const analysis = await analyzeReal();
-    const denied = signalById(analysis.signals, "permission_denied:cat");
-    expect(denied.occurrences).toBe(4);
-    expect(denied.details.errors?.[0]?.value).toContain("Credential Exploration");
-    expect(analysis.signals.some((signal) => signal.id === "failed_command:cat")).toBe(false);
-  });
-
-  it("groups failing commands by what actually failed", async () => {
-    const analysis = await analyzeReal();
-    const python = signalById(analysis.signals, "failed_command:python3 report.py");
-    expect(python.details.errors).toStrictEqual([{ value: "ModuleNotFoundError: No module named '…'", count: 2 }]);
-    expect(signalById(analysis.signals, "failed_command:git stash").sessions).toBe(2);
-  });
-
-  it("leaves models without a known price unpriced and says which", async () => {
-    const analysis = await analyzeReal();
-    expect(analysis.totals.unpricedModels).toStrictEqual(["glm-5.2"]);
-    const usageWithGlm = analysis.usage.find((usage) => usage.models.includes("glm-5.2"));
-    expect(usageWithGlm).toMatchObject({ piece: "main" });
-  });
-
-  it("lists what it couldn't map as gaps, each with a prefilled issue", async () => {
-    const analysis = await analyzeReal();
-    expect(analysis.gaps.map((gap) => [gap.kind, gap.details[0]])).toStrictEqual([
-      ["unknown_line", "type: workspace-sync"],
-      ["unpriced_model", "model: glm-5.2"],
-    ]);
-    expect(analysis.versions).toStrictEqual({
-      imh: "dev",
-      provider: "claude-code",
-      agentVersions: ["2.1.287"],
-      platforms: ["darwin"],
+    afterAll(() => {
+      restoreRealEnv();
+      rmSync(realFixture.root, { recursive: true, force: true });
     });
-  });
 
-  it("builds a rule question from a signal and the person's words, redacted", async () => {
-    await analyzeReal();
-    const link = await new IssueCommand().run({
-      projectDir: realFixture.projectDir,
-      dataDir: realFixture.dataDir,
-      signalId: "user_correction",
-      note: `Plans are rejected on purpose here; token ${FAKE_SECRETS.anthropicKey}`,
-    });
-    const params = new URL(link.issueUrl).searchParams;
-    expect(params.get("template")).toBe("rule-question.yml");
-    expect(params.get("explanation")).toBe("Plans are rejected on purpose here; token [REDACTED]");
-    expect(params.get("signal")).toMatch(/^user_correction: user_correction:/);
-    expect(link.issueUrl).not.toContain("sk-ant");
-  });
-});
-
-describe("AnalyzeCommand on data Claude Code computes itself", () => {
-  let reportFixture: Fixture;
-  let restoreReportEnv: () => void;
-
-  beforeAll(() => {
-    reportFixture = ClaudeCodeFixtureUtil.makeFixture();
-    const agentFile = join(reportFixture.projectDir, ".claude", "agents", "migrations-writer.md");
-    writeFileSync(agentFile, "---\nname: migrations-writer\ndescription: Writes migrations\nmodel: glm-5.3\n---\nWrite it.\n");
-    ClaudeCodeFixtureUtil.writeProviderReportSession(reportFixture, "rep1", "2026-09-22T10:00:00.000Z");
-    ClaudeCodeFixtureUtil.writeProviderReportSession(reportFixture, "rep2", "2026-09-23T10:00:00.000Z");
-    restoreReportEnv = ClaudeCodeFixtureUtil.useFixtureEnv(reportFixture);
-  });
-
-  afterAll(() => {
-    restoreReportEnv();
-    rmSync(reportFixture.root, { recursive: true, force: true });
-  });
-
-  async function analyzeReport() {
-    return command.run({ projectDir: reportFixture.projectDir, dataDir: reportFixture.dataDir });
-  }
-
-  it("reports repeated model API errors with the failing model and the subagent that hit them", async () => {
-    const analysis = await analyzeReport();
-    const apiError = signalById(analysis.signals, "api_error:model_not_found");
-    expect(apiError).toMatchObject({ occurrences: 4, sessions: 2, pieces: ["agent:migrations-writer"] });
-    expect(apiError.details.models).toStrictEqual([{ value: "glm-5.3", count: 4 }]);
-    expect(apiError.cost.activeMinutes).toBeGreaterThan(0);
-  });
-
-  it("shows the provider's own cost and turn time next to the estimates", async () => {
-    const analysis = await analyzeReport();
-    expect(analysis.totals.reportedByProvider).toStrictEqual({
-      costUsd: 4,
-      sessionsWithCost: 2,
-      isCostPartial: true,
-      turnMinutes: 4,
-      turns: 4,
-    });
-  });
-
-  it("attributes a subagent's calls and tokens to the skill it was running", async () => {
-    const analysis = await analyzeReport();
-    const skillUsage = analysis.usage.find((usage) => usage.piece === "skill:db-migrations");
-    expect(skillUsage).toMatchObject({ toolCalls: 2, sessions: 2 });
-    expect(skillUsage?.tokens).toBeGreaterThan(0);
-  });
-});
-
-describe("AnalyzeCommand on work that could be a skill, a script or a subagent", () => {
-  let workflowFixture: Fixture;
-  let restoreWorkflowEnv: () => void;
-
-  beforeAll(() => {
-    workflowFixture = ClaudeCodeFixtureUtil.makeFixture();
-    for (let sessionIndex = 0; sessionIndex < 4; sessionIndex++) {
-      ClaudeCodeFixtureUtil.writeWorkflowSession(workflowFixture, `wf${sessionIndex}`, `2026-09-2${sessionIndex}T10:00:00.000Z`);
+    async function analyzeReal() {
+      return command.run({ projectDir: realFixture.projectDir, dataDir: realFixture.dataDir });
     }
-    restoreWorkflowEnv = ClaudeCodeFixtureUtil.useFixtureEnv(workflowFixture);
-  });
 
-  afterAll(() => {
-    restoreWorkflowEnv();
-    rmSync(workflowFixture.root, { recursive: true, force: true });
-  });
-
-  async function analyzeWorkflows() {
-    return command.run({ projectDir: workflowFixture.projectDir, dataDir: workflowFixture.dataDir });
-  }
-
-  it("finds the same steps repeated across sessions, without the exploration around them", async () => {
-    const analysis = await analyzeWorkflows();
-    const workflows = analysis.signals.filter((signal) => signal.type === "repeated_workflow");
-    expect(workflows).toHaveLength(1);
-    expect(workflows[0]).toMatchObject({ sessions: 4, pieces: ["main"] });
-    expect(workflows[0]?.details.steps).toStrictEqual(["git status", "git add", "npx tsc", "git commit", "git push"]);
-  });
-
-  it("puts validation and delivery commands in their stages", async () => {
-    const analysis = await analyzeWorkflows();
-    const stageToCommands = new Map(analysis.process.map((profile) => [profile.stage, profile.commands]));
-    expect(stageToCommands.get("validation")).toStrictEqual(["npx tsc"]);
-    expect(stageToCommands.get("delivery")).toStrictEqual(expect.arrayContaining(["git commit", "git push"]));
-    expect(stageToCommands.get("exploration")).toStrictEqual([]);
-  });
-
-  it("lists the work commands the project runs, with a real example, for a first CLAUDE.md", async () => {
-    const analysis = await analyzeWorkflows();
-    const commandByKey = new Map(analysis.commonCommands.map((command) => [command.key, command]));
-    expect(commandByKey.get("npx tsc")).toStrictEqual({
-      key: "npx tsc",
-      runs: 4,
-      sessions: 4,
-      failures: 0,
-      example: "npx tsc --noEmit",
+    it("reports the platforms the sessions ran on, for scripts that work there", async () => {
+      const analysis = await analyzeReal();
+      expect(analysis.environment).toStrictEqual({
+        platforms: [{ value: "darwin", count: 2 }],
+        shells: [{ value: "zsh", count: 2 }],
+      });
+      const exploration = analysis.process.find((profile) => profile.stage === "exploration");
+      expect(exploration?.contextTokens).toBeGreaterThan(0);
     });
-    expect(commandByKey.has("ls")).toBe(false);
+
+    it("profiles the work by stage, with rejected plans as planning failures", async () => {
+      const analysis = await analyzeReal();
+      const stageToProfile = new Map(analysis.process.map((profile) => [profile.stage, profile]));
+      expect(analysis.process.map((profile) => profile.stage)).toStrictEqual(["setup", "planning", "exploration"]);
+      expect(stageToProfile.get("planning")).toMatchObject({ sessions: 2, steps: 2, failures: 2 });
+      expect(stageToProfile.get("setup")?.commands).toStrictEqual(["git stash"]);
+    });
+
+    it("counts rejected plans and queued pushback as corrections, not permission problems", async () => {
+      const analysis = await analyzeReal();
+      expect(analysis.signals.some((signal) => signal.id === "permission_denied:ExitPlanMode")).toBe(false);
+      const correction = signalById(analysis.signals, "user_correction:main");
+      expect(correction).toMatchObject({ occurrences: 4, sessions: 2 });
+      expect(correction.evidence.map((evidence) => evidence.excerpt)).toContain("rejected ExitPlanMode → use the existing queue");
+    });
+
+    it("reports auto-mode blocks as permission denials with the classifier's reason", async () => {
+      const analysis = await analyzeReal();
+      const denied = signalById(analysis.signals, "permission_denied:cat");
+      expect(denied.occurrences).toBe(4);
+      expect(denied.details.errors?.[0]?.value).toContain("Credential Exploration");
+      expect(analysis.signals.some((signal) => signal.id === "failed_command:cat")).toBe(false);
+    });
+
+    it("groups failing commands by what actually failed", async () => {
+      const analysis = await analyzeReal();
+      const python = signalById(analysis.signals, "failed_command:python3 report.py");
+      expect(python.details.errors).toStrictEqual([{ value: "ModuleNotFoundError: No module named '…'", count: 2 }]);
+      expect(signalById(analysis.signals, "failed_command:git stash").sessions).toBe(2);
+    });
+
+    it("leaves models without a known price unpriced and says which", async () => {
+      const analysis = await analyzeReal();
+      expect(analysis.totals.unpricedModels).toStrictEqual(["glm-5.2"]);
+      const usageWithGlm = analysis.usage.find((usage) => usage.models.includes("glm-5.2"));
+      expect(usageWithGlm).toMatchObject({ piece: "main" });
+    });
+
+    it("lists what it couldn't map as gaps, each with a prefilled issue", async () => {
+      const analysis = await analyzeReal();
+      expect(analysis.gaps.map((gap) => [gap.kind, gap.details[0]])).toStrictEqual([
+        ["unknown_line", "type: workspace-sync"],
+        ["unpriced_model", "model: glm-5.2"],
+      ]);
+      expect(analysis.versions).toStrictEqual({
+        imh: "dev",
+        provider: "claude-code",
+        agentVersions: ["2.1.287"],
+        platforms: ["darwin"],
+      });
+    });
+
+    it("builds a rule question from a signal and the person's words, redacted", async () => {
+      await analyzeReal();
+      const link = await new IssueCommand().run({
+        projectDir: realFixture.projectDir,
+        dataDir: realFixture.dataDir,
+        signalId: "user_correction",
+        note: `Plans are rejected on purpose here; token ${FAKE_SECRETS.anthropicKey}`,
+      });
+      const params = new URL(link.issueUrl).searchParams;
+      expect(params.get("template")).toBe("rule-question.yml");
+      expect(params.get("explanation")).toBe("Plans are rejected on purpose here; token [REDACTED]");
+      expect(params.get("signal")).toMatch(/^user_correction: user_correction:/);
+      expect(link.issueUrl).not.toContain("sk-ant");
+    });
   });
 
-  it("finds a procedure repeated many times inside one long session", async () => {
-    const loop = new ClaudeCodeTranscriptBuilder("loop1", workflowFixture.projectDir, "2026-09-26T10:00:00.000Z")
-      .user("Fix the lint errors in the gallery");
-    for (let round = 0; round < 6; round++) {
-      for (const [stepIndex, command] of ["git status", "npm run eslint", "git diff"].entries()) {
-        loop.tool(`l${round}_${stepIndex}`, "Bash", { command }).result(`l${round}_${stepIndex}`, "ok");
+  describe("on data Claude Code computes itself", () => {
+    let reportFixture: Fixture;
+    let restoreReportEnv: () => void;
+
+    beforeAll(() => {
+      reportFixture = ClaudeCodeFixtureUtil.makeFixture();
+      const agentFile = join(reportFixture.projectDir, ".claude", "agents", "migrations-writer.md");
+      writeFileSync(agentFile, "---\nname: migrations-writer\ndescription: Writes migrations\nmodel: glm-5.3\n---\nWrite it.\n");
+      ClaudeCodeFixtureUtil.writeProviderReportSession(reportFixture, "rep1", "2026-09-22T10:00:00.000Z");
+      ClaudeCodeFixtureUtil.writeProviderReportSession(reportFixture, "rep2", "2026-09-23T10:00:00.000Z");
+      restoreReportEnv = ClaudeCodeFixtureUtil.useFixtureEnv(reportFixture);
+    });
+
+    afterAll(() => {
+      restoreReportEnv();
+      rmSync(reportFixture.root, { recursive: true, force: true });
+    });
+
+    async function analyzeReport() {
+      return command.run({ projectDir: reportFixture.projectDir, dataDir: reportFixture.dataDir });
+    }
+
+    it("reports repeated model API errors with the failing model and the subagent that hit them", async () => {
+      const analysis = await analyzeReport();
+      const apiError = signalById(analysis.signals, "api_error:model_not_found");
+      expect(apiError).toMatchObject({ occurrences: 4, sessions: 2, pieces: ["agent:migrations-writer"] });
+      expect(apiError.details.models).toStrictEqual([{ value: "glm-5.3", count: 4 }]);
+      expect(apiError.cost.activeMinutes).toBeGreaterThan(0);
+    });
+
+    it("shows the provider's own cost and turn time next to the estimates", async () => {
+      const analysis = await analyzeReport();
+      expect(analysis.totals.reportedByProvider).toStrictEqual({
+        costUsd: 4,
+        sessionsWithCost: 2,
+        isCostPartial: true,
+        turnMinutes: 4,
+        turns: 4,
+      });
+    });
+
+    it("attributes a subagent's calls and tokens to the skill it was running", async () => {
+      const analysis = await analyzeReport();
+      const skillUsage = analysis.usage.find((usage) => usage.piece === "skill:db-migrations");
+      expect(skillUsage).toMatchObject({ toolCalls: 2, sessions: 2 });
+      expect(skillUsage?.tokens).toBeGreaterThan(0);
+    });
+  });
+
+  describe("on work that could be a skill, a script or a subagent", () => {
+    let workflowFixture: Fixture;
+    let restoreWorkflowEnv: () => void;
+
+    beforeAll(() => {
+      workflowFixture = ClaudeCodeFixtureUtil.makeFixture();
+      for (let sessionIndex = 0; sessionIndex < 4; sessionIndex++) {
+        ClaudeCodeFixtureUtil.writeWorkflowSession(workflowFixture, `wf${sessionIndex}`, `2026-09-2${sessionIndex}T10:00:00.000Z`);
       }
-      loop.tool(`e${round}`, "Edit", { file_path: join(workflowFixture.projectDir, "src/a.js") }).result(`e${round}`, "ok");
+      restoreWorkflowEnv = ClaudeCodeFixtureUtil.useFixtureEnv(workflowFixture);
+    });
+
+    afterAll(() => {
+      restoreWorkflowEnv();
+      rmSync(workflowFixture.root, { recursive: true, force: true });
+    });
+
+    async function analyzeWorkflows() {
+      return command.run({ projectDir: workflowFixture.projectDir, dataDir: workflowFixture.dataDir });
     }
-    loop.write(ClaudeCodeTranscriptBuilder.sessionPath(workflowFixture, "loop1"));
-    const analysis = await analyzeWorkflows();
-    const lintLoop = analysis.signals.find((signal) => signal.details.steps?.includes("npm run eslint"));
-    expect(lintLoop).toMatchObject({ type: "repeated_workflow", occurrences: 6, sessions: 1, isPartial: true });
-  });
 
-  it("reports sessions that outgrow the context window", async () => {
-    const analysis = await analyzeWorkflows();
-    const compaction = signalById(analysis.signals, "context_compaction:auto");
-    expect(compaction).toMatchObject({ occurrences: 4, sessions: 4 });
-    expect(compaction.details.maxContextTokens).toBe(950_000);
-    expect(compaction.evidence[0]?.excerpt).toBe("auto compaction at ~950k tokens after 1 turns");
-  });
+    it("finds the same steps repeated across sessions, without the exploration around them", async () => {
+      const analysis = await analyzeWorkflows();
+      const workflows = analysis.signals.filter((signal) => signal.type === "repeated_workflow");
+      expect(workflows).toHaveLength(1);
+      expect(workflows[0]).toMatchObject({ sessions: 4, pieces: ["main"] });
+      expect(workflows[0]?.details.steps).toStrictEqual(["git status", "git add", "npx tsc", "git commit", "git push"]);
+    });
 
-  it("groups malformed tool calls without the leaked text", async () => {
-    const serialized = JSON.stringify(await analyzeWorkflows());
-    expect(serialized).toContain("(malformed tool name)");
-    expect(serialized).not.toContain("getAll");
-  });
-});
+    it("puts validation and delivery commands in their stages", async () => {
+      const analysis = await analyzeWorkflows();
+      const stageToCommands = new Map(analysis.process.map((profile) => [profile.stage, profile.commands]));
+      expect(stageToCommands.get("validation")).toStrictEqual(["npx tsc"]);
+      expect(stageToCommands.get("delivery")).toStrictEqual(expect.arrayContaining(["git commit", "git push"]));
+      expect(stageToCommands.get("exploration")).toStrictEqual([]);
+    });
 
-describe("AnalyzeCommand on pieces that keep filling their context", () => {
-  let contextFixture: Fixture;
-  let restoreContextEnv: () => void;
+    it("lists the work commands the project runs, with a real example, for a first CLAUDE.md", async () => {
+      const analysis = await analyzeWorkflows();
+      const commandByKey = new Map(analysis.commonCommands.map((command) => [command.key, command]));
+      expect(commandByKey.get("npx tsc")).toStrictEqual({
+        key: "npx tsc",
+        runs: 4,
+        sessions: 4,
+        failures: 0,
+        example: "npx tsc --noEmit",
+      });
+      expect(commandByKey.has("ls")).toBe(false);
+    });
 
-  beforeAll(() => {
-    contextFixture = ClaudeCodeFixtureUtil.makeFixture();
-    // Why: low thresholds let a small fixture show the pattern (1 token is about 4 characters).
-    mkdirSync(contextFixture.dataDir, { recursive: true });
-    writeFileSync(join(contextFixture.dataDir, "config.json"), JSON.stringify({
-      signalThresholds: { minHeavySourceTokens: 5000, minHeavySourceLoads: 3, minHugeResultTokens: 4000 },
-    }));
-    const guide = join(contextFixture.projectDir, "docs/guide.md");
-    for (const sessionId of ["c1", "c2"]) {
-      const agentId = `r${sessionId}`;
-      const reviewer = new ClaudeCodeTranscriptBuilder(sessionId, contextFixture.projectDir, `2026-09-2${sessionId.at(-1)}T10:00:00.000Z`, {
-        isSidechain: true,
-        agentId,
-      }).user(`Review ${sessionId}`);
-      for (let read = 0; read < 2; read++) {
-        reviewer.tool(`g${read}_${sessionId}`, "Read", { file_path: guide }).result(`g${read}_${sessionId}`, "x".repeat(8000));
+    it("finds a procedure repeated many times inside one long session", async () => {
+      const loop = new ClaudeCodeTranscriptBuilder("loop1", workflowFixture.projectDir, "2026-09-26T10:00:00.000Z")
+        .user("Fix the lint errors in the gallery");
+      for (let round = 0; round < 6; round++) {
+        for (const [stepIndex, command] of ["git status", "npm run eslint", "git diff"].entries()) {
+          loop.tool(`l${round}_${stepIndex}`, "Bash", { command }).result(`l${round}_${stepIndex}`, "ok");
+        }
+        loop.tool(`e${round}`, "Edit", { file_path: join(workflowFixture.projectDir, "src/a.js") }).result(`e${round}`, "ok");
       }
-      reviewer
-        .tool(`a_${sessionId}`, "Bash", { command: "cat src/a.ts" }).result(`a_${sessionId}`, "a".repeat(12000))
-        .tool(`b_${sessionId}`, "Bash", { command: "cat src/b.ts" }).result(`b_${sessionId}`, "b".repeat(12000))
-        .tool(`l_${sessionId}`, "Bash", { command: "npm run build" }).result(`l_${sessionId}`, "log ".repeat(4500))
-        .writeTo(contextFixture);
-      new ClaudeCodeTranscriptBuilder(sessionId, contextFixture.projectDir, `2026-09-2${sessionId.at(-1)}T10:00:00.000Z`)
-        .user("Review the change")
-        .tool(`t_${sessionId}`, "Task", { subagent_type: "reviewer", prompt: `Review ${sessionId}` })
-        .result(`t_${sessionId}`, "Looks good.", { secondsLater: 60, toolUseResult: { agentId } })
-        .write(ClaudeCodeTranscriptBuilder.sessionPath(contextFixture, sessionId));
-    }
-    restoreContextEnv = ClaudeCodeFixtureUtil.useFixtureEnv(contextFixture);
+      loop.write(ClaudeCodeTranscriptBuilder.sessionPath(workflowFixture, "loop1"));
+      const analysis = await analyzeWorkflows();
+      const lintLoop = analysis.signals.find((signal) => signal.details.steps?.includes("npm run eslint"));
+      expect(lintLoop).toMatchObject({ type: "repeated_workflow", occurrences: 6, sessions: 1, isPartial: true });
+    });
+
+    it("reports sessions that outgrow the context window", async () => {
+      const analysis = await analyzeWorkflows();
+      const compaction = signalById(analysis.signals, "context_compaction:auto");
+      expect(compaction).toMatchObject({ occurrences: 4, sessions: 4 });
+      expect(compaction.details.maxContextTokens).toBe(950_000);
+      expect(compaction.evidence[0]?.excerpt).toBe("auto compaction at ~950k tokens after 1 turns");
+    });
+
+    it("groups malformed tool calls without the leaked text", async () => {
+      const serialized = JSON.stringify(await analyzeWorkflows());
+      expect(serialized).toContain("(malformed tool name)");
+      expect(serialized).not.toContain("getAll");
+    });
   });
 
-  afterAll(() => {
-    restoreContextEnv();
-    rmSync(contextFixture.root, { recursive: true, force: true });
-  });
+  describe("on pieces that keep filling their context", () => {
+    let contextFixture: Fixture;
+    let restoreContextEnv: () => void;
 
-  it("names the files loaded again and again and the huge outputs, per piece, with their tokens and their carry", async () => {
-    const analysis = await command.run({ projectDir: contextFixture.projectDir, dataDir: contextFixture.dataDir });
-    const heavy = signalById(analysis.signals, "context_heavy:agent:reviewer (built-in)");
-    expect(heavy).toMatchObject({ sessions: 2, pieces: ["agent:reviewer (built-in)"] });
-    expect(heavy.details.sources).toStrictEqual([
-      { value: "npm run build (×2)", count: 9000 },
-      { value: "docs/guide.md (×4)", count: 8000 },
-    ]);
-    expect(heavy.cost).toMatchObject({ tokens: 17000 + 28000, inputTokens: 17000 + 28000, outputTokens: 0 });
-  });
+    beforeAll(() => {
+      contextFixture = ClaudeCodeFixtureUtil.makeFixture();
+      // Why: low thresholds let a small fixture show the pattern (1 token is about 4 characters).
+      mkdirSync(contextFixture.dataDir, { recursive: true });
+      writeFileSync(join(contextFixture.dataDir, "config.json"), JSON.stringify({
+        signalThresholds: { minHeavySourceTokens: 5000, minHeavySourceLoads: 3, minHugeResultTokens: 4000 },
+      }));
+      const guide = join(contextFixture.projectDir, "docs/guide.md");
+      for (const sessionId of ["c1", "c2"]) {
+        const agentId = `r${sessionId}`;
+        const reviewer = new ClaudeCodeTranscriptBuilder(sessionId, contextFixture.projectDir, `2026-09-2${sessionId.at(-1)}T10:00:00.000Z`, {
+          isSidechain: true,
+          agentId,
+        }).user(`Review ${sessionId}`);
+        for (let read = 0; read < 2; read++) {
+          reviewer.tool(`g${read}_${sessionId}`, "Read", { file_path: guide }).result(`g${read}_${sessionId}`, "x".repeat(8000));
+        }
+        reviewer
+          .tool(`a_${sessionId}`, "Bash", { command: "cat src/a.ts" }).result(`a_${sessionId}`, "a".repeat(12000))
+          .tool(`b_${sessionId}`, "Bash", { command: "cat src/b.ts" }).result(`b_${sessionId}`, "b".repeat(12000))
+          .tool(`l_${sessionId}`, "Bash", { command: "npm run build" }).result(`l_${sessionId}`, "log ".repeat(4500))
+          .writeTo(contextFixture);
+        new ClaudeCodeTranscriptBuilder(sessionId, contextFixture.projectDir, `2026-09-2${sessionId.at(-1)}T10:00:00.000Z`)
+          .user("Review the change")
+          .tool(`t_${sessionId}`, "Task", { subagent_type: "reviewer", prompt: `Review ${sessionId}` })
+          .result(`t_${sessionId}`, "Looks good.", { secondsLater: 60, toolUseResult: { agentId } })
+          .write(ClaudeCodeTranscriptBuilder.sessionPath(contextFixture, sessionId));
+      }
+      restoreContextEnv = ClaudeCodeFixtureUtil.useFixtureEnv(contextFixture);
+    });
 
-  it("doesn't take different files read with the same command as the same material", async () => {
-    const analysis = await command.run({ projectDir: contextFixture.projectDir, dataDir: contextFixture.dataDir });
-    const heavy = signalById(analysis.signals, "context_heavy:agent:reviewer (built-in)");
-    expect(heavy.details.sources?.some((source) => source.value.startsWith("cat"))).toBe(false);
+    afterAll(() => {
+      restoreContextEnv();
+      rmSync(contextFixture.root, { recursive: true, force: true });
+    });
+
+    it("names the files loaded again and again and the huge outputs, per piece, with their tokens and their carry", async () => {
+      const analysis = await command.run({ projectDir: contextFixture.projectDir, dataDir: contextFixture.dataDir });
+      const heavy = signalById(analysis.signals, "context_heavy:agent:reviewer (built-in)");
+      expect(heavy).toMatchObject({ sessions: 2, pieces: ["agent:reviewer (built-in)"] });
+      expect(heavy.details.sources).toStrictEqual([
+        { value: "npm run build (×2)", count: 9000 },
+        { value: "docs/guide.md (×4)", count: 8000 },
+      ]);
+      expect(heavy.cost).toMatchObject({ tokens: 17000 + 28000, inputTokens: 17000 + 28000, outputTokens: 0 });
+    });
+
+    it("doesn't take different files read with the same command as the same material", async () => {
+      const analysis = await command.run({ projectDir: contextFixture.projectDir, dataDir: contextFixture.dataDir });
+      const heavy = signalById(analysis.signals, "context_heavy:agent:reviewer (built-in)");
+      expect(heavy.details.sources?.some((source) => source.value.startsWith("cat"))).toBe(false);
+    });
   });
 });

@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { describe, expect, it } from "vitest";
 import { RedactUtil } from "@/Shared/Utils/RedactUtil.ts";
 
-describe("redact", () => {
+describe("RedactUtil.redact()", () => {
   it.each([
     "sk-ant-api03-abcdefghijklmnopqrstuvwxyz",
     "ghp_abcdefghijklmnopqrstuvwxyz0123456789",
@@ -27,17 +27,17 @@ describe("redact", () => {
     RedactUtil.redact(`${longWord}=value ${longWord}`);
     expect(performance.now() - startedAtMs).toBeLessThan(1000);
   });
-});
 
-describe("excerpt", () => {
-  it("keeps ordinary text and collapses whitespace", () => {
-    expect(RedactUtil.excerpt("Run   pnpm test\nnow")).toBe("Run pnpm test now");
+  describe("on the home folder", () => {
+    it("shows the home folder, and the user name in it, as ~", () => {
+      const command = `cd ${homedir()}/work/app && npm test`;
+      expect(RedactUtil.redact(command)).toBe("cd ~/work/app && npm test");
+    });
   });
 });
 
-describe("home folder", () => {
-  it("shows the home folder, and the user name in it, as ~", () => {
-    const command = `cd ${homedir()}/work/app && npm test`;
-    expect(RedactUtil.redact(command)).toBe("cd ~/work/app && npm test");
+describe("RedactUtil.excerpt()", () => {
+  it("keeps ordinary text and collapses whitespace", () => {
+    expect(RedactUtil.excerpt("Run   pnpm test\nnow")).toBe("Run pnpm test now");
   });
 });

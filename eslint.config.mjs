@@ -220,6 +220,12 @@ export default tseslint.config(
     },
   },
   {
+    files: ["src/**/*.test.ts"],
+    rules: {
+      "local/describe-target": "error",
+    },
+  },
+  {
     files: TEST_FILES,
     plugins: { vitest },
     rules: {

@@ -9,7 +9,7 @@ const NPM_TEST_SIGNAL = "failed_command:npm test";
 
 const history = ClaudeCodeFixtureUtil.useHistoryFixture();
 
-describe("SuggestionsCommand", () => {
+describe("SuggestionsCommand.add()", () => {
   it("gives stable ids, never duplicates, and marks signals as handled", async () => {
     const suggestion = {
       title: "Enforce pnpm in test-runner",
@@ -29,16 +29,6 @@ describe("SuggestionsCommand", () => {
     const npmTest = analysis.signals.find((signal) => signal.id === NPM_TEST_SIGNAL);
     expect(npmTest?.handledBy).toStrictEqual({ suggestionId: id, status: "rejected" });
     expect(await command.list({ ...history.commonOptions(), status: "rejected" })).toHaveLength(1);
-  });
-
-  it("records the harness fingerprint when a suggestion is applied", async () => {
-    const { added } = await command.add({
-      ...history.commonOptions(),
-      items: [{ title: "Trim reviewer", class: "structure_change", piece: "agent:code-reviewer", signals: ["x"] }],
-    });
-    const applied = await command.setStatus({ ...history.commonOptions(), id: added[0]!, status: "applied" });
-    expect(applied.appliedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-    expect(applied.appliedFingerprint).toMatch(/\w+/);
   });
 
   it("costs each suggestion by the occurrences it covers, and the occurrences add up to the signal", async () => {
@@ -69,5 +59,17 @@ describe("SuggestionsCommand", () => {
   it("rejects suggestions without signals or with an unknown class", async () => {
     await expect(command.add({ ...history.commonOptions(), items: [{ title: "x", class: "rule_ignored", signals: [] }] })).rejects.toThrow("needs a title, at least one signal id");
     await expect(command.add({ ...history.commonOptions(), items: [{ title: "x", class: "other", signals: ["a"] }] })).rejects.toThrow("and a class");
+  });
+});
+
+describe("SuggestionsCommand.setStatus()", () => {
+  it("records the harness fingerprint when a suggestion is applied", async () => {
+    const { added } = await command.add({
+      ...history.commonOptions(),
+      items: [{ title: "Trim reviewer", class: "structure_change", piece: "agent:code-reviewer", signals: ["x"] }],
+    });
+    const applied = await command.setStatus({ ...history.commonOptions(), id: added[0]!, status: "applied" });
+    expect(applied.appliedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(applied.appliedFingerprint).toMatch(/\w+/);
   });
 });

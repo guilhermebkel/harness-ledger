@@ -68,7 +68,7 @@ function suggestion(title: string, fields: Partial<NewSuggestion> = {}): NewSugg
   };
 }
 
-describe("SuggestionCostService", () => {
+describe("SuggestionCostService.costsOf()", () => {
   it("splits one signal between two suggestions by the occurrences each one covers", () => {
     const [rules, planning] = new SuggestionCostService([corrections]).costsOf([
       suggestion(RULES, { occurrences: [{ sessionId: "s1", line: 10 }, { sessionId: "s1", line: 30 }] }),

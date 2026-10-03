@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ClaudeCodeTranscriptUtil } from "@/Providers/ClaudeCode/Utils/ClaudeCodeTranscriptUtil.ts";
 
-describe("cleanPrompt", () => {
+describe("ClaudeCodeTranscriptUtil.cleanPrompt()", () => {
   it("strips system reminders and reads slash commands", () => {
     const prompt = ClaudeCodeTranscriptUtil.cleanPrompt(
       "<system-reminder>x</system-reminder><command-name>/changelog</command-name><command-args>for v2</command-args>",
@@ -10,13 +10,13 @@ describe("cleanPrompt", () => {
   });
 });
 
-describe("errorText", () => {
+describe("ClaudeCodeTranscriptUtil.errorText()", () => {
   it("strips the tool_use_error wrapper", () => {
     expect(ClaudeCodeTranscriptUtil.errorText("<tool_use_error>File not found</tool_use_error>")).toBe("File not found");
   });
 });
 
-describe("classifyResult", () => {
+describe("ClaudeCodeTranscriptUtil.classifyResult()", () => {
   const failed = { isMarkedError: true, wasInterrupted: false };
 
   it("reads Claude Code's own denials", () => {
