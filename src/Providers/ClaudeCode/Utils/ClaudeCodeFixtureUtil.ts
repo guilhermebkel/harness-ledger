@@ -337,7 +337,7 @@ export class ClaudeCodeFixtureUtil {
   static writeHistory(fixture: Fixture, firstDay = "2026-09-10"): void {
     const firstDayAtMs = Date.parse(`${firstDay}T10:00:00.000Z`);
     const dayAt = (dayOffset: number): string => new Date(firstDayAtMs + dayOffset * 86_400_000).toISOString();
-    const changelogRequest = "Generate the changelog entry from the last PRs please";
+    const changelogRequest = `Generate the changelog entry from the last PRs please, key ${FAKE_SECRETS.anthropicKey}`;
     const authFile = join(fixture.projectDir, "src/auth.ts");
     const authContent = "export function login() {}".repeat(40);
 

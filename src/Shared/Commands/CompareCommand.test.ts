@@ -79,7 +79,7 @@ describe("CompareCommand counts time as much as cost", () => {
     writeSide("fast", 10, { commandSeconds: 20 });
     const result = await compareAt(CHANGE_DAY);
     expect(result.verdict).toBe("improved");
-    expect(result.moves).toEqual([
+    expect(result.moves).toStrictEqual([
       {
         metric: "activeMinutesPerInvocation",
         relativeChange: expect.any(Number) as number,
@@ -103,7 +103,7 @@ describe("CompareCommand counts time as much as cost", () => {
     expect(result.verdict).toBe("mixed");
     const metricToDirection = Object.fromEntries(result.moves.map((move) => [move.metric, move.direction]));
     // Why: before the change there are slow and fast sessions; after, only fast ones, on a pricier model.
-    expect(metricToDirection).toEqual({ activeMinutesPerInvocation: "better", usdPerInvocation: "worse" });
+    expect(metricToDirection).toStrictEqual({ activeMinutesPerInvocation: "better", usdPerInvocation: "worse" });
   });
 });
 

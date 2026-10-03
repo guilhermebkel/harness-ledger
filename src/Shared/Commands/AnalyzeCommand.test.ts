@@ -25,8 +25,8 @@ describe("AnalyzeCommand", () => {
     const analysis = await command.run(history.commonOptions());
     const npmTest = signalById(analysis.signals, "failed_command:npm test");
     expect(npmTest).toMatchObject({ occurrences: 3, sessions: 3, pieces: ["agent:test-runner"] });
-    expect(npmTest.details.recoveredWith).toEqual([{ value: "pnpm test", count: 3 }]);
-    expect(npmTest.details.mentions).toEqual(
+    expect(npmTest.details.recoveredWith).toStrictEqual([{ value: "pnpm test", count: 3 }]);
+    expect(npmTest.details.mentions).toStrictEqual(
       expect.arrayContaining([expect.objectContaining({ piece: "instructions:project", line: 3, term: "pnpm test" })]),
     );
     expect(npmTest.cost.activeMinutes).toBeGreaterThan(0);
@@ -41,7 +41,7 @@ describe("AnalyzeCommand", () => {
   it("finds subagent re-reads, repeated reads, permission denials and repeated requests", async () => {
     const analysis = await command.run(history.commonOptions());
     const signalIds = analysis.signals.map((signal) => signal.id);
-    expect(signalIds).toEqual(
+    expect(signalIds).toStrictEqual(
       expect.arrayContaining([
         "subagent_reread:code-reviewer",
         "repeated_read:code-reviewer",
@@ -49,8 +49,8 @@ describe("AnalyzeCommand", () => {
       ]),
     );
     expect(analysis.signals.find((signal) => signal.type === "repeated_request")?.sessions).toBe(3);
-    expect(signalById(analysis.signals, "permission_denied:rm").pieces).toEqual(["skill:changelog"]);
-    expect(signalById(analysis.signals, "repeated_read:code-reviewer").details.files).toEqual([
+    expect(signalById(analysis.signals, "permission_denied:rm").pieces).toStrictEqual(["skill:changelog"]);
+    expect(signalById(analysis.signals, "repeated_read:code-reviewer").details.files).toStrictEqual([
       { value: "src/auth.ts", count: 3 },
     ]);
   });
@@ -72,6 +72,7 @@ describe("AnalyzeCommand", () => {
 
   it("never prints secret values", async () => {
     const serialized = JSON.stringify(await command.run(history.commonOptions()));
+    expect(serialized).toContain("[REDACTED]");
     for (const secret of Object.values(FAKE_SECRETS)) {
       expect(serialized).not.toContain(secret);
     }
@@ -120,7 +121,7 @@ describe("AnalyzeCommand on cases seen in real sessions", () => {
 
   it("reports the platforms the sessions ran on, for scripts that work there", async () => {
     const analysis = await analyzeReal();
-    expect(analysis.environment).toEqual({
+    expect(analysis.environment).toStrictEqual({
       platforms: [{ value: "darwin", count: 2 }],
       shells: [{ value: "zsh", count: 2 }],
     });
@@ -131,9 +132,9 @@ describe("AnalyzeCommand on cases seen in real sessions", () => {
   it("profiles the work by stage, with rejected plans as planning failures", async () => {
     const analysis = await analyzeReal();
     const stageToProfile = new Map(analysis.process.map((profile) => [profile.stage, profile]));
-    expect(analysis.process.map((profile) => profile.stage)).toEqual(["setup", "planning", "exploration"]);
+    expect(analysis.process.map((profile) => profile.stage)).toStrictEqual(["setup", "planning", "exploration"]);
     expect(stageToProfile.get("planning")).toMatchObject({ sessions: 2, steps: 2, failures: 2 });
-    expect(stageToProfile.get("setup")?.commands).toEqual(["git stash"]);
+    expect(stageToProfile.get("setup")?.commands).toStrictEqual(["git stash"]);
   });
 
   it("counts rejected plans and queued pushback as corrections, not permission problems", async () => {
@@ -155,15 +156,15 @@ describe("AnalyzeCommand on cases seen in real sessions", () => {
   it("groups failing commands by what actually failed", async () => {
     const analysis = await analyzeReal();
     const python = signalById(analysis.signals, "failed_command:python3 report.py");
-    expect(python.details.errors).toEqual([{ value: "ModuleNotFoundError: No module named '…'", count: 2 }]);
+    expect(python.details.errors).toStrictEqual([{ value: "ModuleNotFoundError: No module named '…'", count: 2 }]);
     expect(signalById(analysis.signals, "failed_command:git stash").sessions).toBe(2);
   });
 
   it("leaves models without a known price unpriced and says which", async () => {
     const analysis = await analyzeReal();
-    expect(analysis.totals.unpricedModels).toEqual(["glm-5.2"]);
+    expect(analysis.totals.unpricedModels).toStrictEqual(["glm-5.2"]);
     const usageWithGlm = analysis.usage.find((usage) => usage.models.includes("glm-5.2"));
-    expect(usageWithGlm).toBeDefined();
+    expect(usageWithGlm).toMatchObject({ piece: "main" });
   });
 });
 
@@ -193,13 +194,13 @@ describe("AnalyzeCommand on data Claude Code computes itself", () => {
     const analysis = await analyzeReport();
     const apiError = signalById(analysis.signals, "api_error:model_not_found");
     expect(apiError).toMatchObject({ occurrences: 4, sessions: 2, pieces: ["agent:migrations-writer"] });
-    expect(apiError.details.models).toEqual([{ value: "glm-5.3", count: 4 }]);
+    expect(apiError.details.models).toStrictEqual([{ value: "glm-5.3", count: 4 }]);
     expect(apiError.cost.activeMinutes).toBeGreaterThan(0);
   });
 
   it("shows the provider's own cost and turn time next to the estimates", async () => {
     const analysis = await analyzeReport();
-    expect(analysis.totals.reportedByProvider).toEqual({
+    expect(analysis.totals.reportedByProvider).toStrictEqual({
       costUsd: 4,
       sessionsWithCost: 2,
       isCostPartial: true,
@@ -242,21 +243,21 @@ describe("AnalyzeCommand on work that could be a skill, a script or a subagent",
     const workflows = analysis.signals.filter((signal) => signal.type === "repeated_workflow");
     expect(workflows).toHaveLength(1);
     expect(workflows[0]).toMatchObject({ sessions: 4, pieces: ["main"] });
-    expect(workflows[0]?.details.steps).toEqual(["git status", "git add", "npx tsc", "git commit", "git push"]);
+    expect(workflows[0]?.details.steps).toStrictEqual(["git status", "git add", "npx tsc", "git commit", "git push"]);
   });
 
   it("puts validation and delivery commands in their stages", async () => {
     const analysis = await analyzeWorkflows();
     const stageToCommands = new Map(analysis.process.map((profile) => [profile.stage, profile.commands]));
-    expect(stageToCommands.get("validation")).toEqual(["npx tsc"]);
-    expect(stageToCommands.get("delivery")).toEqual(expect.arrayContaining(["git commit", "git push"]));
-    expect(stageToCommands.get("exploration")).toEqual([]);
+    expect(stageToCommands.get("validation")).toStrictEqual(["npx tsc"]);
+    expect(stageToCommands.get("delivery")).toStrictEqual(expect.arrayContaining(["git commit", "git push"]));
+    expect(stageToCommands.get("exploration")).toStrictEqual([]);
   });
 
   it("lists the work commands the project runs, with a real example, for a first CLAUDE.md", async () => {
     const analysis = await analyzeWorkflows();
     const commandByKey = new Map(analysis.commonCommands.map((command) => [command.key, command]));
-    expect(commandByKey.get("npx tsc")).toEqual({
+    expect(commandByKey.get("npx tsc")).toStrictEqual({
       key: "npx tsc",
       runs: 4,
       sessions: 4,
@@ -340,7 +341,7 @@ describe("AnalyzeCommand on pieces that keep filling their context", () => {
     const analysis = await command.run({ projectDir: contextFixture.projectDir, dataDir: contextFixture.dataDir });
     const heavy = signalById(analysis.signals, "context_heavy:agent:reviewer (built-in)");
     expect(heavy).toMatchObject({ sessions: 2, pieces: ["agent:reviewer (built-in)"] });
-    expect(heavy.details.sources).toEqual([
+    expect(heavy.details.sources).toStrictEqual([
       { value: "npm run build (×2)", count: 9000 },
       { value: "docs/guide.md (×4)", count: 8000 },
     ]);

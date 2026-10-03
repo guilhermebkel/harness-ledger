@@ -27,13 +27,13 @@ describe("SignalService failure chains", () => {
     const signals = signalService.extract([session]);
     const npmTest = signals.find((signal) => signal.id === "failed_command:npm test");
     const npxJest = signals.find((signal) => signal.id === "failed_command:npx jest");
-    expect(npmTest?.details.chains).toEqual({
+    expect(npmTest?.details.chains).toStrictEqual({
       chains: 1,
       recovered: 1,
       attempts: 2,
       fixLoops: 0,
     });
-    expect(npmTest?.details.recoveredWith).toEqual([{ value: "pnpm test", count: 1 }]);
+    expect(npmTest?.details.recoveredWith).toStrictEqual([{ value: "pnpm test", count: 1 }]);
     expect(npxJest?.details.chains).toBeUndefined();
     expect(npmTest?.cost.tokens).toBe(npxJest?.cost.tokens);
     expect((npmTest?.cost.tokens ?? 0) + (npxJest?.cost.tokens ?? 0)).toBe(3 * 1100);
@@ -76,7 +76,7 @@ describe("SignalService repeated workflows", () => {
         .wait(60);
     }
     const workflow = workflowService.extract([builder.build()]).find((signal) => signal.type === "repeated_workflow");
-    expect(workflow?.details.steps).toEqual(["pnpm lint", "pnpm build", "pnpm test"]);
+    expect(workflow?.details.steps).toStrictEqual(["pnpm lint", "pnpm build", "pnpm test"]);
     expect(workflow?.cost.tokens).toBe(2 * 4 * 1100);
     expect(workflow?.cost.activeMinutes).toBe(0.1);
   });

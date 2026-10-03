@@ -19,14 +19,14 @@ describe("SuggestionsCommand", () => {
     const firstAdd = await command.add({ ...history.commonOptions(), items: [suggestion] });
     const secondAdd = await command.add({ ...history.commonOptions(), items: [suggestion] });
     const id = SuggestionService.idOf(suggestion);
-    expect(firstAdd.added).toEqual([id]);
-    expect(secondAdd.added).toEqual([]);
-    expect(secondAdd.existing).toEqual([{ id, status: "pending" }]);
+    expect(firstAdd.added).toStrictEqual([id]);
+    expect(secondAdd.added).toStrictEqual([]);
+    expect(secondAdd.existing).toStrictEqual([{ id, status: "pending" }]);
 
     await command.setStatus({ ...history.commonOptions(), id, status: "rejected", note: "we keep npm in CI" });
     const analysis = await new AnalyzeCommand().run(history.commonOptions());
     const npmTest = analysis.signals.find((signal) => signal.id === "failed_command:npm test");
-    expect(npmTest?.handledBy).toEqual({ suggestionId: id, status: "rejected" });
+    expect(npmTest?.handledBy).toStrictEqual({ suggestionId: id, status: "rejected" });
     expect(await command.list({ ...history.commonOptions(), status: "rejected" })).toHaveLength(1);
   });
 
@@ -36,12 +36,12 @@ describe("SuggestionsCommand", () => {
       items: [{ title: "Trim reviewer", class: "structure_change", piece: "agent:code-reviewer", signals: ["x"] }],
     });
     const applied = await command.setStatus({ ...history.commonOptions(), id: added[0]!, status: "applied" });
-    expect(applied.appliedAt).toBeDefined();
+    expect(applied.appliedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(applied.appliedFingerprint).toMatch(/\w+/);
   });
 
   it("rejects suggestions without signals or with an unknown class", async () => {
-    await expect(command.add({ ...history.commonOptions(), items: [{ title: "x", class: "rule_ignored", signals: [] }] })).rejects.toThrow();
-    await expect(command.add({ ...history.commonOptions(), items: [{ title: "x", class: "other", signals: ["a"] }] })).rejects.toThrow();
+    await expect(command.add({ ...history.commonOptions(), items: [{ title: "x", class: "rule_ignored", signals: [] }] })).rejects.toThrow("needs a title, at least one signal id");
+    await expect(command.add({ ...history.commonOptions(), items: [{ title: "x", class: "other", signals: ["a"] }] })).rejects.toThrow("and a class");
   });
 });

@@ -36,6 +36,6 @@ afterAll(() => {
 describe("MentionService", () => {
   it("matches whole terms only", async () => {
     const mentions = await new MentionService(inventory).find(["cat", "pnpm test", "test"]);
-    expect(mentions.map((mention) => [mention.term, mention.line])).toEqual([["cat", 3], ["pnpm test", 4], ["test", 4]]);
+    expect(mentions.map((mention) => [mention.term, mention.line])).toStrictEqual([["cat", 3], ["pnpm test", 4], ["test", 4]]);
   });
 });

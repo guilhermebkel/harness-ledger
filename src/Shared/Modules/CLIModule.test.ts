@@ -12,7 +12,7 @@ describe("CLIModule", () => {
     const stdoutWrite = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     new CLIModule().run(["--version"]);
     await vi.waitFor(() => {
-      expect(stdoutWrite).toHaveBeenCalled();
+      expect(stdoutWrite).toHaveBeenCalledWith("dev\n");
     });
     expect(exit).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(0);

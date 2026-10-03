@@ -84,16 +84,16 @@ describe("CheckInventoryService", () => {
     });
     const session = sessionEditing(".ts", 6, ["pnpm lint", "npx tsc --noEmit"]);
     const checks = await new CheckInventoryService(projectDir).inspect([session], inventoryWith());
-    expect(checks.languages).toEqual([{ language: "typescript", edits: 6 }]);
-    expect(checks.tools.find((tool) => tool.name === "eslint")).toEqual({
+    expect(checks.languages).toStrictEqual([{ language: "typescript", edits: 6 }]);
+    expect(checks.tools.find((tool) => tool.name === "eslint")).toStrictEqual({
       name: "eslint",
       categories: ["lint", "complexity"],
       foundIn: ["package.json", "eslint config"],
       runsIn: ["sessions", "ci"],
       sessions: 1,
     });
-    expect(checks.tools.find((tool) => tool.name === "typescript")?.runsIn).toEqual(["sessions"]);
-    expect(checks.missing).toEqual([{ language: "typescript", category: "duplication" }]);
+    expect(checks.tools.find((tool) => tool.name === "typescript")?.runsIn).toStrictEqual(["sessions"]);
+    expect(checks.missing).toStrictEqual([{ language: "typescript", category: "duplication" }]);
     expect(checks.isPublishedPackage).toBe(false);
     expect(checks.isMonorepo).toBe(false);
   });
@@ -106,8 +106,8 @@ describe("CheckInventoryService", () => {
     });
     const sessions = [sessionEditing(".py", 5), sessionEditing(".go", 7)];
     const checks = await new CheckInventoryService(projectDir).inspect(sessions, inventoryWith());
-    expect(checks.tools.find((tool) => tool.name === "ruff")?.categories).toEqual(["lint", "complexity"]);
-    expect(checks.missing).toEqual([
+    expect(checks.tools.find((tool) => tool.name === "ruff")?.categories).toStrictEqual(["lint", "complexity"]);
+    expect(checks.missing).toStrictEqual([
       { language: "go", category: "deadCode" },
       { language: "go", category: "duplication" },
       { language: "python", category: "duplication" },
@@ -122,20 +122,20 @@ describe("CheckInventoryService", () => {
     const checks = await new CheckInventoryService(projectDir).inspect([sessionEditing(".ts", 2)], inventoryWith());
     expect(checks.isPublishedPackage).toBe(true);
     expect(checks.isMonorepo).toBe(true);
-    expect(checks.missing).toEqual([]);
+    expect(checks.missing).toStrictEqual([]);
   });
 
   it("lists edits in unknown languages as unmapped instead of dropping them, and ignores files that aren't code", async () => {
     const projectDir = projectWith({});
     const sessions = [sessionEditing(".ex", 6), sessionEditing(".md", 9), sessionEditing(".ts", 5)];
     const checks = await new CheckInventoryService(projectDir).inspect(sessions, inventoryWith());
-    expect(checks.languages).toEqual([
+    expect(checks.languages).toStrictEqual([
       { language: "unmapped", extension: ".ex", edits: 6 },
       { language: "typescript", edits: 5 },
     ]);
     expect(checks.missing.map((entry) => entry.language)).not.toContain("unmapped");
     expect(checks.isMissingPartial).toBe(true);
-    expect(checks.partialReasons).toEqual(["edits in files with no known language: .ex"]);
+    expect(checks.partialReasons).toStrictEqual(["edits in files with no known language: .ex"]);
   });
 
   it("lists dependencies that look like checks but aren't in the catalog, and calls the missing list partial", async () => {
@@ -144,7 +144,7 @@ describe("CheckInventoryService", () => {
       "requirements-dev.txt": "pydocstyle==6.3\nrequests==2.32\n",
     });
     const checks = await new CheckInventoryService(projectDir).inspect([sessionEditing(".ts", 5)], inventoryWith());
-    expect(checks.unmappedTools).toEqual(["eslint-plugin-unicorn", "pydocstyle"]);
+    expect(checks.unmappedTools).toStrictEqual(["eslint-plugin-unicorn", "pydocstyle"]);
     expect(checks.isMissingPartial).toBe(true);
   });
 
@@ -152,7 +152,7 @@ describe("CheckInventoryService", () => {
     const projectDir = projectWith({ "package.json": JSON.stringify({ devDependencies: { eslint: "^9" } }) });
     const checks = await new CheckInventoryService(projectDir).inspect([sessionEditing(".ts", 5)], inventoryWith());
     expect(checks.isMissingPartial).toBe(false);
-    expect(checks.partialReasons).toEqual([]);
+    expect(checks.partialReasons).toStrictEqual([]);
   });
 
   it("never outputs script text or secrets from hooks", async () => {

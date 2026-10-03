@@ -80,11 +80,7 @@ Commit once per task, not per file: make all the edits, then verify once. Before
 
 ## Tests
 
-- **Next to the code (ADR 0008).** A test lives beside the file it tests and shares its name: `ClaudeCodeProviderAdapter.ts` → `ClaudeCodeProviderAdapter.test.ts`. There is no `test/` folder.
-- Test behavior through the highest seam: the command classes in `src/Shared/Commands/` end to end, and each provider's adapter. Test a lower module directly only for logic with many cases (normalization, redaction, time).
-- A provider's fixture builds its real on-disk format and lives in that provider's `Utils/` (`ClaudeCodeFixtureUtil`). Command tests use it, which is why test files may import a provider.
-- Each new signal, format case or output path gets a fixture and a test, including a fake secret where output is involved.
-- Tests and fixtures may use literal numbers and non-null assertions, and may read `process.env`. Fixtures write external formats (settings files, env blocks), so their object keys keep those formats' spelling.
+How tests are written (where they live, what they assert, fixtures and doubles) is in `docs/test-standards.md`. The rules above apply to tests too, with the exemptions listed there.
 
 ## Formatting and comments
 

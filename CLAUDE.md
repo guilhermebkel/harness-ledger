@@ -43,7 +43,7 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 - Provider-specific code (paths, transcript and settings formats, tool names, prompt tags, env variables) lives only in `src/Providers/<Provider>/`. `src/Shared/` never imports a provider except through `ProviderModule`, and providers never import each other (ADR 0008, enforced by lint). If shared code needs provider knowledge, extend the shared model or `BaseProviderAdapter` instead.
 - Write classes: static-only Utils, Services with constructor-injected dependencies, Commands with `run`. Protocols hold only types.
 - Layers import only the ones below them: Protocols < Utils < Services/Adapters < Commands < Modules (enforced by lint; `docs/code-standards.md`).
-- Put each test next to the file it tests, named `<File>.test.ts`.
+- Put each test next to the file it tests, named `<File>.test.ts`, and follow `docs/test-standards.md`: expected values written by hand, exact assertions, no logic in tests, doubles only at the process's edges (lint enforces part of it).
 - Import across folders with the `@/` alias (`@/Shared/Utils/TimeUtil.js`), never `../`; same-folder imports use `./` (enforced by lint). The alias is defined in `tsconfig.json` (`paths`) and mirrored in `vitest.config.mjs`.
 - Rebuild and commit `dist/` in the same commit as any change to `src/`.
 - Use pnpm, never npm: commit `pnpm-lock.yaml`, never `package-lock.json` (ADR 0004).

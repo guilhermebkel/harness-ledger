@@ -130,7 +130,7 @@ Issues and PRs are welcome. For larger changes, please open an issue first to di
 ```bash
 pnpm install
 pnpm test         # tests next to the code, end to end on synthetic transcripts
-pnpm lint         # ESLint (typescript-eslint + stylistic); see docs/code-standards.md
+pnpm lint         # ESLint (typescript-eslint + stylistic); see docs/code-standards.md and docs/test-standards.md
 pnpm build        # bundles src/ into dist/imh.mjs (committed, so the plugin needs no install step)
 pnpm check        # typecheck + lint + tests + build + fails if dist/ is out of date
 ```

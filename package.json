@@ -34,6 +34,7 @@
     "@eslint/js": "^9.39.5",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@types/node": "^22.0.0",
+    "@vitest/eslint-plugin": "^1.6.27",
     "dpdm": "^4.3.0",
     "esbuild": "^0.24.0",
     "eslint": "^9.39.5",

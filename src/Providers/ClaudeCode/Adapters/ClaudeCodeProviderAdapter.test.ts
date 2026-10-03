@@ -49,7 +49,7 @@ function toolByKey(sessionId: string, key: string): ToolCall {
 
 describe("discoverTranscripts", () => {
   it("finds only this project's sessions, with their subagent files", async () => {
-    expect([...sessionIdToFacts.keys()].sort(CollectionUtil.compareCodeUnits)).toEqual(["s1", "s2", "s3", "s4", "s5", "s6"]);
+    expect([...sessionIdToFacts.keys()].sort(CollectionUtil.compareCodeUnits)).toStrictEqual(["s1", "s2", "s3", "s4", "s5", "s6"]);
     const allTranscripts = await adapter.discoverTranscripts({
       projectDir: fixture.projectDir,
       shouldReadAllProjects: true,
@@ -63,12 +63,17 @@ describe("discoverTranscripts", () => {
 });
 
 describe("parseSession", () => {
-  it("resolves subagent types from the meta file, the delegation result and the delegation prompt", () => {
-    for (const sessionId of ["s1", "s2", "s3"]) {
-      const npmTest = toolByKey(sessionId, "npm test");
-      expect(npmTest.thread.agentType, sessionId).toBe("test-runner");
-      expect(npmTest.ref.thread).toBe("test-runner");
-    }
+  it.each([
+    ["s1", "the meta file"],
+    ["s2", "the delegation result"],
+    ["s3", "the delegation prompt"],
+  ])("resolves the subagent type in %s from %s", (sessionId) => {
+    const npmTest = toolByKey(sessionId, "npm test");
+    expect(npmTest.thread.agentType).toBe("test-runner");
+    expect(npmTest.ref.thread).toBe("test-runner");
+  });
+
+  it("assigns each call to the subagent that made it", () => {
     const reviewerCalls = factsOf("s2").tools.filter((call) => call.thread.agentType === "code-reviewer");
     expect(reviewerCalls).toHaveLength(4);
   });
@@ -93,7 +98,7 @@ describe("parseSession", () => {
 
   it("counts usage once per message even when it is repeated on several lines", () => {
     const toolMessage = factsOf("s5").messages.find((message) => message.id === "msg_g_s5");
-    expect(toolMessage?.usage).toEqual({ input: 100, output: 50, cacheRead: 1000, cacheWrite: 0 });
+    expect(toolMessage?.usage).toStrictEqual({ input: 100, output: 50, cacheRead: 1000, cacheWrite: 0 });
   });
 
   it("cleans prompts and flags corrections and interruptions", () => {
@@ -124,7 +129,7 @@ describe("takeInventory", () => {
   it("maps project and user pieces without storing secret values", async () => {
     const inventory = await adapter.takeInventory({ projectDir: fixture.projectDir });
     expect(inventory.provider).toBe("claude-code");
-    expect(inventory.pieces.map((piece) => piece.id)).toEqual(
+    expect(inventory.pieces.map((piece) => piece.id)).toStrictEqual(
       expect.arrayContaining([
         "instructions:project",
         "agent:test-runner",
@@ -141,7 +146,7 @@ describe("takeInventory", () => {
       scope: "project",
       isEditable: true,
     });
-    expect(inventory.retention).toEqual({ days: 60, source: ".claude/settings.json" });
+    expect(inventory.retention).toStrictEqual({ days: 60, source: ".claude/settings.json" });
     const serialized = JSON.stringify(inventory);
     expect(serialized).not.toContain(FAKE_SECRETS.githubToken);
     expect(serialized).not.toContain(FAKE_SECRETS.anthropicKey);
@@ -150,8 +155,8 @@ describe("takeInventory", () => {
   it("lists a skill's other files and the skills an agent preloads", async () => {
     const inventory = await adapter.takeInventory({ projectDir: fixture.projectDir, isProjectOnly: true });
     const pieceById = new Map(inventory.pieces.map((piece) => [piece.id, piece]));
-    expect(pieceById.get(CHANGELOG_SKILL)?.files).toEqual(["references/format.md"]);
-    expect(pieceById.get("agent:docs-writer")?.preloadedSkills).toEqual(["changelog"]);
+    expect(pieceById.get(CHANGELOG_SKILL)?.files).toStrictEqual(["references/format.md"]);
+    expect(pieceById.get("agent:docs-writer")?.preloadedSkills).toStrictEqual(["changelog"]);
   });
 
   it("changes a skill's hash when only one of its reference files changes", async () => {
@@ -218,7 +223,7 @@ describe("parseSession on cases seen in real sessions", () => {
   });
 
   it("reads the platform and shell the session ran on", () => {
-    expect(realFacts.environment).toEqual({ platform: "darwin", shell: "zsh" });
+    expect(realFacts.environment).toStrictEqual({ platform: "darwin", shell: "zsh" });
   });
 
   it("never reads a background-task notification as something the person typed", () => {
@@ -267,7 +272,7 @@ describe("parseSession on data Claude Code computes itself", () => {
   });
 
   it("reads the main thread's turn durations", () => {
-    expect(reportFacts.reported.turns.map((turn) => turn.durationMs)).toEqual([90_000, 30_000]);
+    expect(reportFacts.reported.turns.map((turn) => turn.durationMs)).toStrictEqual([90_000, 30_000]);
   });
 
   it("takes the subagent type from attributionAgent and the running skill from attributionSkill", () => {
@@ -288,7 +293,7 @@ describe("parseSession on long sessions and malformed calls", () => {
   });
 
   it("reads context compactions with their trigger and size", () => {
-    expect(workflowFacts.compactions).toEqual([
+    expect(workflowFacts.compactions).toStrictEqual([
       expect.objectContaining({ trigger: "auto", contextTokens: 950_000 }),
     ]);
   });

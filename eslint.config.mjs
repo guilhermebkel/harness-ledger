@@ -1,6 +1,7 @@
-// Why: each rule is documented in docs/code-standards.md; change both together.
+// Why: each rule is documented in docs/code-standards.md (tests: docs/test-standards.md); change both together.
 import js from "@eslint/js";
 import stylistic from "@stylistic/eslint-plugin";
+import vitest from "@vitest/eslint-plugin";
 import sonarjs from "eslint-plugin-sonarjs";
 import globals from "globals";
 import tseslint from "typescript-eslint";
@@ -14,6 +15,8 @@ const NO_OTHER_PROVIDER_IMPORTS = {
   group: ["@/Providers/*/**", "**/Providers/*/**", "!@/Providers/ClaudeCode/**", "!**/Providers/ClaudeCode/**"],
   message: "A provider must not import another provider (ADR 0008).",
 };
+
+const TEST_FILES = "src/**/*.test.ts";
 
 const LAYER_TO_FORBIDDEN_LAYERS = {
   Protocols: ["Utils", "Services", "Adapters", "Commands", "Modules"],
@@ -39,7 +42,7 @@ function layerPattern(layer, forbiddenLayers) {
 const layerConfigs = SCOPES.flatMap(({ dir, patterns }) =>
   Object.entries(LAYER_TO_FORBIDDEN_LAYERS).map(([layer, forbiddenLayers]) => ({
     files: [`${dir}/${layer}/**/*.ts`],
-    ignores: ["src/**/*.test.ts", ...Object.keys(LAYER_EXCEPTIONS)],
+    ignores: [TEST_FILES, ...Object.keys(LAYER_EXCEPTIONS)],
     rules: { "no-restricted-imports": ["error", { patterns: [...patterns, layerPattern(layer, forbiddenLayers)] }] },
   })),
 );
@@ -218,13 +221,45 @@ export default tseslint.config(
   ...layerConfigs,
   ...layerExceptionConfigs,
   {
-    files: ["src/**/*.test.ts", "src/Providers/*/Utils/*FixtureUtil.ts"],
+    files: [TEST_FILES, "src/Providers/*/Utils/*FixtureUtil.ts"],
     rules: {
       "@typescript-eslint/no-magic-numbers": "off",
       "no-restricted-properties": "off",
       "@typescript-eslint/no-non-null-assertion": "off",
       // Why: fixtures write external formats (settings.json, env blocks) with their own key spelling.
       "@typescript-eslint/naming-convention": "off",
+    },
+  },
+  {
+    files: [TEST_FILES],
+    plugins: { vitest },
+    rules: {
+      ...vitest.configs.recommended.rules,
+      "vitest/no-conditional-expect": "error",
+      "vitest/no-conditional-in-test": "error",
+      "vitest/no-conditional-tests": "error",
+      "vitest/no-disabled-tests": "error",
+      "vitest/no-focused-tests": "error",
+      "vitest/no-standalone-expect": "error",
+      "vitest/no-test-return-statement": "error",
+      "vitest/no-duplicate-hooks": "error",
+      "vitest/prefer-hooks-on-top": "error",
+      "vitest/prefer-hooks-in-order": "error",
+      "vitest/prefer-each": "error",
+      "vitest/prefer-strict-equal": "error",
+      "vitest/prefer-to-be": "error",
+      "vitest/prefer-to-have-length": "error",
+      "vitest/prefer-to-contain": "error",
+      "vitest/prefer-comparison-matcher": "error",
+      "vitest/prefer-equality-matcher": "error",
+      "vitest/prefer-called-with": "error",
+      "vitest/no-alias-methods": "error",
+      "vitest/require-to-throw-message": "error",
+      "vitest/no-restricted-matchers": ["error", {
+        toBeDefined: "Assert the value itself (toBe, toStrictEqual, toMatchObject).",
+        toBeTruthy: "Assert the exact value: toBe(true) or the expected value.",
+        toBeFalsy: "Assert the exact value: toBe(false), toBeUndefined() or the expected value.",
+      }],
     },
   },
   {

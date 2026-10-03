@@ -23,7 +23,7 @@ describe("FailureChainService", () => {
       .build();
     const [chain] = chainsOf(session);
     expect(chain?.kind).toBe("wrong_command");
-    expect(chain?.failures.map((call) => call.key)).toEqual(["npm test", "npx jest"]);
+    expect(chain?.failures.map((call) => call.key)).toStrictEqual(["npm test", "npx jest"]);
     expect(chain?.recovery?.key).toBe("pnpm test");
     expect(chain?.cost.activeMs).toBe(24_000);
     const usage = chain?.cost.usage;
@@ -113,6 +113,6 @@ describe("FailureChainService", () => {
     const session = new SessionFactsBuilder()
       .call("ExitPlanMode", { category: "plan", isError: true, kind: "user_rejected" })
       .build();
-    expect(chainsOf(session)).toEqual([]);
+    expect(chainsOf(session)).toStrictEqual([]);
   });
 });

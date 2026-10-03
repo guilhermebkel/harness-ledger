@@ -6,7 +6,7 @@ describe("parsePointInTime", () => {
     const nowAtMs = Date.parse("2026-10-01T00:00:00Z");
     expect(TimeUtil.parsePointInTime("2d", nowAtMs)).toBe(Date.parse("2026-09-29T00:00:00Z"));
     expect(TimeUtil.parsePointInTime("2026-09-01", nowAtMs)).toBe(Date.parse("2026-09-01"));
-    expect(() => TimeUtil.parsePointInTime("yesterday", nowAtMs)).toThrow();
+    expect(() => TimeUtil.parsePointInTime("yesterday", nowAtMs)).toThrow("Invalid date or period");
   });
 });
 

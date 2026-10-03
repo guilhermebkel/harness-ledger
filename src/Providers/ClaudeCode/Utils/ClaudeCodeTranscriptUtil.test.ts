@@ -6,7 +6,7 @@ describe("cleanPrompt", () => {
     const prompt = ClaudeCodeTranscriptUtil.cleanPrompt(
       "<system-reminder>x</system-reminder><command-name>/changelog</command-name><command-args>for v2</command-args>",
     );
-    expect(prompt).toEqual({ text: "for v2", command: "changelog" });
+    expect(prompt).toStrictEqual({ text: "for v2", command: "changelog" });
   });
 });
 

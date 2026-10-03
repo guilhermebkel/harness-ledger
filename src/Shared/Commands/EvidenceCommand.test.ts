@@ -44,7 +44,7 @@ describe("recoveries", () => {
   it("counts the same job done another way, not looking around or moving on", async () => {
     const analysis = await new AnalyzeCommand().run(history.commonOptions());
     const npmTest = analysis.signals.find((signal) => signal.id === "failed_command:npm test");
-    expect(npmTest?.details.recoveredWith).toEqual(expect.arrayContaining([{ value: "pnpm test", count: 5 }]));
+    expect(npmTest?.details.recoveredWith).toStrictEqual(expect.arrayContaining([{ value: "pnpm test", count: 5 }]));
     const script = analysis.signals.find((signal) => signal.id === "failed_command:python3 report.py");
     expect(script?.details.recoveredWith).toBeUndefined();
   });
