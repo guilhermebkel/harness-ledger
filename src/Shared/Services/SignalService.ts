@@ -205,7 +205,7 @@ export class SignalService {
   }
 
   private buildSignal(group: OccurrenceGroup): Signal {
-    const occurrences = [...group.occurrences].sort((left, right) =>
+    const occurrences = group.occurrences.toSorted((left, right) =>
       (left.ref.occurredAt ?? "").localeCompare(right.ref.occurredAt ?? ""),
     );
     const sessionCount = new Set(occurrences.map((occurrence) => occurrence.session.sessionId)).size;

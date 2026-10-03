@@ -125,6 +125,8 @@ export default tseslint.config(
         ignoreTypeIndexes: true,
       }],
       "@typescript-eslint/no-floating-promises": "error",
+      // Why: it asks for `value!` where `no-non-null-assertion` forbids it; code narrows with a guard instead.
+      "@typescript-eslint/non-nullable-type-assertion-style": "off",
 
       "sonarjs/cognitive-complexity": ["error", MAX_COGNITIVE_COMPLEXITY],
       "max-depth": ["error", MAX_DEPTH],

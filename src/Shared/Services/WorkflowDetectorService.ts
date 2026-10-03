@@ -132,7 +132,7 @@ export class WorkflowDetectorService {
    * one is dropped when the kept one happens in about as many sessions. Then the most widespread first.
    */
   private withoutSubsumed(candidates: WorkflowCandidate[]): WorkflowCandidate[] {
-    const longestFirst = [...candidates].sort((left, right) => {
+    const longestFirst = candidates.toSorted((left, right) => {
       const lengthDifference = right.steps.length - left.steps.length;
       return lengthDifference || this.runCountOf(right) - this.runCountOf(left);
     });

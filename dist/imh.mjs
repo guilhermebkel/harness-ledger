@@ -351,7 +351,7 @@ var NormalizeUtil = class _NormalizeUtil {
       return void 0;
     }
     const afterTraceback = lines.slice(tracebackIndex + 1);
-    const fromLastLine = [...afterTraceback].reverse();
+    const fromLastLine = afterTraceback.toReversed();
     return fromLastLine.find((line) => PYTHON_EXCEPTION_LINE.test(line)) ?? fromLastLine[0];
   }
   static withoutGlobalOptions(program, argumentTokens) {
@@ -1396,7 +1396,7 @@ var WorkflowDetectorService = class {
    * one is dropped when the kept one happens in about as many sessions. Then the most widespread first.
    */
   withoutSubsumed(candidates) {
-    const longestFirst = [...candidates].sort((left, right) => {
+    const longestFirst = candidates.toSorted((left, right) => {
       const lengthDifference = right.steps.length - left.steps.length;
       return lengthDifference || this.runCountOf(right) - this.runCountOf(left);
     });
@@ -1693,7 +1693,7 @@ var SignalService = class _SignalService {
     return hasEnoughOccurrences || hasEnoughSessions;
   }
   buildSignal(group) {
-    const occurrences = [...group.occurrences].sort(
+    const occurrences = group.occurrences.toSorted(
       (left, right) => (left.ref.occurredAt ?? "").localeCompare(right.ref.occurredAt ?? "")
     );
     const sessionCount = new Set(occurrences.map((occurrence) => occurrence.session.sessionId)).size;
@@ -5570,9 +5570,9 @@ var SuggestionService = class _SuggestionService {
   static STATUSES = ["pending", "accepted", "rejected", "applied"];
   // Why: occurrences join the identity only when listed, so ids of suggestions without them never change.
   static idOf(suggestion) {
-    const sortedSignals = [...suggestion.signals].sort(CollectionUtil.compareCodeUnits).join("|");
+    const sortedSignals = suggestion.signals.toSorted(CollectionUtil.compareCodeUnits).join("|");
     const occurrenceKeys = (suggestion.occurrences ?? []).map((occurrence) => `${occurrence.sessionId}:${occurrence.line}`);
-    const sortedOccurrences = [...occurrenceKeys].sort(CollectionUtil.compareCodeUnits).join("|");
+    const sortedOccurrences = occurrenceKeys.toSorted(CollectionUtil.compareCodeUnits).join("|");
     const occurrencePart = sortedOccurrences ? `#${sortedOccurrences}` : "";
     const identity = `${sortedSignals}@${suggestion.piece ?? ""}${occurrencePart}`;
     return `sug-${HashUtil.sha(identity, SUGGESTION_ID_HASH_CHARS)}`;

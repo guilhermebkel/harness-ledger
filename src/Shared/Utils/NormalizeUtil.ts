@@ -200,7 +200,7 @@ export class NormalizeUtil {
     }
     // Why: when the output was cut before the exception, the last line is still closer to the cause than "Traceback".
     const afterTraceback = lines.slice(tracebackIndex + 1);
-    const fromLastLine = [...afterTraceback].reverse();
+    const fromLastLine = afterTraceback.toReversed();
     return fromLastLine.find((line) => PYTHON_EXCEPTION_LINE.test(line)) ?? fromLastLine[0];
   }
 

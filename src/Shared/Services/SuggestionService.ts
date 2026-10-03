@@ -33,9 +33,9 @@ export class SuggestionService {
 
   // Why: occurrences join the identity only when listed, so ids of suggestions without them never change.
   static idOf(suggestion: Pick<NewSuggestion, "signals" | "piece" | "occurrences">): string {
-    const sortedSignals = [...suggestion.signals].sort(CollectionUtil.compareCodeUnits).join("|");
+    const sortedSignals = suggestion.signals.toSorted(CollectionUtil.compareCodeUnits).join("|");
     const occurrenceKeys = (suggestion.occurrences ?? []).map((occurrence) => `${occurrence.sessionId}:${occurrence.line}`);
-    const sortedOccurrences = [...occurrenceKeys].sort(CollectionUtil.compareCodeUnits).join("|");
+    const sortedOccurrences = occurrenceKeys.toSorted(CollectionUtil.compareCodeUnits).join("|");
     const occurrencePart = sortedOccurrences ? `#${sortedOccurrences}` : "";
     const identity = `${sortedSignals}@${suggestion.piece ?? ""}${occurrencePart}`;
     return `sug-${HashUtil.sha(identity, SUGGESTION_ID_HASH_CHARS)}`;
