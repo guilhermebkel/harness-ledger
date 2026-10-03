@@ -17,7 +17,7 @@ ruleTester.run("literal-dispatch", localRules.rules["literal-dispatch"], {
     },
     {
       name: "the same subject in different functions",
-      code: "function f(kind) { if (kind === \"a\") { return 1; } } function g(kind) { return kind === \"b\" ? 2 : 3; }",
+      code: "function f(kind) { if (kind === \"a\") { return 1; } } function g(kind) { return kind === \"b\"; }",
     },
     {
       name: "comparisons with values that aren't fixed",
@@ -26,6 +26,18 @@ ruleTester.run("literal-dispatch", localRules.rules["literal-dispatch"], {
     {
       name: "a comparison stored once and reused",
       code: "function f(mode) { const isText = mode === \"text\"; if (isText) { return 1; } return isText ? 2 : 3; }",
+    },
+    {
+      name: "a comparison that only becomes a value, in a callback or an argument",
+      code: "function f(calls) { return calls.filter((call) => call.category === \"edit\"); }",
+    },
+    {
+      name: "a guard that throws or continues",
+      code: "function f(items) { for (const item of items) { if (item.kind === \"skip\") continue; } if (items.mode === \"x\") { throw new Error(); } }",
+    },
+    {
+      name: "type checks and emptiness checks",
+      code: "function f(value) { return typeof value === \"string\" && value !== \"\" ? value : undefined; }",
     },
     {
       name: "a lookup in a map",
@@ -41,7 +53,7 @@ ruleTester.run("literal-dispatch", localRules.rules["literal-dispatch"], {
     {
       name: "an else-if chain",
       code: "function f(kind) { if (kind === \"a\") { return 1; } else if (kind === \"b\") { return 2; } else { return 3; } }",
-      errors: [{ messageId: "repeated" }],
+      errors: [{ messageId: "branch" }, { messageId: "repeated" }],
     },
     {
       name: "a ternary after an if, through optional chaining",
@@ -53,6 +65,16 @@ ruleTester.run("literal-dispatch", localRules.rules["literal-dispatch"], {
       code: "function f(result) { return result.kind !== \"interrupted\" && result.kind !== \"user_rejected\"; }"
         + " function g(result) { if (result.kind === \"interrupted\" || result.kind === \"user_rejected\") { return 1; } }",
       errors: [{ messageId: "repeated" }, { messageId: "repeated" }],
+    },
+    {
+      name: "a single if that does work instead of leaving",
+      code: "function f(options) { let fingerprint; if (options.status === \"applied\") { fingerprint = 1; } return fingerprint; }",
+      errors: [{ messageId: "branch", data: { subject: "options.status" } }],
+    },
+    {
+      name: "a single ternary, also inside && or ||",
+      code: "function f(metadata, isOn) { return isOn && metadata?.trigger === \"manual\" ? \"manual\" : \"auto\"; }",
+      errors: [{ messageId: "branch", data: { subject: "metadata.trigger" } }],
     },
     {
       name: "a switch over fixed values",

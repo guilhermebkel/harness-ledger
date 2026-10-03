@@ -113,7 +113,7 @@ export class UsageService {
       if (call.skill) {
         this.totalsOf(pieceToTotals, `skill:${call.skill}`).invocations++;
       }
-      if (call.category === "mcp") {
+      if (SessionUtil.MCP_CATEGORIES.has(call.category)) {
         const serverTotals = this.totalsOf(pieceToTotals, call.key);
         serverTotals.invocations++;
         serverTotals.toolCalls++;

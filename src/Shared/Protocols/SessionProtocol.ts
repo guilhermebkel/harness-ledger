@@ -95,8 +95,10 @@ export interface ApiError {
   occurredAtMs?: number;
 }
 
+export type CompactionTrigger = "auto" | "manual";
+
 export interface ContextCompaction {
-  trigger: "auto" | "manual";
+  trigger: CompactionTrigger;
   contextTokens?: number;
   thread: ThreadRef;
   ref: EvidenceRef;

@@ -3,6 +3,7 @@ import type { SessionFacts, ToolCall, ToolCategory } from "@/Shared/Protocols/Se
 import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
 import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.ts";
 import { NumberUtil } from "@/Shared/Utils/NumberUtil.ts";
+import { SessionUtil } from "@/Shared/Utils/SessionUtil.ts";
 import { AttributionService } from "@/Shared/Services/AttributionService.ts";
 
 const MAX_STAGE_COMMANDS = 5;
@@ -64,7 +65,7 @@ export class ProcessProfileService {
     for (const piece of pieces) {
       totals.pieceToCount.set(piece, (totals.pieceToCount.get(piece) ?? 0) + 1);
     }
-    if (call.category === "shell" && STAGES_WITH_COMMANDS.has(stage)) {
+    if (SessionUtil.COMMAND_CATEGORIES.has(call.category) && STAGES_WITH_COMMANDS.has(stage)) {
       totals.commandToCount.set(call.key, (totals.commandToCount.get(call.key) ?? 0) + 1);
     }
   }

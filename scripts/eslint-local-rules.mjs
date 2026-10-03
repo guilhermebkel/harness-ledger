@@ -3,6 +3,8 @@ const COMMENT_MARKER = /^Why: \S/;
 const TOOL_DIRECTIVE = /^(eslint-disable|eslint-enable|@ts-expect-error|global )/;
 const EQUALITY_OPERATORS = new Set(["===", "==", "!==", "!="]);
 const MIN_CASES_FOR_MAP = 2;
+const PASSTHROUGH_TYPES = new Set(["LogicalExpression", "UnaryExpression"]);
+const EXIT_TYPES = new Set(["ReturnStatement", "ThrowStatement", "ContinueStatement", "BreakStatement"]);
 
 const COMMENT_TYPE_TO_TRAITS = {
   Line: { isLineComment: true, isDirective: false },
@@ -40,12 +42,16 @@ const commentMarker = {
 };
 
 const NODE_TYPE_TO_IS_FIXED = new Map([
-  ["Literal", (node) => typeof node.value === "string"],
-  ["TemplateLiteral", (node) => node.expressions.length === 0],
+  ["Literal", (node) => typeof node.value === "string" && node.value !== ""],
+  ["TemplateLiteral", (node) => node.expressions.length === 0 && node.quasis[0]?.value.cooked !== ""],
 ]);
 
 function isFixedValue(node) {
   return NODE_TYPE_TO_IS_FIXED.get(node.type)?.(node) ?? false;
+}
+
+function isTypeCheck(subject) {
+  return subject.type === "UnaryExpression" && subject.operator === "typeof";
 }
 
 function comparedSubject(comparison) {
@@ -56,7 +62,35 @@ function comparedSubject(comparison) {
   if (isRightFixed === isFixedValue(comparison.left)) {
     return undefined;
   }
-  return isRightFixed ? comparison.left : comparison.right;
+  const subject = isRightFixed ? comparison.left : comparison.right;
+  return isTypeCheck(subject) ? undefined : subject;
+}
+
+function lastStatementOf(statement) {
+  return Array.isArray(statement.body) ? statement.body.at(-1) : statement;
+}
+
+function isGuard(ifStatement) {
+  const lastStatement = lastStatementOf(ifStatement.consequent);
+  return !ifStatement.alternate && lastStatement !== undefined && EXIT_TYPES.has(lastStatement.type);
+}
+
+const DECISION_TYPE_TO_IS_BRANCH = new Map([
+  ["IfStatement", (ifStatement) => !isGuard(ifStatement)],
+  ["ConditionalExpression", () => true],
+]);
+
+// Why: an empty string ("") is an emptiness check and `typeof` a type check, not a choice between values.
+// A comparison that decides which code runs (a non-guard if, a ternary) is a dispatch even alone; one that
+// only becomes a value (returned, passed, stored) or leaves early is not.
+function isBranchCondition(comparison) {
+  let condition = comparison;
+  while (PASSTHROUGH_TYPES.has(condition.parent?.type)) {
+    condition = condition.parent;
+  }
+  const decision = condition.parent;
+  const isBranch = DECISION_TYPE_TO_IS_BRANCH.get(decision?.type);
+  return decision?.test === condition && isBranch !== undefined && isBranch(decision);
 }
 
 const literalDispatch = {
@@ -64,6 +98,7 @@ const literalDispatch = {
     type: "suggestion",
     messages: {
       repeated: "\"{{subject}}\" is compared with a fixed value again in this function. Dispatch through a Record<Key, Handler> map instead.",
+      branch: "This branch picks code by comparing \"{{subject}}\" with a fixed value. Dispatch through a Record<Key, Handler> map, or make it a guard that leaves early.",
       switchCases: "This switch dispatches on fixed values. Use a Record<Key, Handler> map instead.",
     },
   },
@@ -80,6 +115,10 @@ const literalDispatch = {
       seen.set(key, count);
       if (count >= MIN_CASES_FOR_MAP) {
         context.report({ node: comparison, messageId: "repeated", data: { subject: key } });
+        return;
+      }
+      if (isBranchCondition(comparison)) {
+        context.report({ node: comparison, messageId: "branch", data: { subject: key } });
       }
     };
     return {

@@ -345,7 +345,7 @@ export class SignalService {
     return [
       ...(call.subagentType ? [`agent:${call.subagentType}`] : []),
       ...(call.skill ? [`skill:${call.skill}`] : []),
-      ...(call.category === "mcp" ? [call.key] : []),
+      ...(SessionUtil.MCP_CATEGORIES.has(call.category) ? [call.key] : []),
     ];
   }
 

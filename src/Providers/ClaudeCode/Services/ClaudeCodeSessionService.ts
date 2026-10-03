@@ -9,6 +9,7 @@ import type {
   TranscriptFileStat,
 } from "@/Shared/Protocols/ProviderProtocol.ts";
 import type {
+  CompactionTrigger,
   SessionFacts,
   ThreadFacts,
   ThreadRef,
@@ -60,6 +61,12 @@ const VALID_TOOL_NAME = /^[\w.:-]{1,100}$/;
 const MALFORMED_TOOL_NAME = "(malformed tool name)";
 const REJECTED_WITHOUT_FEEDBACK = "rejected without feedback";
 const MAX_UNKNOWN_TYPE_CHARS = 60;
+// Why: Claude Code records "HEAD" as the branch of a detached checkout; it names no branch.
+const DETACHED_BRANCH_NAMES = new Set(["HEAD"]);
+const COMPACTION_TRIGGERS: Record<CompactionTrigger, true> = {
+  auto: true,
+  manual: true,
+};
 const MAX_UNKNOWN_KEYS = 40;
 // Why: Claude Code writes these for its own interface (titles, modes, links, file history); none carries what a
 // signal reads. A type missing here and from the handlers is reported as a gap, so add new ones after checking.
@@ -384,7 +391,7 @@ export class ClaudeCodeSessionService {
     if (isMainFile) {
       facts.projectDir ??= GuardUtil.asString(record.cwd);
       const gitBranch = GuardUtil.asString(record.gitBranch);
-      if (!facts.gitBranch && gitBranch && gitBranch !== "HEAD") {
+      if (!facts.gitBranch && gitBranch && !DETACHED_BRANCH_NAMES.has(gitBranch)) {
         facts.gitBranch = gitBranch;
       }
     }
@@ -653,7 +660,8 @@ export class ClaudeCodeSessionService {
 
   private handleCompaction(context: ClaudeCodeParseContext, line: ClaudeCodeTranscriptLine): void {
     const metadata = GuardUtil.asRecord(line.record.compactMetadata);
-    const trigger = metadata?.trigger === "manual" ? "manual" : "auto";
+    const rawTrigger = GuardUtil.asString(metadata?.trigger);
+    const trigger = GuardUtil.isKeyOf(COMPACTION_TRIGGERS, rawTrigger) ? rawTrigger : "auto";
     const contextTokens = GuardUtil.asNumber(metadata?.preTokens);
     const tokensText = contextTokens === undefined ? "" : ` at ~${Math.round(contextTokens / TOKENS_PER_THOUSAND)}k tokens`;
     context.facts.compactions.push({

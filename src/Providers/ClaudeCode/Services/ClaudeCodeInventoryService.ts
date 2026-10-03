@@ -20,6 +20,8 @@ import type {
 } from "@/Providers/ClaudeCode/Protocols/ClaudeCodeProtocol.ts";
 
 const PROJECT_SCOPES = new Set<PieceScope>(["project", "local"]);
+// Why: only an agent's frontmatter `skills:` preloads skills; elsewhere the key means something else or nothing.
+const KINDS_WITH_SKILLS = new Set<PieceKind>(["agent"]);
 // Why: plugin and managed pieces are rewritten by their owner on update, so a suggestion can't edit them.
 const READ_ONLY_SCOPES = new Set<PieceScope>(["plugin", "managed"]);
 const DEFAULT_RETENTION_DAYS = 30;
@@ -121,7 +123,7 @@ class InventoryBuilder {
       tools: FrontmatterUtil.asList(data.tools ?? data["allowed-tools"]),
       ...latestChange,
       files: extraFiles.length ? extraFiles.map((extraFile) => relative(pieceFolder, extraFile)) : undefined,
-      preloadedSkills: filePiece.kind === "agent" ? FrontmatterUtil.asList(data.skills) : undefined,
+      preloadedSkills: KINDS_WITH_SKILLS.has(filePiece.kind) ? FrontmatterUtil.asList(data.skills) : undefined,
       isEditable: !READ_ONLY_SCOPES.has(filePiece.scope),
       plugin: filePiece.plugin,
     });

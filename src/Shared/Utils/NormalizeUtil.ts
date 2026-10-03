@@ -69,6 +69,9 @@ const STOPWORDS = new Set(
   ).split(" "),
 );
 
+// Why: `python -m <module>` names what runs, so the module stays in the key like a subcommand.
+const KEPT_OPTION_SUBCOMMANDS = new Set(["-m"]);
+
 export class NormalizeUtil {
   static commandKey(command: string): string {
     const segments = command
@@ -96,7 +99,7 @@ export class NormalizeUtil {
     const hasSubcommand = PROGRAMS_WITH_SUBCOMMAND.has(program) || program.startsWith("python");
     if (hasSubcommand) {
       const [subcommand, target] = NormalizeUtil.withoutGlobalOptions(program, tokens.slice(programIndex + 1));
-      if (subcommand && (NormalizeUtil.isPlainWord(subcommand) || subcommand === "-m")) {
+      if (subcommand && (NormalizeUtil.isPlainWord(subcommand) || KEPT_OPTION_SUBCOMMANDS.has(subcommand))) {
         keyParts.push(subcommand);
         if (RUNNER_SUBCOMMANDS.has(subcommand) && target && NormalizeUtil.isPlainWord(target)) {
           keyParts.push(target);

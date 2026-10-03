@@ -253,6 +253,7 @@ var MIN_WORD_CHARS = 3;
 var STOPWORDS = new Set(
   "the and for with that this from you your are was were can could would should please into have has had not but all any some what when where which who how why its it's our out then than them they there here tamb\xE9m para com que uma umas uns dos das por pelo pela isso isto esse essa este esta voc\xEA voce seu sua nos nas n\xE3o nao mais muito pode poderia favor ser ter tem foi vai fazer faz como quando onde qual quais".split(" ")
 );
+var KEPT_OPTION_SUBCOMMANDS = /* @__PURE__ */ new Set(["-m"]);
 var NormalizeUtil = class _NormalizeUtil {
   static commandKey(command) {
     const segments = command.split(/&&|\|\||;|\n/).map((segment) => segment.trim()).filter(Boolean);
@@ -276,7 +277,7 @@ var NormalizeUtil = class _NormalizeUtil {
     const hasSubcommand = PROGRAMS_WITH_SUBCOMMAND.has(program) || program.startsWith("python");
     if (hasSubcommand) {
       const [subcommand, target] = _NormalizeUtil.withoutGlobalOptions(program, tokens.slice(programIndex + 1));
-      if (subcommand && (_NormalizeUtil.isPlainWord(subcommand) || subcommand === "-m")) {
+      if (subcommand && (_NormalizeUtil.isPlainWord(subcommand) || KEPT_OPTION_SUBCOMMANDS.has(subcommand))) {
         keyParts.push(subcommand);
         if (RUNNER_SUBCOMMANDS.has(subcommand) && target && _NormalizeUtil.isPlainWord(target)) {
           keyParts.push(target);
@@ -397,6 +398,9 @@ var NumberUtil = class {
 // src/Shared/Utils/SessionUtil.ts
 var SessionUtil = class _SessionUtil {
   static MAIN_THREAD_ID = "main";
+  // Why: a call's key is a command for these categories and an MCP server for those; shared code reads it by role.
+  static COMMAND_CATEGORIES = /* @__PURE__ */ new Set(["shell"]);
+  static MCP_CATEGORIES = /* @__PURE__ */ new Set(["mcp"]);
   static mainThread() {
     return {
       id: _SessionUtil.MAIN_THREAD_ID,
@@ -866,6 +870,10 @@ var EXAMPLE_EXCERPT_CHARS = 200;
 var MIN_REQUEST_WORDS = 3;
 var MAX_REQUEST_CHARS = 600;
 var FILE_CHANGING_COMMAND = /\b(git (checkout|pull|merge|rebase|stash)|sed -i|prettier|eslint --fix|npm run format)/;
+var COMPACTION_TRIGGER_TO_TITLE = {
+  manual: "Context compacted by hand during long sessions",
+  auto: "Sessions outgrow the context window and auto-compact"
+};
 var changesNothing = () => false;
 var CATEGORY_TO_CHANGES_FILE = {
   edit: (call, read) => call.filePath === read.filePath,
@@ -1080,7 +1088,7 @@ var SignalDetectorService = class _SignalDetectorService {
       const turnsBefore = session.reported.turns.filter(
         (turn) => (turn.endedAtMs ?? 0) <= (compaction.occurredAtMs ?? 0)
       ).length;
-      const title = compaction.trigger === "manual" ? "Context compacted by hand during long sessions" : "Sessions outgrow the context window and auto-compact";
+      const title = COMPACTION_TRIGGER_TO_TITLE[compaction.trigger];
       const group = this.collector.add(`context_compaction:${compaction.trigger}`, "context_compaction", title, {
         session,
         ref: {
@@ -1819,7 +1827,7 @@ var SignalService = class _SignalService {
     return [
       ...call.subagentType ? [`agent:${call.subagentType}`] : [],
       ...call.skill ? [`skill:${call.skill}`] : [],
-      ...call.category === "mcp" ? [call.key] : []
+      ...SessionUtil.MCP_CATEGORIES.has(call.category) ? [call.key] : []
     ];
   }
   // Why: instructions are loaded on every turn, so their size costs every time.
@@ -2008,7 +2016,7 @@ var UsageService = class {
       if (call.skill) {
         this.totalsOf(pieceToTotals, `skill:${call.skill}`).invocations++;
       }
-      if (call.category === "mcp") {
+      if (SessionUtil.MCP_CATEGORIES.has(call.category)) {
         const serverTotals = this.totalsOf(pieceToTotals, call.key);
         serverTotals.invocations++;
         serverTotals.toolCalls++;
@@ -2357,7 +2365,7 @@ var ProcessProfileService = class _ProcessProfileService {
     for (const piece of pieces) {
       totals.pieceToCount.set(piece, (totals.pieceToCount.get(piece) ?? 0) + 1);
     }
-    if (call.category === "shell" && STAGES_WITH_COMMANDS.has(stage)) {
+    if (SessionUtil.COMMAND_CATEGORIES.has(call.category) && STAGES_WITH_COMMANDS.has(stage)) {
       totals.commandToCount.set(call.key, (totals.commandToCount.get(call.key) ?? 0) + 1);
     }
   }
@@ -3630,6 +3638,7 @@ var GitUtil = class {
 
 // src/Providers/ClaudeCode/Services/ClaudeCodeInventoryService.ts
 var PROJECT_SCOPES = /* @__PURE__ */ new Set(["project", "local"]);
+var KINDS_WITH_SKILLS = /* @__PURE__ */ new Set(["agent"]);
 var READ_ONLY_SCOPES = /* @__PURE__ */ new Set(["plugin", "managed"]);
 var DEFAULT_RETENTION_DAYS = 30;
 var MAX_DESCRIPTION_CHARS = 300;
@@ -3717,7 +3726,7 @@ ${content.toString("base64")}`);
       tools: FrontmatterUtil.asList(data.tools ?? data["allowed-tools"]),
       ...latestChange,
       files: extraFiles.length ? extraFiles.map((extraFile) => relative(pieceFolder, extraFile)) : void 0,
-      preloadedSkills: filePiece.kind === "agent" ? FrontmatterUtil.asList(data.skills) : void 0,
+      preloadedSkills: KINDS_WITH_SKILLS.has(filePiece.kind) ? FrontmatterUtil.asList(data.skills) : void 0,
       isEditable: !READ_ONLY_SCOPES.has(filePiece.scope),
       plugin: filePiece.plugin
     });
@@ -4236,6 +4245,11 @@ var VALID_TOOL_NAME = /^[\w.:-]{1,100}$/;
 var MALFORMED_TOOL_NAME = "(malformed tool name)";
 var REJECTED_WITHOUT_FEEDBACK = "rejected without feedback";
 var MAX_UNKNOWN_TYPE_CHARS = 60;
+var DETACHED_BRANCH_NAMES = /* @__PURE__ */ new Set(["HEAD"]);
+var COMPACTION_TRIGGERS = {
+  auto: true,
+  manual: true
+};
 var MAX_UNKNOWN_KEYS = 40;
 var IGNORED_LINE_TYPES = /* @__PURE__ */ new Set([
   "summary",
@@ -4514,7 +4528,7 @@ var ClaudeCodeSessionService = class {
     if (isMainFile) {
       facts.projectDir ??= GuardUtil.asString(record.cwd);
       const gitBranch = GuardUtil.asString(record.gitBranch);
-      if (!facts.gitBranch && gitBranch && gitBranch !== "HEAD") {
+      if (!facts.gitBranch && gitBranch && !DETACHED_BRANCH_NAMES.has(gitBranch)) {
         facts.gitBranch = gitBranch;
       }
     }
@@ -4743,7 +4757,8 @@ var ClaudeCodeSessionService = class {
   }
   handleCompaction(context, line) {
     const metadata = GuardUtil.asRecord(line.record.compactMetadata);
-    const trigger = metadata?.trigger === "manual" ? "manual" : "auto";
+    const rawTrigger = GuardUtil.asString(metadata?.trigger);
+    const trigger = GuardUtil.isKeyOf(COMPACTION_TRIGGERS, rawTrigger) ? rawTrigger : "auto";
     const contextTokens = GuardUtil.asNumber(metadata?.preTokens);
     const tokensText = contextTokens === void 0 ? "" : ` at ~${Math.round(contextTokens / TOKENS_PER_THOUSAND2)}k tokens`;
     context.facts.compactions.push({
@@ -5568,6 +5583,15 @@ var SuggestionService = class _SuggestionService {
     "already_handled"
   ];
   static STATUSES = ["pending", "accepted", "rejected", "applied"];
+  static STATUS_TO_RECORD = {
+    applied: (suggestion, appliedFingerprint) => {
+      suggestion.appliedAt = suggestion.updatedAt;
+      suggestion.appliedFingerprint = appliedFingerprint;
+    },
+    pending: () => void 0,
+    accepted: () => void 0,
+    rejected: () => void 0
+  };
   // Why: occurrences join the identity only when listed, so ids of suggestions without them never change.
   static idOf(suggestion) {
     const sortedSignals = suggestion.signals.toSorted(CollectionUtil.compareCodeUnits).join("|");
@@ -5689,16 +5713,24 @@ var SuggestionService = class _SuggestionService {
     if (note) {
       suggestion.note = note.slice(0, MAX_NOTE_CHARS);
     }
-    if (status === "applied") {
-      suggestion.appliedAt = suggestion.updatedAt;
-      suggestion.appliedFingerprint = appliedFingerprint;
-    }
+    _SuggestionService.STATUS_TO_RECORD[status](suggestion, appliedFingerprint);
     await this.store.saveSuggestions(suggestions);
     return suggestion;
   }
 };
 
 // src/Shared/Commands/SuggestionsCommand.ts
+var noFingerprint = () => Promise.resolve(void 0);
+var STATUS_TO_FINGERPRINT = {
+  applied: async (context) => {
+    const inventory = await context.takeInventory();
+    await context.store.saveInventory(inventory);
+    return inventory.fingerprint;
+  },
+  pending: noFingerprint,
+  accepted: noFingerprint,
+  rejected: noFingerprint
+};
 var SuggestionsCommand = class {
   async list(options) {
     const context = await ContextService.create(options);
@@ -5718,12 +5750,7 @@ var SuggestionsCommand = class {
   }
   async setStatus(options) {
     const context = await ContextService.create(options);
-    let appliedFingerprint;
-    if (options.status === "applied") {
-      const inventory = await context.takeInventory();
-      await context.store.saveInventory(inventory);
-      appliedFingerprint = inventory.fingerprint;
-    }
+    const appliedFingerprint = await STATUS_TO_FINGERPRINT[options.status](context);
     return new SuggestionService(context.store).setStatus(options.id, options.status, options.note, appliedFingerprint);
   }
 };

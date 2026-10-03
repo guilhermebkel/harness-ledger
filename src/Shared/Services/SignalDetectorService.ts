@@ -1,6 +1,7 @@
 import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.ts";
 import type {
   ApiError,
+  CompactionTrigger,
   ContextCompaction,
   SessionFacts,
   ToolCall,
@@ -41,6 +42,11 @@ const MIN_REQUEST_WORDS = 3;
 const MAX_REQUEST_CHARS = 600;
 // Why: after these commands, reading a file again is legitimate.
 const FILE_CHANGING_COMMAND = /\b(git (checkout|pull|merge|rebase|stash)|sed -i|prettier|eslint --fix|npm run format)/;
+
+const COMPACTION_TRIGGER_TO_TITLE: Record<CompactionTrigger, string> = {
+  manual: "Context compacted by hand during long sessions",
+  auto: "Sessions outgrow the context window and auto-compact",
+};
 
 const changesNothing = (): boolean => false;
 const CATEGORY_TO_CHANGES_FILE: Record<ToolCategory, (call: ToolCall, read: ToolCall) => boolean> = {
@@ -296,9 +302,7 @@ export class SignalDetectorService {
       const turnsBefore = session.reported.turns.filter(
         (turn) => (turn.endedAtMs ?? 0) <= (compaction.occurredAtMs ?? 0),
       ).length;
-      const title = compaction.trigger === "manual"
-        ? "Context compacted by hand during long sessions"
-        : "Sessions outgrow the context window and auto-compact";
+      const title = COMPACTION_TRIGGER_TO_TITLE[compaction.trigger];
       const group = this.collector.add(`context_compaction:${compaction.trigger}`, "context_compaction", title, {
         session,
         ref: {

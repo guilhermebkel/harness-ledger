@@ -17,6 +17,8 @@ const MAX_TITLE_CHARS = 200;
 const MAX_CHANGE_CHARS = 2000;
 const MAX_NOTE_CHARS = 500;
 
+type StatusRecorder = (suggestion: Suggestion, appliedFingerprint?: string) => void;
+
 export class SuggestionService {
   static readonly FINDING_CLASSES: FindingClass[] = [
     "rule_ignored",
@@ -28,6 +30,16 @@ export class SuggestionService {
   ];
 
   static readonly STATUSES: SuggestionStatus[] = ["pending", "accepted", "rejected", "applied"];
+
+  private static readonly STATUS_TO_RECORD: Record<SuggestionStatus, StatusRecorder> = {
+    applied: (suggestion, appliedFingerprint) => {
+      suggestion.appliedAt = suggestion.updatedAt;
+      suggestion.appliedFingerprint = appliedFingerprint;
+    },
+    pending: () => undefined,
+    accepted: () => undefined,
+    rejected: () => undefined,
+  };
 
   constructor(private readonly store: StoreService) {}
 
@@ -170,10 +182,7 @@ export class SuggestionService {
     if (note) {
       suggestion.note = note.slice(0, MAX_NOTE_CHARS);
     }
-    if (status === "applied") {
-      suggestion.appliedAt = suggestion.updatedAt;
-      suggestion.appliedFingerprint = appliedFingerprint;
-    }
+    SuggestionService.STATUS_TO_RECORD[status](suggestion, appliedFingerprint);
     await this.store.saveSuggestions(suggestions);
     return suggestion;
   }
