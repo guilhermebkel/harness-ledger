@@ -2,6 +2,8 @@
 
 How code in this repository is written. `pnpm lint` enforces the rules marked **(lint)**; the rest are checked in review. When a rule and readability disagree, raise it in the PR instead of working around the rule.
 
+**A rule that a tool can check is a tool, not a sentence.** When a rule here can be a lint rule, a type or a test, it becomes one (this repo's own rules live in `scripts/eslint-local-rules.mjs`); text is for what no tool can check. A written rule the agent keeps breaking is the sign it should move.
+
 ## Architecture
 
 The layout and its reasons are in ADR 0008.
@@ -64,6 +66,12 @@ The layout and its reasons are in ADR 0008.
 - **Unmapped values stay visible.** When a mapping has no entry for a value (a file extension with no language, a model with no price, a dependency outside the check catalog, an unresolved subagent type), the script never drops the value and never guesses: it returns the raw value, redacted, marked as unmapped (`unpricedModels`, `agent:unknown`), and marks the result built on that mapping as partial, with the reason, the way signals use `isPartial`. A conclusion like "no complexity check" is only stated when nothing unmapped could contradict it. The skill may interpret an unmapped value's meaning (that `.ex` is Elixir, that a package is a linter), searching the web if needed, but never turns it into a number: a missing figure such as a price becomes a proposed entry in `.imh/config.json` with its source, the person confirms it, and the script recomputes (ADR 0002).
 - **No `console` (lint).** Output goes through the CLI's single writer (`process.stdout` / `process.stderr` in `CLIModule`).
 - **Floating promises (lint).** Every promise is awaited or explicitly returned.
+
+## When lint rules collide
+
+- **`as Type` against `!`.** `non-nullable-type-assertion-style` rejects `value as Type` when it only drops `undefined`, and `no-non-null-assertion` rejects `value!`. Restructure instead: find with `.some()` and keep the match, pass the value as a parameter, or narrow with a guard that returns early.
+- **`RegExp.escape` isn't in TypeScript's lib yet.** Use `RegExpUtil.escape` (and `RegExpUtil.wholeTerm` for a whole word).
+- **Visitor keys in local rules are quoted** (`"IfStatement"(node)`, `"Program:exit"()`); unquoted AST names fail `sonarjs/function-name`.
 
 ## Boundaries and security
 

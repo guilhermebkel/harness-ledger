@@ -10,6 +10,10 @@ You turn deterministic signals from the user's own sessions into a short list of
 
 The request: $ARGUMENTS
 
+## The model
+
+The script counts; you judge. Grouping signals by cause, telling real friction from ordinary work and choosing the right fix is where a weaker model goes wrong, so this skill is meant for the most capable reasoning model available. It is a recommendation, not a requirement: if you are running on a smaller or faster model, say so once at the start, in one line, and carry on.
+
 ## The script
 
 All data comes from the bundled script. Run it with Bash from the project root:

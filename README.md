@@ -55,6 +55,12 @@ Requires Node.js 20+ for the local analysis script.
 
 Other agents: see the [Roadmap](#roadmap).
 
+### Recommended model
+
+Run the skill on the most capable reasoning model you have (in Claude Code, pick it with `/model` first). The local script does the reading and the counting, so the model only gets a compact summary; what it adds is judgment: grouping signals by cause, telling real friction from ordinary work, and choosing the fix. That's the part a smaller model gets wrong. It's a recommendation: the skill runs on any model and says so once when it isn't the strongest.
+
+To see what a run cost you, check the skill's own row the next time you analyze: `node dist/imh.mjs analyze --piece skill:improve-my-harness` (the session running an analysis is left out, so earlier runs are what you see).
+
 ## Usage
 
 Run `/improve-my-harness` and pick what you want, or just ask in plain text:
