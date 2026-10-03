@@ -1,7 +1,7 @@
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
-import type { JsonLineHandlers } from "@/Shared/Protocols/UtilProtocol.js";
-import { GuardUtil } from "./GuardUtil.js";
+import type { JsonLineHandlers } from "@/Shared/Protocols/UtilProtocol.ts";
+import { GuardUtil } from "@/Shared/Utils/GuardUtil.ts";
 
 export class JsonlUtil {
   // Why: streams line by line, so transcripts of any size use bounded memory.

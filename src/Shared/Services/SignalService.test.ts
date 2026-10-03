@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { SessionFactsBuilder } from "@/Shared/Utils/SessionFactsFixtureUtil.js";
-import { ConfigService } from "./ConfigService.js";
-import { SignalService } from "./SignalService.js";
+import { SessionFactsBuilder } from "@/Shared/Utils/SessionFactsFixtureUtil.ts";
+import { ConfigService } from "@/Shared/Services/ConfigService.ts";
+import { SignalService } from "@/Shared/Services/SignalService.ts";
 
 const config = ConfigService.DEFAULT_CONFIG;
 const signalService = new SignalService({

@@ -7,32 +7,32 @@ import type {
   ReportedTotals,
   SessionTotals,
   StageProfile,
-} from "@/Shared/Protocols/AnalysisProtocol.js";
-import type { AnalyzeOptions } from "@/Shared/Protocols/CommandProtocol.js";
-import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.js";
-import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.js";
-import type { CountedValue, Signal, SignalCost, SignalType } from "@/Shared/Protocols/SignalProtocol.js";
-import type { Suggestion } from "@/Shared/Protocols/SuggestionProtocol.js";
-import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
-import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.js";
-import { NumberUtil } from "@/Shared/Utils/NumberUtil.js";
-import { RedactUtil } from "@/Shared/Utils/RedactUtil.js";
-import { SessionUtil } from "@/Shared/Utils/SessionUtil.js";
-import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
-import { TokenUsageUtil } from "@/Shared/Utils/TokenUsageUtil.js";
-import { VersionUtil } from "@/Shared/Utils/VersionUtil.js";
-import { AttributionService } from "./AttributionService.js";
-import { CompareService } from "./CompareService.js";
-import type { ContextService } from "./ContextService.js";
-import { CostService } from "./CostService.js";
-import { InventoryService } from "./InventoryService.js";
-import { MentionService } from "./MentionService.js";
-import { ProcessProfileService } from "./ProcessProfileService.js";
-import { SignalService } from "./SignalService.js";
-import type { StoreService } from "./StoreService.js";
-import { UsageService } from "./UsageService.js";
-import { CheckInventoryService } from "./CheckInventoryService.js";
-import { GapService } from "./GapService.js";
+} from "@/Shared/Protocols/AnalysisProtocol.ts";
+import type { AnalyzeOptions } from "@/Shared/Protocols/CommandProtocol.ts";
+import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.ts";
+import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.ts";
+import type { CountedValue, Signal, SignalCost, SignalType } from "@/Shared/Protocols/SignalProtocol.ts";
+import type { Suggestion } from "@/Shared/Protocols/SuggestionProtocol.ts";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
+import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.ts";
+import { NumberUtil } from "@/Shared/Utils/NumberUtil.ts";
+import { RedactUtil } from "@/Shared/Utils/RedactUtil.ts";
+import { SessionUtil } from "@/Shared/Utils/SessionUtil.ts";
+import { TimeUtil } from "@/Shared/Utils/TimeUtil.ts";
+import { TokenUsageUtil } from "@/Shared/Utils/TokenUsageUtil.ts";
+import { VersionUtil } from "@/Shared/Utils/VersionUtil.ts";
+import { AttributionService } from "@/Shared/Services/AttributionService.ts";
+import { CompareService } from "@/Shared/Services/CompareService.ts";
+import type { ContextService } from "@/Shared/Services/ContextService.ts";
+import { CostService } from "@/Shared/Services/CostService.ts";
+import { InventoryService } from "@/Shared/Services/InventoryService.ts";
+import { MentionService } from "@/Shared/Services/MentionService.ts";
+import { ProcessProfileService } from "@/Shared/Services/ProcessProfileService.ts";
+import { SignalService } from "@/Shared/Services/SignalService.ts";
+import type { StoreService } from "@/Shared/Services/StoreService.ts";
+import { UsageService } from "@/Shared/Services/UsageService.ts";
+import { CheckInventoryService } from "@/Shared/Services/CheckInventoryService.ts";
+import { GapService } from "@/Shared/Services/GapService.ts";
 
 const DEFAULT_MAX_SIGNALS = 25;
 const MIN_COMMON_COMMAND_RUNS = 2;

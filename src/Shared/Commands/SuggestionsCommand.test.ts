@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { ClaudeCodeFixtureUtil } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.js";
-import { SuggestionService } from "@/Shared/Services/SuggestionService.js";
-import { AnalyzeCommand } from "./AnalyzeCommand.js";
-import { SuggestionsCommand } from "./SuggestionsCommand.js";
+import { ClaudeCodeFixtureUtil } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.ts";
+import { SuggestionService } from "@/Shared/Services/SuggestionService.ts";
+import { AnalyzeCommand } from "@/Shared/Commands/AnalyzeCommand.ts";
+import { SuggestionsCommand } from "@/Shared/Commands/SuggestionsCommand.ts";
 
 const command = new SuggestionsCommand();
 const NPM_TEST_SIGNAL = "failed_command:npm test";

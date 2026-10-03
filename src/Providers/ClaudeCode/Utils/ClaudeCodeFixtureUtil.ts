@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, beforeAll } from "vitest";
-import { ClaudeCodePathUtil } from "./ClaudeCodePathUtil.js";
+import { ClaudeCodePathUtil } from "@/Providers/ClaudeCode/Utils/ClaudeCodePathUtil.ts";
 
 const TEST_RUNNER_AGENT = "test-runner";
 const TASK_NOTIFICATION = "task-notification";

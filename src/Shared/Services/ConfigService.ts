@@ -1,10 +1,10 @@
 // Why: people edit .imh/config.json by hand, so every field is validated and falls back to its default on its own.
 
-import type { Config, ModelPrice, NumericConfigKey, PriceTable, SignalThresholds } from "@/Shared/Protocols/ConfigProtocol.js";
-import type { UnknownRecord } from "@/Shared/Protocols/UtilProtocol.js";
-import { GuardUtil } from "@/Shared/Utils/GuardUtil.js";
-import { CostService } from "./CostService.js";
-import type { StoreService } from "./StoreService.js";
+import type { Config, ModelPrice, NumericConfigKey, PriceTable, SignalThresholds } from "@/Shared/Protocols/ConfigProtocol.ts";
+import type { UnknownRecord } from "@/Shared/Protocols/UtilProtocol.ts";
+import { GuardUtil } from "@/Shared/Utils/GuardUtil.ts";
+import { CostService } from "@/Shared/Services/CostService.ts";
+import type { StoreService } from "@/Shared/Services/StoreService.ts";
 
 const CONFIG_FILE = "config.json";
 

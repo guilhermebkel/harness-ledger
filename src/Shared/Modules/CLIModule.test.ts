@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CLIModule } from "./CLIModule.js";
+import { CLIModule } from "@/Shared/Modules/CLIModule.ts";
 
 afterEach(() => {
   vi.restoreAllMocks();

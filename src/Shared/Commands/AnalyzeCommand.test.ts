@@ -3,10 +3,10 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ClaudeCodeFixtureUtil, ClaudeCodeTranscriptBuilder, type Fixture } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.js";
-import type { Signal } from "@/Shared/Protocols/SignalProtocol.js";
-import { AnalyzeCommand } from "./AnalyzeCommand.js";
-import { IssueCommand } from "./IssueCommand.js";
+import { ClaudeCodeFixtureUtil, ClaudeCodeTranscriptBuilder, type Fixture } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.ts";
+import type { Signal } from "@/Shared/Protocols/SignalProtocol.ts";
+import { AnalyzeCommand } from "@/Shared/Commands/AnalyzeCommand.ts";
+import { IssueCommand } from "@/Shared/Commands/IssueCommand.ts";
 
 const { FAKE_SECRETS } = ClaudeCodeFixtureUtil;
 const command = new AnalyzeCommand();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { CostBound, Signal, SignalEvidence } from "@/Shared/Protocols/SignalProtocol.js";
-import type { NewSuggestion } from "@/Shared/Protocols/SuggestionProtocol.js";
-import { SuggestionCostService } from "./SuggestionCostService.js";
+import type { CostBound, Signal, SignalEvidence } from "@/Shared/Protocols/SignalProtocol.ts";
+import type { NewSuggestion } from "@/Shared/Protocols/SuggestionProtocol.ts";
+import { SuggestionCostService } from "@/Shared/Services/SuggestionCostService.ts";
 
 const MINUTE_MS = 60_000;
 const CORRECTIONS_ID = "user_correction:main";

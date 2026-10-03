@@ -1,12 +1,12 @@
-import type { PieceUsage, SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
-import type { PriceTable } from "@/Shared/Protocols/ConfigProtocol.js";
-import type { SessionFacts, TokenUsage } from "@/Shared/Protocols/SessionProtocol.js";
-import { NumberUtil } from "@/Shared/Utils/NumberUtil.js";
-import { SessionUtil } from "@/Shared/Utils/SessionUtil.js";
-import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
-import { TokenUsageUtil } from "@/Shared/Utils/TokenUsageUtil.js";
-import { AttributionService } from "./AttributionService.js";
-import { CostService } from "./CostService.js";
+import type { PieceUsage, SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.ts";
+import type { PriceTable } from "@/Shared/Protocols/ConfigProtocol.ts";
+import type { SessionFacts, TokenUsage } from "@/Shared/Protocols/SessionProtocol.ts";
+import { NumberUtil } from "@/Shared/Utils/NumberUtil.ts";
+import { SessionUtil } from "@/Shared/Utils/SessionUtil.ts";
+import { TimeUtil } from "@/Shared/Utils/TimeUtil.ts";
+import { TokenUsageUtil } from "@/Shared/Utils/TokenUsageUtil.ts";
+import { AttributionService } from "@/Shared/Services/AttributionService.ts";
+import { CostService } from "@/Shared/Services/CostService.ts";
 
 const RATE_DIGITS = 3;
 const PER_INVOCATION_USD_DIGITS = 3;

@@ -1,6 +1,6 @@
-import type { PriceTable, SignalThresholds } from "./ConfigProtocol.js";
-import type { EvidenceRef, SessionFacts, TokenUsage, ToolCall } from "./SessionProtocol.js";
-import type { SuggestionStatus } from "./SuggestionProtocol.js";
+import type { PriceTable, SignalThresholds } from "@/Shared/Protocols/ConfigProtocol.ts";
+import type { EvidenceRef, SessionFacts, TokenUsage, ToolCall } from "@/Shared/Protocols/SessionProtocol.ts";
+import type { SuggestionStatus } from "@/Shared/Protocols/SuggestionProtocol.ts";
 
 export type SignalType
   = | "failed_command"

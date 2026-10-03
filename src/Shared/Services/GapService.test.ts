@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { ProjectChecks } from "@/Shared/Protocols/CheckProtocol.js";
-import type { IssueVersions } from "@/Shared/Protocols/GapProtocol.js";
-import { SessionFactsBuilder } from "@/Shared/Utils/SessionFactsFixtureUtil.js";
-import { GapService } from "./GapService.js";
+import type { ProjectChecks } from "@/Shared/Protocols/CheckProtocol.ts";
+import type { IssueVersions } from "@/Shared/Protocols/GapProtocol.ts";
+import { SessionFactsBuilder } from "@/Shared/Utils/SessionFactsFixtureUtil.ts";
+import { GapService } from "@/Shared/Services/GapService.ts";
 
 const VERSIONS: IssueVersions = {
   imh: "0.1.0",

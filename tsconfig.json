@@ -15,6 +15,7 @@
       "node"
     ],
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "paths": {
       "@/*": [
         "./src/*"

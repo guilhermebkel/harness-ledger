@@ -1,9 +1,9 @@
 // Why: subagent steps belong to the subagent; main-thread steps after a skill or slash command, until the next prompt, belong to that skill or command.
 
-import type { AttributedKind, SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
-import type { AssistantMessage, SessionFacts, ToolCall, UserPrompt } from "@/Shared/Protocols/SessionProtocol.js";
-import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
-import { SessionUtil } from "@/Shared/Utils/SessionUtil.js";
+import type { AttributedKind, SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.ts";
+import type { AssistantMessage, SessionFacts, ToolCall, UserPrompt } from "@/Shared/Protocols/SessionProtocol.ts";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
+import { SessionUtil } from "@/Shared/Utils/SessionUtil.ts";
 
 const UNKNOWN_SUBAGENT_TYPE = "subagent";
 

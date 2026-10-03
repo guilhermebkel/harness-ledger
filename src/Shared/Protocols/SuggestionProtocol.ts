@@ -1,4 +1,4 @@
-import type { CostBound, CostFigures } from "./SignalProtocol.js";
+import type { CostBound, CostFigures } from "@/Shared/Protocols/SignalProtocol.ts";
 
 export type FindingClass
   = | "rule_ignored"

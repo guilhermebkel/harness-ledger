@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ProviderModule } from "./ProviderModule.js";
+import { ProviderModule } from "@/Shared/Modules/ProviderModule.ts";
 
 describe("ProviderModule", () => {
   it("creates the default provider", () => {

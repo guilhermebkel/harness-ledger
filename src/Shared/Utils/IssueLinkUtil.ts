@@ -1,6 +1,6 @@
-import type { IssueLink, IssueRequest, IssueVersions } from "@/Shared/Protocols/GapProtocol.js";
-import { HashUtil } from "@/Shared/Utils/HashUtil.js";
-import { RedactUtil } from "@/Shared/Utils/RedactUtil.js";
+import type { IssueLink, IssueRequest, IssueVersions } from "@/Shared/Protocols/GapProtocol.ts";
+import { HashUtil } from "@/Shared/Utils/HashUtil.ts";
+import { RedactUtil } from "@/Shared/Utils/RedactUtil.ts";
 
 const REPOSITORY_URL = "https://github.com/guilhermebkel/improve-my-harness";
 const FINGERPRINT_CHARS = 8;

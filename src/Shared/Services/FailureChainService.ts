@@ -1,10 +1,10 @@
-import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
-import type { AssistantMessage, SessionFacts, ToolCall, ToolResultKind } from "@/Shared/Protocols/SessionProtocol.js";
-import type { FailureChain, FailureChainKind, StepCost } from "@/Shared/Protocols/SignalProtocol.js";
-import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
-import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.js";
-import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
-import { TokenUsageUtil } from "@/Shared/Utils/TokenUsageUtil.js";
+import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.ts";
+import type { AssistantMessage, SessionFacts, ToolCall, ToolResultKind } from "@/Shared/Protocols/SessionProtocol.ts";
+import type { FailureChain, FailureChainKind, StepCost } from "@/Shared/Protocols/SignalProtocol.ts";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
+import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.ts";
+import { TimeUtil } from "@/Shared/Utils/TimeUtil.ts";
+import { TokenUsageUtil } from "@/Shared/Utils/TokenUsageUtil.ts";
 
 // Why: past this many attempts at the same job, the agent is stuck rather than recovering; the chain closes.
 const MAX_CHAIN_ATTEMPTS = 10;

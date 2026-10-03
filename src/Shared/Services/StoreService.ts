@@ -2,10 +2,10 @@
 
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.js";
-import type { FactsCache, SavedInventory } from "@/Shared/Protocols/StoreProtocol.js";
-import type { Suggestion } from "@/Shared/Protocols/SuggestionProtocol.js";
-import { GuardUtil } from "@/Shared/Utils/GuardUtil.js";
+import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.ts";
+import type { FactsCache, SavedInventory } from "@/Shared/Protocols/StoreProtocol.ts";
+import type { Suggestion } from "@/Shared/Protocols/SuggestionProtocol.ts";
+import { GuardUtil } from "@/Shared/Utils/GuardUtil.ts";
 
 const DATA_DIR_NAME = ".imh";
 const JSON_INDENT = 2;

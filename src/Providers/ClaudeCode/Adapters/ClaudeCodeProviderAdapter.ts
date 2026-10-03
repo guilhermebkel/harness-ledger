@@ -1,5 +1,5 @@
-import { BaseProviderAdapter } from "@/Shared/Adapters/BaseProviderAdapter.js";
-import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.js";
+import { BaseProviderAdapter } from "@/Shared/Adapters/BaseProviderAdapter.ts";
+import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.ts";
 import type {
   DiscoverOptions,
   InventoryOptions,
@@ -7,11 +7,11 @@ import type {
   ProviderPaths,
   ProviderType,
   TranscriptFile,
-} from "@/Shared/Protocols/ProviderProtocol.js";
-import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.js";
-import { ClaudeCodeInventoryService } from "@/Providers/ClaudeCode/Services/ClaudeCodeInventoryService.js";
-import { ClaudeCodeSessionService } from "@/Providers/ClaudeCode/Services/ClaudeCodeSessionService.js";
-import { ClaudeCodePathUtil } from "@/Providers/ClaudeCode/Utils/ClaudeCodePathUtil.js";
+} from "@/Shared/Protocols/ProviderProtocol.ts";
+import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.ts";
+import { ClaudeCodeInventoryService } from "@/Providers/ClaudeCode/Services/ClaudeCodeInventoryService.ts";
+import { ClaudeCodeSessionService } from "@/Providers/ClaudeCode/Services/ClaudeCodeSessionService.ts";
+import { ClaudeCodePathUtil } from "@/Providers/ClaudeCode/Utils/ClaudeCodePathUtil.ts";
 
 export class ClaudeCodeProviderAdapter extends BaseProviderAdapter {
   readonly type: ProviderType = "claude-code";

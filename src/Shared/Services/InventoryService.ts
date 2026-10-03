@@ -1,4 +1,4 @@
-import type { CompactPiece, HarnessPiece, Inventory, InventoryChange } from "@/Shared/Protocols/HarnessProtocol.js";
+import type { CompactPiece, HarnessPiece, Inventory, InventoryChange } from "@/Shared/Protocols/HarnessProtocol.ts";
 
 export class InventoryService {
   static compactPiece(piece: HarnessPiece): CompactPiece {

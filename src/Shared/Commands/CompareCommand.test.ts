@@ -1,7 +1,7 @@
 import { rmSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ClaudeCodeFixtureUtil, type Fixture, type TestRunOptions } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.js";
-import { CompareCommand } from "./CompareCommand.js";
+import { ClaudeCodeFixtureUtil, type Fixture, type TestRunOptions } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.ts";
+import { CompareCommand } from "@/Shared/Commands/CompareCommand.ts";
 
 const TEST_RUNNER_PIECE = "agent:test-runner";
 const CHANGE_DAY = "2026-09-08";

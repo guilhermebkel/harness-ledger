@@ -1,15 +1,15 @@
 // Why: exploration (ls, cat, grep) is left out: reading around is not a procedure.
 
-import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
-import type { SessionFacts, ToolCall } from "@/Shared/Protocols/SessionProtocol.js";
-import type { Occurrence, SignalOptions, StepCost } from "@/Shared/Protocols/SignalProtocol.js";
-import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
-import { HashUtil } from "@/Shared/Utils/HashUtil.js";
-import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.js";
-import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
-import { TokenUsageUtil } from "@/Shared/Utils/TokenUsageUtil.js";
-import { AttributionService } from "./AttributionService.js";
-import type { OccurrenceCollectorService } from "./OccurrenceCollectorService.js";
+import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.ts";
+import type { SessionFacts, ToolCall } from "@/Shared/Protocols/SessionProtocol.ts";
+import type { Occurrence, SignalOptions, StepCost } from "@/Shared/Protocols/SignalProtocol.ts";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
+import { HashUtil } from "@/Shared/Utils/HashUtil.ts";
+import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.ts";
+import { TimeUtil } from "@/Shared/Utils/TimeUtil.ts";
+import { TokenUsageUtil } from "@/Shared/Utils/TokenUsageUtil.ts";
+import { AttributionService } from "@/Shared/Services/AttributionService.ts";
+import type { OccurrenceCollectorService } from "@/Shared/Services/OccurrenceCollectorService.ts";
 
 const MAX_WORKFLOW_STEPS = 5;
 const WORKFLOW_HASH_CHARS = 8;

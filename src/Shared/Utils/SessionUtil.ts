@@ -1,4 +1,4 @@
-import type { ThreadRef } from "@/Shared/Protocols/SessionProtocol.js";
+import type { ThreadRef } from "@/Shared/Protocols/SessionProtocol.ts";
 
 export class SessionUtil {
   static readonly MAIN_THREAD_ID = "main";

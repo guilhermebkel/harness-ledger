@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.js";
-import { SessionFactsBuilder } from "@/Shared/Utils/SessionFactsFixtureUtil.js";
-import { AttributionService } from "./AttributionService.js";
-import { FailureChainService } from "./FailureChainService.js";
+import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.ts";
+import { SessionFactsBuilder } from "@/Shared/Utils/SessionFactsFixtureUtil.ts";
+import { AttributionService } from "@/Shared/Services/AttributionService.ts";
+import { FailureChainService } from "@/Shared/Services/FailureChainService.ts";
 
 const IDLE_MS = 5 * 60_000;
 const MESSAGE_TOKENS = 1100;

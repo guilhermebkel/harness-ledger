@@ -1,5 +1,5 @@
-import type { Inventory } from "./HarnessProtocol.js";
-import type { SessionFacts } from "./SessionProtocol.js";
+import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.ts";
+import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.ts";
 
 export interface CachedFacts {
   signature: string;

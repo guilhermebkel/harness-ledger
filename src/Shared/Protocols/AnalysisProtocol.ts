@@ -1,8 +1,8 @@
-import type { Gap, IssueVersions } from "./GapProtocol.js";
-import type { CompactPiece, InventoryChange } from "./HarnessProtocol.js";
-import type { AssistantMessage, SessionFacts, UserPrompt } from "./SessionProtocol.js";
-import type { CountedValue, Signal } from "./SignalProtocol.js";
-import type { ProjectChecks } from "./CheckProtocol.js";
+import type { Gap, IssueVersions } from "@/Shared/Protocols/GapProtocol.ts";
+import type { CompactPiece, InventoryChange } from "@/Shared/Protocols/HarnessProtocol.ts";
+import type { AssistantMessage, SessionFacts, UserPrompt } from "@/Shared/Protocols/SessionProtocol.ts";
+import type { CountedValue, Signal } from "@/Shared/Protocols/SignalProtocol.ts";
+import type { ProjectChecks } from "@/Shared/Protocols/CheckProtocol.ts";
 
 export interface SessionIndex {
   // Why: sorted by time; cost estimates rely on it.

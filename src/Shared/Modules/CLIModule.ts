@@ -2,19 +2,19 @@
 
 import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
-import { AnalyzeCommand } from "@/Shared/Commands/AnalyzeCommand.js";
-import { CompareCommand } from "@/Shared/Commands/CompareCommand.js";
-import { EvidenceCommand } from "@/Shared/Commands/EvidenceCommand.js";
-import { InventoryCommand } from "@/Shared/Commands/InventoryCommand.js";
-import { IssueCommand } from "@/Shared/Commands/IssueCommand.js";
-import { StatusCommand } from "@/Shared/Commands/StatusCommand.js";
-import { SuggestionsCommand } from "@/Shared/Commands/SuggestionsCommand.js";
-import type { CommonOptions } from "@/Shared/Protocols/CommandProtocol.js";
-import type { ProviderType } from "@/Shared/Protocols/ProviderProtocol.js";
-import { SuggestionService } from "@/Shared/Services/SuggestionService.js";
-import { GuardUtil } from "@/Shared/Utils/GuardUtil.js";
-import { VersionUtil } from "@/Shared/Utils/VersionUtil.js";
-import { ProviderModule } from "./ProviderModule.js";
+import { AnalyzeCommand } from "@/Shared/Commands/AnalyzeCommand.ts";
+import { CompareCommand } from "@/Shared/Commands/CompareCommand.ts";
+import { EvidenceCommand } from "@/Shared/Commands/EvidenceCommand.ts";
+import { InventoryCommand } from "@/Shared/Commands/InventoryCommand.ts";
+import { IssueCommand } from "@/Shared/Commands/IssueCommand.ts";
+import { StatusCommand } from "@/Shared/Commands/StatusCommand.ts";
+import { SuggestionsCommand } from "@/Shared/Commands/SuggestionsCommand.ts";
+import type { CommonOptions } from "@/Shared/Protocols/CommandProtocol.ts";
+import type { ProviderType } from "@/Shared/Protocols/ProviderProtocol.ts";
+import { SuggestionService } from "@/Shared/Services/SuggestionService.ts";
+import { GuardUtil } from "@/Shared/Utils/GuardUtil.ts";
+import { VersionUtil } from "@/Shared/Utils/VersionUtil.ts";
+import { ProviderModule } from "@/Shared/Modules/ProviderModule.ts";
 
 const MIN_NODE_MAJOR = 20;
 const JSON_INDENT = 2;

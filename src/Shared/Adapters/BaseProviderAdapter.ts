@@ -1,4 +1,4 @@
-import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.js";
+import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.ts";
 import type {
   DiscoverOptions,
   InventoryOptions,
@@ -6,8 +6,8 @@ import type {
   ProviderPaths,
   ProviderType,
   TranscriptFile,
-} from "@/Shared/Protocols/ProviderProtocol.js";
-import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.js";
+} from "@/Shared/Protocols/ProviderProtocol.ts";
+import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.ts";
 
 // Why: each provider reads its own formats and returns the shared model; nothing outside its folder knows those formats (ADR 0008).
 export abstract class BaseProviderAdapter {

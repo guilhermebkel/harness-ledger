@@ -1,7 +1,7 @@
-import type { CommonOptions, StatusResult } from "@/Shared/Protocols/CommandProtocol.js";
-import { ContextService } from "@/Shared/Services/ContextService.js";
-import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
-import { VersionUtil } from "@/Shared/Utils/VersionUtil.js";
+import type { CommonOptions, StatusResult } from "@/Shared/Protocols/CommandProtocol.ts";
+import { ContextService } from "@/Shared/Services/ContextService.ts";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
+import { VersionUtil } from "@/Shared/Utils/VersionUtil.ts";
 
 export class StatusCommand {
   async run(options: CommonOptions): Promise<StatusResult> {

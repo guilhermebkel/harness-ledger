@@ -1,4 +1,4 @@
-import { RedactUtil } from "./RedactUtil.js";
+import { RedactUtil } from "@/Shared/Utils/RedactUtil.ts";
 
 // Why: a workflow is made of the other commands.
 const EXPLORATION_PROGRAMS = new Set([

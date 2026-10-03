@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FrontmatterUtil } from "./FrontmatterUtil.js";
+import { FrontmatterUtil } from "@/Shared/Utils/FrontmatterUtil.ts";
 
 describe("parse", () => {
   it("reads scalars, comma lists and folded text", () => {

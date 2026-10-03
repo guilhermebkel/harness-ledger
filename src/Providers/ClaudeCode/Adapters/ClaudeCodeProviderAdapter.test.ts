@@ -1,10 +1,10 @@
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { SessionFacts, ToolCall } from "@/Shared/Protocols/SessionProtocol.js";
-import { ClaudeCodeFixtureUtil, type Fixture } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.js";
-import { ClaudeCodeProviderAdapter } from "./ClaudeCodeProviderAdapter.js";
-import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
+import type { SessionFacts, ToolCall } from "@/Shared/Protocols/SessionProtocol.ts";
+import { ClaudeCodeFixtureUtil, type Fixture } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.ts";
+import { ClaudeCodeProviderAdapter } from "@/Providers/ClaudeCode/Adapters/ClaudeCodeProviderAdapter.ts";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
 
 const CHANGELOG_SKILL = "skill:changelog";
 

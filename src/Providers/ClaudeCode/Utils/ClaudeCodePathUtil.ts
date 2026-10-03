@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { EnvUtil } from "@/Shared/Utils/EnvUtil.js";
+import { EnvUtil } from "@/Shared/Utils/EnvUtil.ts";
 
 export class ClaudeCodePathUtil {
   // Why: `IMH_CLAUDE_HOME` exists so tests can point at a fixture.

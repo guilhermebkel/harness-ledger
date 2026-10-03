@@ -2,13 +2,13 @@ import type {
   AddSuggestionsOptions,
   ListSuggestionsOptions,
   SetSuggestionStatusOptions,
-} from "@/Shared/Protocols/CommandProtocol.js";
-import type { AddSuggestionsResult, Suggestion } from "@/Shared/Protocols/SuggestionProtocol.js";
-import type { Analysis } from "@/Shared/Protocols/AnalysisProtocol.js";
-import { AnalysisService } from "@/Shared/Services/AnalysisService.js";
-import { ContextService } from "@/Shared/Services/ContextService.js";
-import { SuggestionCostService } from "@/Shared/Services/SuggestionCostService.js";
-import { SuggestionService } from "@/Shared/Services/SuggestionService.js";
+} from "@/Shared/Protocols/CommandProtocol.ts";
+import type { AddSuggestionsResult, Suggestion } from "@/Shared/Protocols/SuggestionProtocol.ts";
+import type { Analysis } from "@/Shared/Protocols/AnalysisProtocol.ts";
+import { AnalysisService } from "@/Shared/Services/AnalysisService.ts";
+import { ContextService } from "@/Shared/Services/ContextService.ts";
+import { SuggestionCostService } from "@/Shared/Services/SuggestionCostService.ts";
+import { SuggestionService } from "@/Shared/Services/SuggestionService.ts";
 
 export class SuggestionsCommand {
   async list(options: ListSuggestionsOptions): Promise<Suggestion[]> {

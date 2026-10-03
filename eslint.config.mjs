@@ -8,6 +8,10 @@ import tseslint from "typescript-eslint";
 import { localRules } from "./scripts/eslint-local-rules.mjs";
 
 const NO_PARENT_IMPORTS = { group: ["../*", "../**"], message: "Import from \"@/...\" instead of a relative parent path." };
+// Why: one import style in src/, so every importer of a file is found by searching its "@/" path.
+const NO_SAME_FOLDER_IMPORTS = { group: ["./*", "./**"], message: "Import from \"@/...\" even within the same folder." };
+const NO_JS_SOURCE_IMPORTS = { regex: "^@/.*\\.js$", message: "Import the source file itself: \"@/....ts\" (allowImportingTsExtensions)." };
+const SOURCE_IMPORTS = [NO_PARENT_IMPORTS, NO_SAME_FOLDER_IMPORTS, NO_JS_SOURCE_IMPORTS];
 const NO_PROVIDER_IMPORTS = {
   group: ["@/Providers/**", "**/Providers/**"],
   message: "Shared code must not import a provider. Go through ProviderModule (ADR 0008).",
@@ -27,8 +31,8 @@ const LAYER_TO_FORBIDDEN_LAYERS = {
   Commands: ["Modules"],
 };
 const SCOPES = [
-  { dir: "src/Shared", patterns: [NO_PARENT_IMPORTS, NO_PROVIDER_IMPORTS] },
-  { dir: "src/Providers/ClaudeCode", patterns: [NO_PARENT_IMPORTS, NO_OTHER_PROVIDER_IMPORTS] },
+  { dir: "src/Shared", patterns: [...SOURCE_IMPORTS, NO_PROVIDER_IMPORTS] },
+  { dir: "src/Providers/ClaudeCode", patterns: [...SOURCE_IMPORTS, NO_OTHER_PROVIDER_IMPORTS] },
 ];
 // Why: ContextService creates the provider for every command, so it reaches ProviderModule (ADR 0008).
 const LAYER_EXCEPTIONS = { "src/Shared/Services/ContextService.ts": ["Commands"] };
@@ -51,7 +55,7 @@ const layerExceptionConfigs = Object.entries(LAYER_EXCEPTIONS).map(([file, forbi
   files: [file],
   rules: {
     "no-restricted-imports": ["error", {
-      patterns: [NO_PARENT_IMPORTS, NO_PROVIDER_IMPORTS, layerPattern("Services", forbiddenLayers)],
+      patterns: [...SOURCE_IMPORTS, NO_PROVIDER_IMPORTS, layerPattern("Services", forbiddenLayers)],
     }],
   },
 }));
@@ -179,6 +183,11 @@ export default tseslint.config(
     },
   },
   {
+    // Why: these may import a provider (tests through its fixture, ProviderModule to create it), so only the style applies.
+    files: ["src/*.ts", "src/Shared/**/*.test.ts", "src/Shared/Modules/ProviderModule.ts"],
+    rules: { "no-restricted-imports": ["error", { patterns: SOURCE_IMPORTS }] },
+  },
+  {
     files: ["src/Shared/Utils/EnvUtil.ts"],
     rules: { "no-restricted-properties": "off" },
   },
@@ -187,13 +196,13 @@ export default tseslint.config(
     files: ["src/Shared/**/*.ts"],
     ignores: ["src/Shared/Modules/ProviderModule.ts", "src/Shared/**/*.test.ts"],
     rules: {
-      "no-restricted-imports": ["error", { patterns: [NO_PARENT_IMPORTS, NO_PROVIDER_IMPORTS] }],
+      "no-restricted-imports": ["error", { patterns: [...SOURCE_IMPORTS, NO_PROVIDER_IMPORTS] }],
     },
   },
   {
     files: ["src/Providers/ClaudeCode/**/*.ts"],
     rules: {
-      "no-restricted-imports": ["error", { patterns: [NO_PARENT_IMPORTS, NO_OTHER_PROVIDER_IMPORTS] }],
+      "no-restricted-imports": ["error", { patterns: [...SOURCE_IMPORTS, NO_OTHER_PROVIDER_IMPORTS] }],
     },
   },
   ...layerConfigs,

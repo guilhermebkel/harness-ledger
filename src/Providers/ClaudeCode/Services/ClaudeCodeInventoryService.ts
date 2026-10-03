@@ -2,22 +2,22 @@
 
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, join, relative } from "node:path";
-import type { HarnessPiece, Inventory, PieceKind, PieceScope } from "@/Shared/Protocols/HarnessProtocol.js";
-import type { InventoryOptions } from "@/Shared/Protocols/ProviderProtocol.js";
-import type { GitChangeDates, UnknownRecord } from "@/Shared/Protocols/UtilProtocol.js";
-import { FrontmatterUtil } from "@/Shared/Utils/FrontmatterUtil.js";
-import { GitUtil } from "@/Shared/Utils/GitUtil.js";
-import { GuardUtil } from "@/Shared/Utils/GuardUtil.js";
-import { HashUtil } from "@/Shared/Utils/HashUtil.js";
-import { NumberUtil } from "@/Shared/Utils/NumberUtil.js";
-import { PathUtil } from "@/Shared/Utils/PathUtil.js";
+import type { HarnessPiece, Inventory, PieceKind, PieceScope } from "@/Shared/Protocols/HarnessProtocol.ts";
+import type { InventoryOptions } from "@/Shared/Protocols/ProviderProtocol.ts";
+import type { GitChangeDates, UnknownRecord } from "@/Shared/Protocols/UtilProtocol.ts";
+import { FrontmatterUtil } from "@/Shared/Utils/FrontmatterUtil.ts";
+import { GitUtil } from "@/Shared/Utils/GitUtil.ts";
+import { GuardUtil } from "@/Shared/Utils/GuardUtil.ts";
+import { HashUtil } from "@/Shared/Utils/HashUtil.ts";
+import { NumberUtil } from "@/Shared/Utils/NumberUtil.ts";
+import { PathUtil } from "@/Shared/Utils/PathUtil.ts";
 import type {
   ComponentOptions,
   FileChange,
   FilePiece,
   SettingsFile,
   SettingsSummary,
-} from "@/Providers/ClaudeCode/Protocols/ClaudeCodeProtocol.js";
+} from "@/Providers/ClaudeCode/Protocols/ClaudeCodeProtocol.ts";
 
 const PROJECT_SCOPES = new Set<PieceScope>(["project", "local"]);
 // Why: plugin and managed pieces are rewritten by their owner on update, so a suggestion can't edit them.

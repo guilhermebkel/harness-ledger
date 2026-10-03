@@ -3,7 +3,7 @@ import type {
   Occurrence,
   OccurrenceGroup,
   SignalType,
-} from "@/Shared/Protocols/SignalProtocol.js";
+} from "@/Shared/Protocols/SignalProtocol.ts";
 
 export class OccurrenceCollectorService {
   private readonly idToGroup = new Map<string, OccurrenceGroup>();

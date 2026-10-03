@@ -6,11 +6,11 @@ import type {
   Suggestion,
   SuggestionCost,
   SuggestionStatus,
-} from "@/Shared/Protocols/SuggestionProtocol.js";
-import { GuardUtil } from "@/Shared/Utils/GuardUtil.js";
-import { HashUtil } from "@/Shared/Utils/HashUtil.js";
-import type { StoreService } from "./StoreService.js";
-import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
+} from "@/Shared/Protocols/SuggestionProtocol.ts";
+import { GuardUtil } from "@/Shared/Utils/GuardUtil.ts";
+import { HashUtil } from "@/Shared/Utils/HashUtil.ts";
+import type { StoreService } from "@/Shared/Services/StoreService.ts";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
 
 const SUGGESTION_ID_HASH_CHARS = 8;
 const MAX_TITLE_CHARS = 200;

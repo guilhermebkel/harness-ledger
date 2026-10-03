@@ -1,9 +1,9 @@
-import type { ProcessStage, SessionIndex, StageProfile } from "@/Shared/Protocols/AnalysisProtocol.js";
-import type { SessionFacts, ToolCall, ToolCategory } from "@/Shared/Protocols/SessionProtocol.js";
-import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
-import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.js";
-import { NumberUtil } from "@/Shared/Utils/NumberUtil.js";
-import { AttributionService } from "./AttributionService.js";
+import type { ProcessStage, SessionIndex, StageProfile } from "@/Shared/Protocols/AnalysisProtocol.ts";
+import type { SessionFacts, ToolCall, ToolCategory } from "@/Shared/Protocols/SessionProtocol.ts";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
+import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.ts";
+import { NumberUtil } from "@/Shared/Utils/NumberUtil.ts";
+import { AttributionService } from "@/Shared/Services/AttributionService.ts";
 
 const MAX_STAGE_COMMANDS = 5;
 const MAX_STAGE_PIECES = 5;

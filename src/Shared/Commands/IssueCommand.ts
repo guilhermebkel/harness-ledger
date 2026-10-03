@@ -1,9 +1,9 @@
-import type { IssueOptions } from "@/Shared/Protocols/CommandProtocol.js";
-import type { IssueLink } from "@/Shared/Protocols/GapProtocol.js";
-import { AnalysisService } from "@/Shared/Services/AnalysisService.js";
-import { ContextService } from "@/Shared/Services/ContextService.js";
-import { IssueLinkUtil } from "@/Shared/Utils/IssueLinkUtil.js";
-import { RedactUtil } from "@/Shared/Utils/RedactUtil.js";
+import type { IssueOptions } from "@/Shared/Protocols/CommandProtocol.ts";
+import type { IssueLink } from "@/Shared/Protocols/GapProtocol.ts";
+import { AnalysisService } from "@/Shared/Services/AnalysisService.ts";
+import { ContextService } from "@/Shared/Services/ContextService.ts";
+import { IssueLinkUtil } from "@/Shared/Utils/IssueLinkUtil.ts";
+import { RedactUtil } from "@/Shared/Utils/RedactUtil.ts";
 
 const MAX_SIGNAL_ID_CHARS = 120;
 

@@ -1,7 +1,7 @@
 // Why: everything leaves the parser redacted (ADR 0007): reports, cached facts and stdout.
 
 import { homedir } from "node:os";
-import { RegExpUtil } from "./RegExpUtil.js";
+import { RegExpUtil } from "@/Shared/Utils/RegExpUtil.ts";
 
 const MASK = "[REDACTED]";
 const DEFAULT_EXCERPT_CHARS = 200;

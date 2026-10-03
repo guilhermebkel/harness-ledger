@@ -4,12 +4,12 @@ import type {
   OccurrenceCost,
   Signal,
   SignalEvidence,
-} from "@/Shared/Protocols/SignalProtocol.js";
-import type { NewSuggestion, OccurrenceRef, SuggestionCost } from "@/Shared/Protocols/SuggestionProtocol.js";
-import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
-import { NumberUtil } from "@/Shared/Utils/NumberUtil.js";
-import { RedactUtil } from "@/Shared/Utils/RedactUtil.js";
-import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
+} from "@/Shared/Protocols/SignalProtocol.ts";
+import type { NewSuggestion, OccurrenceRef, SuggestionCost } from "@/Shared/Protocols/SuggestionProtocol.ts";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
+import { NumberUtil } from "@/Shared/Utils/NumberUtil.ts";
+import { RedactUtil } from "@/Shared/Utils/RedactUtil.ts";
+import { TimeUtil } from "@/Shared/Utils/TimeUtil.ts";
 
 const MAX_ID_CHARS = 120;
 

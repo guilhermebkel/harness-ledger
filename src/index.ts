@@ -1,4 +1,4 @@
-import { CLIModule } from "./Shared/Modules/CLIModule.js";
+import { CLIModule } from "@/Shared/Modules/CLIModule.ts";
 
 const FIRST_ARGUMENT_INDEX = 2;
 

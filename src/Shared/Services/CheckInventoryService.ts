@@ -12,15 +12,15 @@ import type {
   MissingCheck,
   ProjectCheckTool,
   ProjectChecks,
-} from "@/Shared/Protocols/CheckProtocol.js";
-import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.js";
-import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.js";
-import type { UnknownRecord } from "@/Shared/Protocols/UtilProtocol.js";
-import { CheckCatalogUtil } from "@/Shared/Utils/CheckCatalogUtil.js";
-import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
-import { GuardUtil } from "@/Shared/Utils/GuardUtil.js";
-import { RedactUtil } from "@/Shared/Utils/RedactUtil.js";
-import { RegExpUtil } from "@/Shared/Utils/RegExpUtil.js";
+} from "@/Shared/Protocols/CheckProtocol.ts";
+import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.ts";
+import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.ts";
+import type { UnknownRecord } from "@/Shared/Protocols/UtilProtocol.ts";
+import { CheckCatalogUtil } from "@/Shared/Utils/CheckCatalogUtil.ts";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
+import { GuardUtil } from "@/Shared/Utils/GuardUtil.ts";
+import { RedactUtil } from "@/Shared/Utils/RedactUtil.ts";
+import { RegExpUtil } from "@/Shared/Utils/RegExpUtil.ts";
 
 const ESLINT_CONFIG_FILES = [
   "eslint.config.js",

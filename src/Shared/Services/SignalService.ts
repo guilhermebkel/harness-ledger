@@ -1,7 +1,7 @@
-import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
-import type { SignalThresholds } from "@/Shared/Protocols/ConfigProtocol.js";
-import type { HarnessPiece, Inventory, PieceKind } from "@/Shared/Protocols/HarnessProtocol.js";
-import type { AssistantMessage, SessionFacts, TokenUsage, ToolCall } from "@/Shared/Protocols/SessionProtocol.js";
+import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.ts";
+import type { SignalThresholds } from "@/Shared/Protocols/ConfigProtocol.ts";
+import type { HarnessPiece, Inventory, PieceKind } from "@/Shared/Protocols/HarnessProtocol.ts";
+import type { AssistantMessage, SessionFacts, TokenUsage, ToolCall } from "@/Shared/Protocols/SessionProtocol.ts";
 import type {
   CostFigures,
   CountedDetail,
@@ -16,18 +16,18 @@ import type {
   SignalEvidence,
   SignalOptions,
   SignalType,
-} from "@/Shared/Protocols/SignalProtocol.js";
-import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
-import { NumberUtil } from "@/Shared/Utils/NumberUtil.js";
-import { SessionUtil } from "@/Shared/Utils/SessionUtil.js";
-import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
-import { TokenUsageUtil } from "@/Shared/Utils/TokenUsageUtil.js";
-import { AttributionService } from "./AttributionService.js";
-import { CostService } from "./CostService.js";
-import { OccurrenceCollectorService } from "./OccurrenceCollectorService.js";
-import { SignalDetectorService } from "./SignalDetectorService.js";
-import { WorkflowDetectorService } from "./WorkflowDetectorService.js";
-import { ContextLoadDetectorService } from "./ContextLoadDetectorService.js";
+} from "@/Shared/Protocols/SignalProtocol.ts";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
+import { NumberUtil } from "@/Shared/Utils/NumberUtil.ts";
+import { SessionUtil } from "@/Shared/Utils/SessionUtil.ts";
+import { TimeUtil } from "@/Shared/Utils/TimeUtil.ts";
+import { TokenUsageUtil } from "@/Shared/Utils/TokenUsageUtil.ts";
+import { AttributionService } from "@/Shared/Services/AttributionService.ts";
+import { CostService } from "@/Shared/Services/CostService.ts";
+import { OccurrenceCollectorService } from "@/Shared/Services/OccurrenceCollectorService.ts";
+import { SignalDetectorService } from "@/Shared/Services/SignalDetectorService.ts";
+import { WorkflowDetectorService } from "@/Shared/Services/WorkflowDetectorService.ts";
+import { ContextLoadDetectorService } from "@/Shared/Services/ContextLoadDetectorService.ts";
 
 const MAX_COUNTED_VALUES = 5;
 const OCCURRENCE_USD_DIGITS = 6;

@@ -1,9 +1,9 @@
-import type { AvailableHistory } from "./AnalysisProtocol.js";
-import type { Config } from "./ConfigProtocol.js";
-import type { CompactPiece, InventoryChange, Retention } from "./HarnessProtocol.js";
-import type { ProviderType } from "./ProviderProtocol.js";
-import type { Signal } from "./SignalProtocol.js";
-import type { SuggestionStatus } from "./SuggestionProtocol.js";
+import type { AvailableHistory } from "@/Shared/Protocols/AnalysisProtocol.ts";
+import type { Config } from "@/Shared/Protocols/ConfigProtocol.ts";
+import type { CompactPiece, InventoryChange, Retention } from "@/Shared/Protocols/HarnessProtocol.ts";
+import type { ProviderType } from "@/Shared/Protocols/ProviderProtocol.ts";
+import type { Signal } from "@/Shared/Protocols/SignalProtocol.ts";
+import type { SuggestionStatus } from "@/Shared/Protocols/SuggestionProtocol.ts";
 
 export interface CommonOptions {
   projectDir?: string;

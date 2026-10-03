@@ -1,13 +1,13 @@
 // Why: high token use alone is not a finding (big tasks are big); the same material loaded again and again, or one huge output, is.
 
-import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
-import type { SessionFacts, ToolCall, ToolCategory } from "@/Shared/Protocols/SessionProtocol.js";
-import type { SignalOptions } from "@/Shared/Protocols/SignalProtocol.js";
-import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.js";
-import { NumberUtil } from "@/Shared/Utils/NumberUtil.js";
-import { TokenUsageUtil } from "@/Shared/Utils/TokenUsageUtil.js";
-import { AttributionService } from "./AttributionService.js";
-import type { OccurrenceCollectorService } from "./OccurrenceCollectorService.js";
+import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.ts";
+import type { SessionFacts, ToolCall, ToolCategory } from "@/Shared/Protocols/SessionProtocol.ts";
+import type { SignalOptions } from "@/Shared/Protocols/SignalProtocol.ts";
+import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.ts";
+import { NumberUtil } from "@/Shared/Utils/NumberUtil.ts";
+import { TokenUsageUtil } from "@/Shared/Utils/TokenUsageUtil.ts";
+import { AttributionService } from "@/Shared/Services/AttributionService.ts";
+import type { OccurrenceCollectorService } from "@/Shared/Services/OccurrenceCollectorService.ts";
 
 const keyOf = (call: ToolCall): string => call.key;
 const CATEGORY_TO_SOURCE: Record<ToolCategory, (call: ToolCall) => string> = {

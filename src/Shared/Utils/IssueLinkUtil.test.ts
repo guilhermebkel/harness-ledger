@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { IssueLinkUtil } from "./IssueLinkUtil.js";
+import { IssueLinkUtil } from "@/Shared/Utils/IssueLinkUtil.ts";
 
 describe("IssueLinkUtil", () => {
   it("cuts the longest field to fit the link and keeps the short ones whole", () => {

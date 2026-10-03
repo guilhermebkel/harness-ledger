@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ClaudeCodeTranscriptUtil } from "./ClaudeCodeTranscriptUtil.js";
+import { ClaudeCodeTranscriptUtil } from "@/Providers/ClaudeCode/Utils/ClaudeCodeTranscriptUtil.ts";
 
 describe("cleanPrompt", () => {
   it("strips system reminders and reads slash commands", () => {

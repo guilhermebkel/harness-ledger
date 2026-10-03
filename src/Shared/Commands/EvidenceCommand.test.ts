@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { ClaudeCodeFixtureUtil, ClaudeCodeTranscriptBuilder } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.js";
-import { AnalyzeCommand } from "./AnalyzeCommand.js";
-import { EvidenceCommand } from "./EvidenceCommand.js";
+import { ClaudeCodeFixtureUtil, ClaudeCodeTranscriptBuilder } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.ts";
+import { AnalyzeCommand } from "@/Shared/Commands/AnalyzeCommand.ts";
+import { EvidenceCommand } from "@/Shared/Commands/EvidenceCommand.ts";
 
 const MAKE_FAILURE_SIGNAL = "failed_command:make";
 

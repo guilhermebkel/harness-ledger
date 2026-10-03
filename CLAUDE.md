@@ -47,7 +47,7 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 - Never compare the same expression with fixed strings twice in a function: dispatch through a `Record<Key, Handler>` (or a `Set` for shared answers) so TypeScript ties the rule to the union (enforced by lint, `local/literal-dispatch`).
 - Layers import only the ones below them: Protocols < Utils < Services/Adapters < Commands < Modules (enforced by lint; `docs/code-standards.md`).
 - Put each test next to the file it tests, named `<File>.test.ts`, and follow `docs/test-standards.md`: expected values written by hand, exact assertions, no logic in tests, doubles only at the process's edges (lint enforces part of it).
-- Import across folders with the `@/` alias (`@/Shared/Utils/TimeUtil.js`), never `../`; same-folder imports use `./` (enforced by lint). The alias is defined in `tsconfig.json` (`paths`) and mirrored in `vitest.config.mjs`.
+- Import with the `@/` alias and the `.ts` file name (`@/Shared/Utils/TimeUtil.ts`), in the same folder too; never `../`, `./` or `.js` (enforced by lint). The alias is defined in `tsconfig.json` (`paths`) and mirrored in `vitest.config.mjs`.
 - Rebuild and commit `dist/` in the same commit as any change to `src/`.
 - Use pnpm, never npm: commit `pnpm-lock.yaml`, never `package-lock.json` (ADR 0004).
 - Runtime code uses only Node built-ins (Node 20+). No runtime dependencies (ADR 0004).

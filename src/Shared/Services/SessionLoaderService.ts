@@ -1,12 +1,12 @@
 import { cpus } from "node:os";
-import type { BaseProviderAdapter } from "@/Shared/Adapters/BaseProviderAdapter.js";
-import type { LoadOptions, LoadResult } from "@/Shared/Protocols/AnalysisProtocol.js";
-import type { TranscriptFile } from "@/Shared/Protocols/ProviderProtocol.js";
-import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.js";
-import type { FactsCache } from "@/Shared/Protocols/StoreProtocol.js";
-import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
-import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
-import { StoreService } from "./StoreService.js";
+import type { BaseProviderAdapter } from "@/Shared/Adapters/BaseProviderAdapter.ts";
+import type { LoadOptions, LoadResult } from "@/Shared/Protocols/AnalysisProtocol.ts";
+import type { TranscriptFile } from "@/Shared/Protocols/ProviderProtocol.ts";
+import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.ts";
+import type { FactsCache } from "@/Shared/Protocols/StoreProtocol.ts";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
+import { TimeUtil } from "@/Shared/Utils/TimeUtil.ts";
+import { StoreService } from "@/Shared/Services/StoreService.ts";
 
 const MIN_PARSE_CONCURRENCY = 2;
 const MAX_PARSE_CONCURRENCY = 8;

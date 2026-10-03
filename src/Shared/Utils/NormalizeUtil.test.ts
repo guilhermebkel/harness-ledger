@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NormalizeUtil } from "./NormalizeUtil.js";
+import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.ts";
 
 describe("commandKey", () => {
   it.each([

@@ -6,16 +6,16 @@ import type {
   CompareVerdict,
   MetricMove,
   SideMetrics,
-} from "@/Shared/Protocols/AnalysisProtocol.js";
-import type { Config } from "@/Shared/Protocols/ConfigProtocol.js";
-import type { PieceKind } from "@/Shared/Protocols/HarnessProtocol.js";
-import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.js";
-import { NumberUtil } from "@/Shared/Utils/NumberUtil.js";
-import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
-import { AttributionService } from "./AttributionService.js";
-import { SignalService } from "./SignalService.js";
-import { UsageService } from "./UsageService.js";
-import { FailureChainService } from "./FailureChainService.js";
+} from "@/Shared/Protocols/AnalysisProtocol.ts";
+import type { Config } from "@/Shared/Protocols/ConfigProtocol.ts";
+import type { PieceKind } from "@/Shared/Protocols/HarnessProtocol.ts";
+import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.ts";
+import { NumberUtil } from "@/Shared/Utils/NumberUtil.ts";
+import { TimeUtil } from "@/Shared/Utils/TimeUtil.ts";
+import { AttributionService } from "@/Shared/Services/AttributionService.ts";
+import { SignalService } from "@/Shared/Services/SignalService.ts";
+import { UsageService } from "@/Shared/Services/UsageService.ts";
+import { FailureChainService } from "@/Shared/Services/FailureChainService.ts";
 
 const MAX_SIDE_SIGNALS = 10;
 const DELTA_DIGITS = 3;

@@ -1,4 +1,4 @@
-import type { UnknownRecord } from "@/Shared/Protocols/UtilProtocol.js";
+import type { UnknownRecord } from "@/Shared/Protocols/UtilProtocol.ts";
 
 export class GuardUtil {
   static asRecord(value: unknown): UnknownRecord | undefined {

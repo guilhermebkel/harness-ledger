@@ -2,11 +2,11 @@
 
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import type { Inventory, PieceKind } from "@/Shared/Protocols/HarnessProtocol.js";
-import type { Mention } from "@/Shared/Protocols/SignalProtocol.js";
-import { PathUtil } from "@/Shared/Utils/PathUtil.js";
-import { RedactUtil } from "@/Shared/Utils/RedactUtil.js";
-import { RegExpUtil } from "@/Shared/Utils/RegExpUtil.js";
+import type { Inventory, PieceKind } from "@/Shared/Protocols/HarnessProtocol.ts";
+import type { Mention } from "@/Shared/Protocols/SignalProtocol.ts";
+import { PathUtil } from "@/Shared/Utils/PathUtil.ts";
+import { RedactUtil } from "@/Shared/Utils/RedactUtil.ts";
+import { RegExpUtil } from "@/Shared/Utils/RegExpUtil.ts";
 
 const DEFAULT_MAX_MENTIONS = 8;
 const MIN_TERM_CHARS = 3;

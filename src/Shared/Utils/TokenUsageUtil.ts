@@ -1,4 +1,4 @@
-import type { TokenUsage } from "@/Shared/Protocols/SessionProtocol.js";
+import type { TokenUsage } from "@/Shared/Protocols/SessionProtocol.ts";
 
 export class TokenUsageUtil {
   static zero(): TokenUsage {

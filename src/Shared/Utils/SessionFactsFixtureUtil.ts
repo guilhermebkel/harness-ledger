@@ -6,8 +6,8 @@ import type {
   TokenUsage,
   ToolCategory,
   ToolResultKind,
-} from "@/Shared/Protocols/SessionProtocol.js";
-import { SessionUtil } from "./SessionUtil.js";
+} from "@/Shared/Protocols/SessionProtocol.ts";
+import { SessionUtil } from "@/Shared/Utils/SessionUtil.ts";
 
 const MS_PER_SECOND = 1000;
 const DEFAULT_USAGE: TokenUsage = {

@@ -1,4 +1,4 @@
-import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
+import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.ts";
 import type {
   ApiError,
   ContextCompaction,
@@ -8,7 +8,7 @@ import type {
   ToolResult,
   ToolResultKind,
   UserPrompt,
-} from "@/Shared/Protocols/SessionProtocol.js";
+} from "@/Shared/Protocols/SessionProtocol.ts";
 import type {
   FailureChain,
   FailureChainKind,
@@ -17,18 +17,18 @@ import type {
   SignalOptions,
   SignalType,
   StepCost,
-} from "@/Shared/Protocols/SignalProtocol.js";
-import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
-import { HashUtil } from "@/Shared/Utils/HashUtil.js";
-import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.js";
-import { NumberUtil } from "@/Shared/Utils/NumberUtil.js";
-import { RedactUtil } from "@/Shared/Utils/RedactUtil.js";
-import { SessionUtil } from "@/Shared/Utils/SessionUtil.js";
-import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
-import { TokenUsageUtil } from "@/Shared/Utils/TokenUsageUtil.js";
-import { AttributionService } from "./AttributionService.js";
-import { FailureChainService } from "./FailureChainService.js";
-import type { OccurrenceCollectorService } from "./OccurrenceCollectorService.js";
+} from "@/Shared/Protocols/SignalProtocol.ts";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
+import { HashUtil } from "@/Shared/Utils/HashUtil.ts";
+import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.ts";
+import { NumberUtil } from "@/Shared/Utils/NumberUtil.ts";
+import { RedactUtil } from "@/Shared/Utils/RedactUtil.ts";
+import { SessionUtil } from "@/Shared/Utils/SessionUtil.ts";
+import { TimeUtil } from "@/Shared/Utils/TimeUtil.ts";
+import { TokenUsageUtil } from "@/Shared/Utils/TokenUsageUtil.ts";
+import { AttributionService } from "@/Shared/Services/AttributionService.ts";
+import { FailureChainService } from "@/Shared/Services/FailureChainService.ts";
+import type { OccurrenceCollectorService } from "@/Shared/Services/OccurrenceCollectorService.ts";
 
 const ERROR_HASH_CHARS = 6;
 const REQUEST_HASH_CHARS = 8;

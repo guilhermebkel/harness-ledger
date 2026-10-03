@@ -1,11 +1,11 @@
-import type { PieceUsage } from "@/Shared/Protocols/AnalysisProtocol.js";
-import type { ProjectChecks } from "@/Shared/Protocols/CheckProtocol.js";
-import type { Gap, GapKind, IssueVersions } from "@/Shared/Protocols/GapProtocol.js";
-import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.js";
-import { AttributionService } from "@/Shared/Services/AttributionService.js";
-import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
-import { IssueLinkUtil } from "@/Shared/Utils/IssueLinkUtil.js";
-import { RedactUtil } from "@/Shared/Utils/RedactUtil.js";
+import type { PieceUsage } from "@/Shared/Protocols/AnalysisProtocol.ts";
+import type { ProjectChecks } from "@/Shared/Protocols/CheckProtocol.ts";
+import type { Gap, GapKind, IssueVersions } from "@/Shared/Protocols/GapProtocol.ts";
+import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.ts";
+import { AttributionService } from "@/Shared/Services/AttributionService.ts";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
+import { IssueLinkUtil } from "@/Shared/Utils/IssueLinkUtil.ts";
+import { RedactUtil } from "@/Shared/Utils/RedactUtil.ts";
 
 const MAX_NAME_CHARS = 80;
 const MAX_DETAIL_CHARS = 200;

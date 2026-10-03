@@ -1,6 +1,6 @@
 // Why: no YAML dependency (ADR 0004); this reads only what skill, agent and rule files need.
 
-import type { Frontmatter, FrontmatterValue } from "@/Shared/Protocols/UtilProtocol.js";
+import type { Frontmatter, FrontmatterValue } from "@/Shared/Protocols/UtilProtocol.ts";
 
 type BlockMode = "list" | "text" | undefined;
 

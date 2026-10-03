@@ -1,4 +1,4 @@
-import { NumberUtil } from "./NumberUtil.js";
+import { NumberUtil } from "@/Shared/Utils/NumberUtil.ts";
 
 const SECONDS_PER_MINUTE = 60;
 const MINUTES_PER_HOUR = 60;

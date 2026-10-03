@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TimeUtil } from "./TimeUtil.js";
+import { TimeUtil } from "@/Shared/Utils/TimeUtil.ts";
 
 describe("parsePointInTime", () => {
   it("parses periods and dates", () => {

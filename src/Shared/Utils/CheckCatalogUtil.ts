@@ -1,5 +1,5 @@
 import { extname } from "node:path";
-import type { CheckCategory, CheckToolDefinition, LanguageMatch } from "@/Shared/Protocols/CheckProtocol.js";
+import type { CheckCategory, CheckToolDefinition, LanguageMatch } from "@/Shared/Protocols/CheckProtocol.ts";
 
 const JS_LANGUAGES = ["javascript", "typescript"];
 

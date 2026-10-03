@@ -7,7 +7,7 @@ import type {
   ParseOptions,
   TranscriptFile,
   TranscriptFileStat,
-} from "@/Shared/Protocols/ProviderProtocol.js";
+} from "@/Shared/Protocols/ProviderProtocol.ts";
 import type {
   SessionFacts,
   ThreadFacts,
@@ -16,26 +16,26 @@ import type {
   ToolCall,
   ToolCategory,
   ToolResultKind,
-} from "@/Shared/Protocols/SessionProtocol.js";
-import type { UnknownRecord } from "@/Shared/Protocols/UtilProtocol.js";
-import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
-import { GuardUtil } from "@/Shared/Utils/GuardUtil.js";
-import { HashUtil } from "@/Shared/Utils/HashUtil.js";
-import { JsonlUtil } from "@/Shared/Utils/JsonlUtil.js";
-import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.js";
-import { PathUtil } from "@/Shared/Utils/PathUtil.js";
-import { RedactUtil } from "@/Shared/Utils/RedactUtil.js";
-import { SessionUtil } from "@/Shared/Utils/SessionUtil.js";
-import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
+} from "@/Shared/Protocols/SessionProtocol.ts";
+import type { UnknownRecord } from "@/Shared/Protocols/UtilProtocol.ts";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
+import { GuardUtil } from "@/Shared/Utils/GuardUtil.ts";
+import { HashUtil } from "@/Shared/Utils/HashUtil.ts";
+import { JsonlUtil } from "@/Shared/Utils/JsonlUtil.ts";
+import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.ts";
+import { PathUtil } from "@/Shared/Utils/PathUtil.ts";
+import { RedactUtil } from "@/Shared/Utils/RedactUtil.ts";
+import { SessionUtil } from "@/Shared/Utils/SessionUtil.ts";
+import { TimeUtil } from "@/Shared/Utils/TimeUtil.ts";
 import type {
   ClaudeCodeParseContext,
   ClaudeCodeToolCallContext,
   ClaudeCodeToolDescription,
   ClaudeCodeTranscriptLine,
   EvidenceFactory,
-} from "@/Providers/ClaudeCode/Protocols/ClaudeCodeProtocol.js";
-import { ClaudeCodePathUtil } from "@/Providers/ClaudeCode/Utils/ClaudeCodePathUtil.js";
-import { ClaudeCodeTranscriptUtil } from "@/Providers/ClaudeCode/Utils/ClaudeCodeTranscriptUtil.js";
+} from "@/Providers/ClaudeCode/Protocols/ClaudeCodeProtocol.ts";
+import { ClaudeCodePathUtil } from "@/Providers/ClaudeCode/Utils/ClaudeCodePathUtil.ts";
+import { ClaudeCodeTranscriptUtil } from "@/Providers/ClaudeCode/Utils/ClaudeCodeTranscriptUtil.ts";
 
 const TRANSCRIPT_EXTENSION = ".jsonl";
 const UNKNOWN_SUBAGENT_TYPE = "subagent";

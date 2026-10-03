@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { GitChangeDates } from "@/Shared/Protocols/UtilProtocol.js";
+import type { GitChangeDates } from "@/Shared/Protocols/UtilProtocol.ts";
 
 const execFileAsync = promisify(execFile);
 

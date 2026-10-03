@@ -1,6 +1,6 @@
-import type { CommonOptions, InventoryResult } from "@/Shared/Protocols/CommandProtocol.js";
-import { ContextService } from "@/Shared/Services/ContextService.js";
-import { InventoryService } from "@/Shared/Services/InventoryService.js";
+import type { CommonOptions, InventoryResult } from "@/Shared/Protocols/CommandProtocol.ts";
+import { ContextService } from "@/Shared/Services/ContextService.ts";
+import { InventoryService } from "@/Shared/Services/InventoryService.ts";
 
 export class InventoryCommand {
   async run(options: CommonOptions): Promise<InventoryResult> {

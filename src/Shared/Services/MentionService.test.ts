@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.js";
-import { MentionService } from "./MentionService.js";
+import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.ts";
+import { MentionService } from "@/Shared/Services/MentionService.ts";
 
 const tempDir = tmpdir();
 const projectDir = mkdtempSync(join(tempDir, "imh-mentions-"));

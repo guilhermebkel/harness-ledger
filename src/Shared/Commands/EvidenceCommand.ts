@@ -1,6 +1,6 @@
-import type { EvidenceOptions, EvidenceResult } from "@/Shared/Protocols/CommandProtocol.js";
-import { AnalysisService } from "@/Shared/Services/AnalysisService.js";
-import { ContextService } from "@/Shared/Services/ContextService.js";
+import type { EvidenceOptions, EvidenceResult } from "@/Shared/Protocols/CommandProtocol.ts";
+import { AnalysisService } from "@/Shared/Services/AnalysisService.ts";
+import { ContextService } from "@/Shared/Services/ContextService.ts";
 
 const DEFAULT_MAX_EVIDENCE = 50;
 

@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { describe, expect, it } from "vitest";
-import { RedactUtil } from "./RedactUtil.js";
+import { RedactUtil } from "@/Shared/Utils/RedactUtil.ts";
 
 describe("redact", () => {
   it.each([

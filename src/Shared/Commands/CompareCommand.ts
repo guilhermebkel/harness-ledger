@@ -1,8 +1,8 @@
-import type { ChangePoint, CompareResult } from "@/Shared/Protocols/AnalysisProtocol.js";
-import type { CompareOptions } from "@/Shared/Protocols/CommandProtocol.js";
-import { CompareService } from "@/Shared/Services/CompareService.js";
-import { ContextService } from "@/Shared/Services/ContextService.js";
-import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
+import type { ChangePoint, CompareResult } from "@/Shared/Protocols/AnalysisProtocol.ts";
+import type { CompareOptions } from "@/Shared/Protocols/CommandProtocol.ts";
+import { CompareService } from "@/Shared/Services/CompareService.ts";
+import { ContextService } from "@/Shared/Services/ContextService.ts";
+import { TimeUtil } from "@/Shared/Utils/TimeUtil.ts";
 
 export class CompareCommand {
   async run(options: CompareOptions): Promise<CompareResult> {

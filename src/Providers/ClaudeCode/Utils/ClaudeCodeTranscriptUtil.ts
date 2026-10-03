@@ -1,6 +1,6 @@
-import type { ToolResultKind } from "@/Shared/Protocols/SessionProtocol.js";
-import type { CleanPrompt } from "@/Shared/Protocols/UtilProtocol.js";
-import type { ClaudeCodeResultSignals } from "@/Providers/ClaudeCode/Protocols/ClaudeCodeProtocol.js";
+import type { ToolResultKind } from "@/Shared/Protocols/SessionProtocol.ts";
+import type { CleanPrompt } from "@/Shared/Protocols/UtilProtocol.ts";
+import type { ClaudeCodeResultSignals } from "@/Providers/ClaudeCode/Protocols/ClaudeCodeProtocol.ts";
 
 const HARNESS_INJECTED_BLOCKS
   = /<(system-reminder|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|bash-input|bash-stdout|bash-stderr|user-prompt-submit-hook|task-notification)>[\s\S]*?<\/\1>/g;
