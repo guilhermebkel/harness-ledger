@@ -13,6 +13,8 @@ export type CheckCategory
 
 export type CheckSource = "package.json" | "eslint config" | "python config" | "golangci config" | "ci";
 
+export type ConfigFileSource = Exclude<CheckSource, "package.json" | "ci">;
+
 export type CheckRunPlace = "sessions" | "ci";
 
 export interface CheckToolDefinition {
@@ -23,6 +25,7 @@ export interface CheckToolDefinition {
   packages?: string[];
   commands?: string[];
   configMarkers?: ConfigMarker[];
+  configSource?: ConfigFileSource;
 }
 
 // Why: words that, found in the tool's own config file, turn on extra categories (`C901` in ruff's config).
@@ -40,16 +43,24 @@ export interface ProjectCheckTool {
   sessions: number;
 }
 
-export type LanguageMatch
-  = | {
+export interface LanguageMatchFields {
+  language: {
     kind: "language";
     language: string;
-  }
-  | { kind: "notCode" }
-  | {
+  };
+  notCode: { kind: "notCode" };
+  unmapped: {
     kind: "unmapped";
     extension: string;
   };
+}
+
+export type LanguageMatchKind = keyof LanguageMatchFields;
+
+export type LanguageMatchOf<Kind extends LanguageMatchKind> = { kind: Kind } & LanguageMatchFields[Kind];
+
+// Why: written as a map of kinds so a Record of handlers keeps each kind's fields when called (correlated union).
+export type LanguageMatch = { [Kind in LanguageMatchKind]: LanguageMatchOf<Kind> }[LanguageMatchKind];
 
 // Why: an extension with no known language is listed as "unmapped" with the extension itself, never dropped.
 export interface LanguageEdits {

@@ -215,6 +215,14 @@ export class ClaudeCodeTranscriptBuilder {
 
 type SubagentTypeSource = "meta" | "result" | "prompt";
 
+interface SubagentRef {
+  fixture: Fixture;
+  sessionId: string;
+  agentId: string;
+}
+
+type SubagentTypeSetup = (subagent: SubagentRef) => unknown;
+
 export class ClaudeCodeFixtureUtil {
   static readonly FAKE_SECRETS = FAKE_SECRETS;
 
@@ -299,6 +307,19 @@ export class ClaudeCodeFixtureUtil {
     return join(projectFolder, sessionId, "subagents", `agent-${agentId}.jsonl`);
   }
 
+  private static readonly TYPE_SOURCE_TO_TOOL_USE_RESULT: Record<SubagentTypeSource, SubagentTypeSetup> = {
+    meta: ({ fixture, sessionId, agentId }) => {
+      const metaFile = ClaudeCodeFixtureUtil.subagentPath(fixture, sessionId, agentId).replace(/\.jsonl$/, ".meta.json");
+      writeFileSync(metaFile, JSON.stringify({ agentType: TEST_RUNNER_AGENT }));
+      return undefined;
+    },
+    result: ({ agentId }) => ({
+      agentId,
+      status: "completed",
+    }),
+    prompt: () => undefined,
+  };
+
   private static testRunSession(
     fixture: Fixture,
     sessionId: string,
@@ -319,11 +340,8 @@ export class ClaudeCodeFixtureUtil {
       .result(`b2_${sessionId}`, "Tests: 42 passed", { secondsLater: 30 })
       .say("All tests pass.")
       .writeTo(fixture);
-    if (typeSource === "meta") {
-      const metaFile = ClaudeCodeFixtureUtil.subagentPath(fixture, sessionId, agentId).replace(/\.jsonl$/, ".meta.json");
-      writeFileSync(metaFile, JSON.stringify({ agentType: TEST_RUNNER_AGENT }));
-    }
-    const toolUseResult = typeSource === "result" ? { agentId, status: "completed" } : undefined;
+    const setUpTypeSource = ClaudeCodeFixtureUtil.TYPE_SOURCE_TO_TOOL_USE_RESULT[typeSource];
+    const toolUseResult = setUpTypeSource({ fixture, sessionId, agentId });
     return main.result(`task_${sessionId}`, "All tests pass.", { secondsLater: 70, toolUseResult }).say("Done.");
   }
 

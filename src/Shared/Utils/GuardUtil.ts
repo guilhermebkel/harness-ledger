@@ -29,6 +29,10 @@ export class GuardUtil {
     return undefined;
   }
 
+  static isKeyOf<Key extends string>(record: Record<Key, unknown>, value: string | undefined): value is Key {
+    return value !== undefined && Object.hasOwn(record, value);
+  }
+
   static parseJson(text: string): unknown {
     try {
       return JSON.parse(text) as unknown;

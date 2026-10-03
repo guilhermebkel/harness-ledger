@@ -50,9 +50,16 @@ interface Invocation {
 }
 
 type CommandName = "analyze" | "inventory" | "evidence" | "compare" | "status" | "suggestions";
+type SuggestionsSubcommand = "list" | "add" | "set";
 type CommandHandler = (invocation: Invocation) => Promise<unknown>;
 
 export class CLIModule {
+  private readonly suggestionsSubcommandToHandler: Record<SuggestionsSubcommand, CommandHandler> = {
+    list: async (invocation) => this.listSuggestions(invocation),
+    add: async (invocation) => this.addSuggestions(invocation),
+    set: async (invocation) => this.setSuggestionStatus(invocation),
+  };
+
   private readonly commandNameToHandler: Record<CommandName, CommandHandler> = {
     analyze: async ({ values, common }) =>
       new AnalyzeCommand().run({
@@ -163,7 +170,7 @@ Output is JSON on stdout. Nothing leaves your machine.`;
     if (nodeMajor < MIN_NODE_MAJOR) {
       throw new Error(`Node.js ${MIN_NODE_MAJOR}+ is required (found ${process.version}).`);
     }
-    if (!this.isCommandName(commandName)) {
+    if (!GuardUtil.isKeyOf(this.commandNameToHandler, commandName)) {
       throw new Error(`Unknown command: ${commandName}. Run \`imh --help\`.`);
     }
     const result = await this.commandNameToHandler[commandName]({
@@ -182,46 +189,48 @@ Output is JSON on stdout. Nothing leaves your machine.`;
     process.stdout.write(`${JSON.stringify(result, null, values.pretty ? JSON_INDENT : 0)}\n`);
   }
 
-  private isCommandName(value: string): value is CommandName {
-    return Object.hasOwn(this.commandNameToHandler, value);
+  private async runSuggestions(invocation: Invocation): Promise<unknown> {
+    const [subcommand = "list"] = invocation.rest;
+    if (!GuardUtil.isKeyOf(this.suggestionsSubcommandToHandler, subcommand)) {
+      throw new Error(`Unknown suggestions command: ${subcommand}`);
+    }
+    return this.suggestionsSubcommandToHandler[subcommand](invocation);
   }
 
-  private async runSuggestions({ values, rest, common }: Invocation): Promise<unknown> {
-    const [subcommand = "list", id, status] = rest;
-    const command = new SuggestionsCommand();
-    if (subcommand === "list") {
-      const statusFilter = values.status;
-      if (statusFilter !== undefined && !SuggestionService.isStatus(statusFilter)) {
-        throw new Error(`Unknown status: ${statusFilter}`);
-      }
-      return command.list({
-        ...common,
-        status: statusFilter,
-      });
+  private async listSuggestions({ values, common }: Invocation): Promise<unknown> {
+    const statusFilter = values.status;
+    if (statusFilter !== undefined && !SuggestionService.isStatus(statusFilter)) {
+      throw new Error(`Unknown status: ${statusFilter}`);
     }
-    if (subcommand === "add") {
-      const rawJson = values.file ? await readFile(values.file, "utf8") : await this.readStdin();
-      const items = GuardUtil.parseJson(rawJson);
-      if (items === undefined) {
-        throw new Error("Suggestions must be valid JSON.");
-      }
-      return command.add({
-        ...common,
-        items,
-      });
+    return new SuggestionsCommand().list({
+      ...common,
+      status: statusFilter,
+    });
+  }
+
+  private async addSuggestions({ values, common }: Invocation): Promise<unknown> {
+    const rawJson = values.file ? await readFile(values.file, "utf8") : await this.readStdin();
+    const items = GuardUtil.parseJson(rawJson);
+    if (items === undefined) {
+      throw new Error("Suggestions must be valid JSON.");
     }
-    if (subcommand === "set") {
-      if (!id || !status || !SuggestionService.isStatus(status)) {
-        throw new Error("Usage: imh suggestions set <id> <pending|accepted|rejected|applied> [--note text]");
-      }
-      return command.setStatus({
-        ...common,
-        id,
-        status,
-        note: values.note,
-      });
+    return new SuggestionsCommand().add({
+      ...common,
+      items,
+    });
+  }
+
+  private async setSuggestionStatus({ values, rest, common }: Invocation): Promise<unknown> {
+    const [, id, status] = rest;
+    if (!id || !status || !SuggestionService.isStatus(status)) {
+      throw new Error("Usage: imh suggestions set <id> <pending|accepted|rejected|applied> [--note text]");
     }
-    throw new Error(`Unknown suggestions command: ${subcommand}`);
+    return new SuggestionsCommand().setStatus({
+      ...common,
+      id,
+      status,
+      note: values.note,
+    });
   }
 
   private readProvider(value: string | undefined): ProviderType | undefined {

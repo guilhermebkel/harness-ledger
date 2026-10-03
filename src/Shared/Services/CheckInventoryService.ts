@@ -5,7 +5,10 @@ import type {
   CheckRunPlace,
   CheckSource,
   CheckToolDefinition,
+  ConfigFileSource,
   LanguageEdits,
+  LanguageMatchKind,
+  LanguageMatchOf,
   MissingCheck,
   ProjectCheckTool,
   ProjectChecks,
@@ -47,6 +50,16 @@ const MONOREPO_FILES = ["pnpm-workspace.yaml", "lerna.json", "turbo.json", "nx.j
 const MIN_LANGUAGE_EDITS = 5;
 const PACKAGE_ENTRY_FIELDS = ["exports", "main", "module", "bin"];
 const UNMAPPED_PREFIX = "unmapped:";
+// Why: these files belong to one tool, so the file existing means the tool is set up; a Python config file is
+// shared, so a Python tool counts only when the file names it.
+const DEDICATED_CONFIG_SOURCES = new Set<ConfigFileSource>(["eslint config", "golangci config"]);
+
+type EditKeyFinder<Kind extends LanguageMatchKind> = (match: LanguageMatchOf<Kind>) => string[];
+const MATCH_KIND_TO_EDIT_KEYS: { [Kind in LanguageMatchKind]: EditKeyFinder<Kind> } = {
+  language: (match) => [match.language],
+  notCode: () => [],
+  unmapped: (match) => [`${UNMAPPED_PREFIX}${match.extension}`],
+};
 
 interface ProjectFiles {
   packageJson?: UnknownRecord;
@@ -115,12 +128,7 @@ export class CheckInventoryService {
       .flatMap((session) => session.tools)
       .filter((call) => call.category === "edit" && call.filePath !== undefined)
       .map((call) => CheckCatalogUtil.languageOf(call.filePath ?? ""));
-    const keys = matches.flatMap((match) => {
-      if (match.kind === "notCode") {
-        return [];
-      }
-      return [match.kind === "language" ? match.language : `${UNMAPPED_PREFIX}${match.extension}`];
-    });
+    const keys = matches.flatMap((match) => CheckInventoryService.editKeysOf(match));
     return Object.entries(CollectionUtil.countBy(keys))
       .map(([key, edits]) => (key.startsWith(UNMAPPED_PREFIX)
         ? {
@@ -190,13 +198,12 @@ export class CheckInventoryService {
   }
 
   private ownConfigText(definition: CheckToolDefinition, files: ProjectFiles): string {
-    if (definition.name === "eslint") {
-      return files.sourceToText["eslint config"];
-    }
-    if (definition.name === "golangci-lint") {
-      return files.sourceToText["golangci config"];
-    }
-    return definition.languages.includes("python") ? files.sourceToText["python config"] : "";
+    return definition.configSource ? files.sourceToText[definition.configSource] : "";
+  }
+
+  private static editKeysOf<Kind extends LanguageMatchKind>(match: LanguageMatchOf<Kind>): string[] {
+    const keysOf: EditKeyFinder<Kind> = MATCH_KIND_TO_EDIT_KEYS[match.kind];
+    return keysOf(match);
   }
 
   private sourcesOf(
@@ -210,15 +217,16 @@ export class CheckInventoryService {
     const isInPackageJson = (definition.packages ?? []).some((name) => dependencies.has(name))
       || (definition.commands ?? []).some((command) => CheckInventoryService.mentions(scripts, command));
     const sources: CheckSource[] = isInPackageJson ? ["package.json"] : [];
-    const isEslint = definition.name === "eslint" && files.sourceToText["eslint config"] !== "";
-    const isGolangci = definition.name === "golangci-lint" && files.sourceToText["golangci config"] !== "";
+    const ownConfig = definition.configSource;
+    const ownConfigSources = ownConfig && DEDICATED_CONFIG_SOURCES.has(ownConfig) && files.sourceToText[ownConfig] !== ""
+      ? [ownConfig]
+      : [];
     const isPython = definition.languages.includes("python")
       && names.some((name) => CheckInventoryService.mentions(files.sourceToText["python config"], name));
     const isInCi = runsTool(files.sourceToText.ci);
     return [
       ...sources,
-      ...(isEslint ? ["eslint config" as const] : []),
-      ...(isGolangci ? ["golangci config" as const] : []),
+      ...ownConfigSources,
       ...(isPython ? ["python config" as const] : []),
       ...(isInCi ? ["ci" as const] : []),
     ];

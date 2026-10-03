@@ -1,7 +1,17 @@
 import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
-import type { ApiError, ContextCompaction, SessionFacts, ToolCall, UserPrompt } from "@/Shared/Protocols/SessionProtocol.js";
+import type {
+  ApiError,
+  ContextCompaction,
+  SessionFacts,
+  ToolCall,
+  ToolCategory,
+  ToolResult,
+  ToolResultKind,
+  UserPrompt,
+} from "@/Shared/Protocols/SessionProtocol.js";
 import type {
   FailureChain,
+  FailureChainKind,
   Occurrence,
   OccurrenceGroup,
   SignalOptions,
@@ -32,6 +42,30 @@ const MAX_REQUEST_CHARS = 600;
 // Why: after these commands, reading a file again is legitimate.
 const FILE_CHANGING_COMMAND = /\b(git (checkout|pull|merge|rebase|stash)|sed -i|prettier|eslint --fix|npm run format)/;
 
+const changesNothing = (): boolean => false;
+const CATEGORY_TO_CHANGES_FILE: Record<ToolCategory, (call: ToolCall, read: ToolCall) => boolean> = {
+  edit: (call, read) => call.filePath === read.filePath,
+  shell: (call) => FILE_CHANGING_COMMAND.test(call.summary),
+  read: changesNothing,
+  search: changesNothing,
+  plan: changesNothing,
+  delegation: changesNothing,
+  skill: changesNothing,
+  mcp: changesNothing,
+  other: changesNothing,
+};
+
+interface Failure {
+  call: ToolCall;
+  result: ToolResult;
+  occurrence: Occurrence;
+  errorHead: string;
+}
+
+type ChainDetail = (group: OccurrenceGroup, chain: FailureChain) => void;
+
+type FailureRecorder = (failure: Failure) => OccurrenceGroup | undefined;
+
 interface CandidateRequest {
   session: SessionFacts;
   prompt: UserPrompt;
@@ -41,6 +75,32 @@ interface CandidateRequest {
 export class SignalDetectorService {
   private readonly failureChains: FailureChainService;
   private countedMessageIds = new Set<string>();
+  private readonly resultKindToRecorder: Record<ToolResultKind, FailureRecorder> = {
+    user_rejected: (failure) => {
+      this.addRejection(failure);
+      return undefined;
+    },
+    permission_denied: (failure) => this.addPermissionDenied(failure),
+    hook_blocked: (failure) => this.addHookBlocked(failure),
+    error: (failure) => this.addCallFailure(failure),
+    interrupted: (failure) => this.addCallFailure(failure),
+    ok: (failure) => this.addCallFailure(failure),
+  };
+
+  private readonly chainKindToDetail: Record<FailureChainKind, ChainDetail> = {
+    fix_loop: (group) => {
+      if (group.details.chains) {
+        group.details.chains.fixLoops++;
+      }
+    },
+    wrong_command: (group, chain) => {
+      if (chain.recovery && chain.recovery.key !== chain.failures[0]?.key) {
+        this.collector.count(group, "recoveredWith", chain.recovery.key);
+      }
+    },
+    retry: () => undefined,
+    unrecovered: () => undefined,
+  };
 
   constructor(
     private readonly options: SignalOptions,
@@ -139,28 +199,42 @@ export class SignalDetectorService {
 
   private addFailure(call: ToolCall, occurrence: Occurrence): OccurrenceGroup | undefined {
     const result = call.result;
-    const errorHead = result?.errorHead ?? "error";
-    if (result?.kind === "user_rejected") {
-      // Why: the person said no to the call (a plan, a command): that is a correction of the turn, not a failure.
-      const attributedTo = occurrence.pieces.join(",");
-      const title = `User corrected the agent (${attributedTo})`;
-      this.collector.add(`user_correction:${attributedTo}`, "user_correction", title, {
-        ...occurrence,
-        ref: {
-          ...occurrence.ref,
-          excerpt: `rejected ${call.summary} → ${result.ref.excerpt ?? ""}`.slice(0, MAX_FAILURE_EXCERPT_CHARS),
-        },
-      });
+    if (!result) {
       return undefined;
     }
-    if (result?.kind === "permission_denied") {
-      const group = this.collector.add(`permission_denied:${call.key}`, "permission_denied", `Permission denied for ${call.key}`, occurrence);
-      this.collector.count(group, "errors", errorHead);
-      return group;
-    }
-    if (result?.kind === "hook_blocked") {
-      return this.collector.add(`hook_blocked:${call.key}`, "hook_blocked", `Hook blocked ${call.key}`, occurrence);
-    }
+    const failure: Failure = {
+      call,
+      result,
+      occurrence,
+      errorHead: result.errorHead ?? "error",
+    };
+    return this.resultKindToRecorder[result.kind](failure);
+  }
+
+  // Why: the person said no to the call (a plan, a command): that is a correction of the turn, not a failure.
+  private addRejection({ call, result, occurrence }: Failure): void {
+    const attributedTo = occurrence.pieces.join(",");
+    const title = `User corrected the agent (${attributedTo})`;
+    this.collector.add(`user_correction:${attributedTo}`, "user_correction", title, {
+      ...occurrence,
+      ref: {
+        ...occurrence.ref,
+        excerpt: `rejected ${call.summary} → ${result.ref.excerpt ?? ""}`.slice(0, MAX_FAILURE_EXCERPT_CHARS),
+      },
+    });
+  }
+
+  private addPermissionDenied({ call, occurrence, errorHead }: Failure): OccurrenceGroup {
+    const group = this.collector.add(`permission_denied:${call.key}`, "permission_denied", `Permission denied for ${call.key}`, occurrence);
+    this.collector.count(group, "errors", errorHead);
+    return group;
+  }
+
+  private addHookBlocked({ call, occurrence }: Failure): OccurrenceGroup {
+    return this.collector.add(`hook_blocked:${call.key}`, "hook_blocked", `Hook blocked ${call.key}`, occurrence);
+  }
+
+  private addCallFailure({ call, occurrence, errorHead }: Failure): OccurrenceGroup {
     if (call.category === "shell") {
       const group = this.collector.add(`failed_command:${call.key}`, "failed_command", `Command fails: ${call.key}`, occurrence);
       this.collector.count(group, "errors", errorHead);
@@ -209,11 +283,8 @@ export class SignalDetectorService {
     summary.chains++;
     summary.attempts += chain.failures.length;
     summary.recovered += chain.recovery ? 1 : 0;
-    summary.fixLoops += chain.kind === "fix_loop" ? 1 : 0;
     group.details.chains = summary;
-    if (chain.kind === "wrong_command" && chain.recovery && chain.recovery.key !== chain.failures[0]?.key) {
-      this.collector.count(group, "recoveredWith", chain.recovery.key);
-    }
+    this.chainKindToDetail[chain.kind](group, chain);
   }
 
   private detectCompactions(session: SessionFacts, index: SessionIndex): void {
@@ -458,10 +529,8 @@ export class SignalDetectorService {
     return session.tools.some((call) => {
       const calledAtMs = call.calledAtMs ?? 0;
       const isSameThread = call.thread.id === firstRead.thread.id;
-      const isEditOfFile = call.category === "edit" && call.filePath === firstRead.filePath;
-      const isFileChangingCommand = call.category === "shell" && FILE_CHANGING_COMMAND.test(call.summary);
       const isBetween = calledAtMs >= fromAtMs && calledAtMs <= toAtMs;
-      return isSameThread && isBetween && (isEditOfFile || isFileChangingCommand);
+      return isSameThread && isBetween && CATEGORY_TO_CHANGES_FILE[call.category](call, firstRead);
     }) || session.compactions.some((compaction) => {
       const compactedAtMs = compaction.occurredAtMs ?? 0;
       return compaction.thread.id === firstRead.thread.id && compactedAtMs >= fromAtMs && compactedAtMs <= toAtMs;

@@ -703,6 +703,7 @@ var HashUtil = class {
 // src/Shared/Services/FailureChainService.ts
 var MAX_CHAIN_ATTEMPTS = 10;
 var MAX_CALLS_BETWEEN_ATTEMPTS = 10;
+var STOPPING_RESULT_KINDS = /* @__PURE__ */ new Set(["interrupted", "user_rejected"]);
 var FailureChainService = class _FailureChainService {
   constructor(idleMs) {
     this.idleMs = idleMs;
@@ -730,24 +731,33 @@ var FailureChainService = class _FailureChainService {
   }
   static isChainableFailure(call) {
     const result = call.result;
-    return result?.isError === true && result.kind !== "interrupted" && result.kind !== "user_rejected";
+    return result?.isError === true && !STOPPING_RESULT_KINDS.has(result.kind);
   }
   chainFrom(first, laterCalls, index) {
     const failures = [first];
     let recovery;
     let callsSinceAttempt = 0;
+    const stepToIsLast = {
+      stop: () => true,
+      skip: () => {
+        callsSinceAttempt += 1;
+        return false;
+      },
+      failure: (candidate) => {
+        callsSinceAttempt = 0;
+        failures.push(candidate);
+        return failures.length >= MAX_CHAIN_ATTEMPTS;
+      },
+      recovery: (candidate) => {
+        recovery = candidate;
+        return true;
+      }
+    };
     laterCalls.some((candidate) => {
       const lastAttempt = failures.at(-1) ?? first;
       const isTooFar = callsSinceAttempt >= MAX_CALLS_BETWEEN_ATTEMPTS || (candidate.calledAtMs ?? 0) - (lastAttempt.calledAtMs ?? 0) > this.idleMs;
       const step = isTooFar ? "stop" : this.stepOf(first, candidate);
-      callsSinceAttempt = step === "skip" ? callsSinceAttempt + 1 : 0;
-      if (step === "failure") {
-        failures.push(candidate);
-      }
-      if (step === "recovery") {
-        recovery = candidate;
-      }
-      return step === "stop" || step === "recovery" || failures.length >= MAX_CHAIN_ATTEMPTS;
+      return stepToIsLast[step](candidate);
     });
     const window = this.chainWindow(first, failures, recovery, index);
     return {
@@ -766,7 +776,7 @@ var FailureChainService = class _FailureChainService {
     if (result === void 0) {
       return "skip";
     }
-    if (result.kind === "interrupted" || result.kind === "user_rejected") {
+    if (STOPPING_RESULT_KINDS.has(result.kind)) {
       return "stop";
     }
     return result.isError ? "failure" : "recovery";
@@ -856,6 +866,18 @@ var EXAMPLE_EXCERPT_CHARS = 200;
 var MIN_REQUEST_WORDS = 3;
 var MAX_REQUEST_CHARS = 600;
 var FILE_CHANGING_COMMAND = /\b(git (checkout|pull|merge|rebase|stash)|sed -i|prettier|eslint --fix|npm run format)/;
+var changesNothing = () => false;
+var CATEGORY_TO_CHANGES_FILE = {
+  edit: (call, read) => call.filePath === read.filePath,
+  shell: (call) => FILE_CHANGING_COMMAND.test(call.summary),
+  read: changesNothing,
+  search: changesNothing,
+  plan: changesNothing,
+  delegation: changesNothing,
+  skill: changesNothing,
+  mcp: changesNothing,
+  other: changesNothing
+};
 var SignalDetectorService = class _SignalDetectorService {
   constructor(options, attribution, collector) {
     this.options = options;
@@ -865,6 +887,31 @@ var SignalDetectorService = class _SignalDetectorService {
   }
   failureChains;
   countedMessageIds = /* @__PURE__ */ new Set();
+  resultKindToRecorder = {
+    user_rejected: (failure) => {
+      this.addRejection(failure);
+      return void 0;
+    },
+    permission_denied: (failure) => this.addPermissionDenied(failure),
+    hook_blocked: (failure) => this.addHookBlocked(failure),
+    error: (failure) => this.addCallFailure(failure),
+    interrupted: (failure) => this.addCallFailure(failure),
+    ok: (failure) => this.addCallFailure(failure)
+  };
+  chainKindToDetail = {
+    fix_loop: (group) => {
+      if (group.details.chains) {
+        group.details.chains.fixLoops++;
+      }
+    },
+    wrong_command: (group, chain) => {
+      if (chain.recovery && chain.recovery.key !== chain.failures[0]?.key) {
+        this.collector.count(group, "recoveredWith", chain.recovery.key);
+      }
+    },
+    retry: () => void 0,
+    unrecovered: () => void 0
+  };
   // Why: failures run first and corrections last: a turn's messages already in a failure chain or a rejected
   // plan are left out of the correction that follows, so no turn is counted twice.
   detectInSession(session, index) {
@@ -950,27 +997,38 @@ var SignalDetectorService = class _SignalDetectorService {
   }
   addFailure(call, occurrence) {
     const result = call.result;
-    const errorHead = result?.errorHead ?? "error";
-    if (result?.kind === "user_rejected") {
-      const attributedTo = occurrence.pieces.join(",");
-      const title = `User corrected the agent (${attributedTo})`;
-      this.collector.add(`user_correction:${attributedTo}`, "user_correction", title, {
-        ...occurrence,
-        ref: {
-          ...occurrence.ref,
-          excerpt: `rejected ${call.summary} \u2192 ${result.ref.excerpt ?? ""}`.slice(0, MAX_FAILURE_EXCERPT_CHARS)
-        }
-      });
+    if (!result) {
       return void 0;
     }
-    if (result?.kind === "permission_denied") {
-      const group2 = this.collector.add(`permission_denied:${call.key}`, "permission_denied", `Permission denied for ${call.key}`, occurrence);
-      this.collector.count(group2, "errors", errorHead);
-      return group2;
-    }
-    if (result?.kind === "hook_blocked") {
-      return this.collector.add(`hook_blocked:${call.key}`, "hook_blocked", `Hook blocked ${call.key}`, occurrence);
-    }
+    const failure = {
+      call,
+      result,
+      occurrence,
+      errorHead: result.errorHead ?? "error"
+    };
+    return this.resultKindToRecorder[result.kind](failure);
+  }
+  // Why: the person said no to the call (a plan, a command): that is a correction of the turn, not a failure.
+  addRejection({ call, result, occurrence }) {
+    const attributedTo = occurrence.pieces.join(",");
+    const title = `User corrected the agent (${attributedTo})`;
+    this.collector.add(`user_correction:${attributedTo}`, "user_correction", title, {
+      ...occurrence,
+      ref: {
+        ...occurrence.ref,
+        excerpt: `rejected ${call.summary} \u2192 ${result.ref.excerpt ?? ""}`.slice(0, MAX_FAILURE_EXCERPT_CHARS)
+      }
+    });
+  }
+  addPermissionDenied({ call, occurrence, errorHead }) {
+    const group = this.collector.add(`permission_denied:${call.key}`, "permission_denied", `Permission denied for ${call.key}`, occurrence);
+    this.collector.count(group, "errors", errorHead);
+    return group;
+  }
+  addHookBlocked({ call, occurrence }) {
+    return this.collector.add(`hook_blocked:${call.key}`, "hook_blocked", `Hook blocked ${call.key}`, occurrence);
+  }
+  addCallFailure({ call, occurrence, errorHead }) {
     if (call.category === "shell") {
       const group2 = this.collector.add(`failed_command:${call.key}`, "failed_command", `Command fails: ${call.key}`, occurrence);
       this.collector.count(group2, "errors", errorHead);
@@ -1012,11 +1070,8 @@ var SignalDetectorService = class _SignalDetectorService {
     summary.chains++;
     summary.attempts += chain.failures.length;
     summary.recovered += chain.recovery ? 1 : 0;
-    summary.fixLoops += chain.kind === "fix_loop" ? 1 : 0;
     group.details.chains = summary;
-    if (chain.kind === "wrong_command" && chain.recovery && chain.recovery.key !== chain.failures[0]?.key) {
-      this.collector.count(group, "recoveredWith", chain.recovery.key);
-    }
+    this.chainKindToDetail[chain.kind](group, chain);
   }
   detectCompactions(session, index) {
     for (const compaction of session.compactions) {
@@ -1227,10 +1282,8 @@ var SignalDetectorService = class _SignalDetectorService {
     return session.tools.some((call) => {
       const calledAtMs = call.calledAtMs ?? 0;
       const isSameThread = call.thread.id === firstRead.thread.id;
-      const isEditOfFile = call.category === "edit" && call.filePath === firstRead.filePath;
-      const isFileChangingCommand = call.category === "shell" && FILE_CHANGING_COMMAND.test(call.summary);
       const isBetween = calledAtMs >= fromAtMs && calledAtMs <= toAtMs;
-      return isSameThread && isBetween && (isEditOfFile || isFileChangingCommand);
+      return isSameThread && isBetween && CATEGORY_TO_CHANGES_FILE[call.category](call, firstRead);
     }) || session.compactions.some((compaction) => {
       const compactedAtMs = compaction.occurredAtMs ?? 0;
       return compaction.thread.id === firstRead.thread.id && compactedAtMs >= fromAtMs && compactedAtMs <= toAtMs;
@@ -1404,6 +1457,18 @@ var WorkflowDetectorService = class {
 };
 
 // src/Shared/Services/ContextLoadDetectorService.ts
+var keyOf = (call) => call.key;
+var CATEGORY_TO_SOURCE = {
+  read: (call) => call.filePath ?? call.key,
+  shell: (call) => NormalizeUtil.isExplorationCommand(call.key) ? call.summary : call.key,
+  edit: keyOf,
+  search: keyOf,
+  plan: keyOf,
+  delegation: keyOf,
+  skill: keyOf,
+  mcp: keyOf,
+  other: keyOf
+};
 var TOKENS_PER_THOUSAND = 1e3;
 var LOADING_CATEGORIES = /* @__PURE__ */ new Set(["read", "shell", "search", "mcp", "skill", "other"]);
 var ContextLoadDetectorService = class _ContextLoadDetectorService {
@@ -1484,11 +1549,7 @@ var ContextLoadDetectorService = class _ContextLoadDetectorService {
    * (`cat a.ts` and `cat b.ts` are different material), otherwise its key (every `git diff` prints a diff).
    */
   sourceOf(call) {
-    if (call.category === "read" && call.filePath) {
-      return call.filePath;
-    }
-    const isExploration = call.category === "shell" && NormalizeUtil.isExplorationCommand(call.key);
-    return isExploration ? call.summary : call.key;
+    return CATEGORY_TO_SOURCE[call.category](call);
   }
   inThousands(tokens) {
     return NumberUtil.round(tokens / TOKENS_PER_THOUSAND, 1);
@@ -1580,6 +1641,19 @@ var SignalService = class _SignalService {
     repeated_request: { minSessions: "minRepeatedRequestSessions" },
     unused_piece: "always",
     large_piece: "always"
+  };
+  // Why: what a piece adds to the context stays there: instructions in every message, an agent's prompt in its
+  // thread, a skill or command from its first use on.
+  static afterFirstUse = (piece, session) => _SignalService.messagesAfterFirstUse(piece, session);
+  static PIECE_KIND_TO_CARRIERS = {
+    instructions: (_piece, session) => session.messages,
+    agent: (piece, session) => session.messages.filter((message) => message.thread.agentType === piece.name),
+    skill: _SignalService.afterFirstUse,
+    command: _SignalService.afterFirstUse,
+    hook: _SignalService.afterFirstUse,
+    mcp: _SignalService.afterFirstUse,
+    plugin: _SignalService.afterFirstUse,
+    settings: _SignalService.afterFirstUse
   };
   costService;
   extract(sessions, inventory) {
@@ -1769,12 +1843,9 @@ var SignalService = class _SignalService {
     });
   }
   messagesCarrying(piece, session) {
-    if (piece.kind === "instructions") {
-      return session.messages;
-    }
-    if (piece.kind === "agent") {
-      return session.messages.filter((message) => message.thread.agentType === piece.name);
-    }
+    return _SignalService.PIECE_KIND_TO_CARRIERS[piece.kind](piece, session);
+  }
+  static messagesAfterFirstUse(piece, session) {
     const threadIdToFirstUseAtMs = /* @__PURE__ */ new Map();
     for (const call of session.tools.filter((toolCall) => toolCall.skill === piece.name)) {
       const earlierUseAtMs = threadIdToFirstUseAtMs.get(call.thread.id) ?? Infinity;
@@ -2408,6 +2479,7 @@ var CheckCatalogUtil = class _CheckCatalogUtil {
       categories: ["lint"],
       packages: ["eslint"],
       commands: ["eslint"],
+      configSource: "eslint config",
       configMarkers: [{ pattern: /["'](complexity|max-depth|max-nested-callbacks)["']/, categories: ["complexity"] }]
     },
     {
@@ -2564,6 +2636,7 @@ var CheckCatalogUtil = class _CheckCatalogUtil {
       categories: ["lint"],
       packages: ["ruff"],
       commands: ["ruff"],
+      configSource: "python config",
       configMarkers: [
         { pattern: /\bC90\d?\b|mccabe/, categories: ["complexity"] },
         { pattern: /["']PT\d*["']|flake8-pytest-style/, categories: ["testLint"] }
@@ -2581,6 +2654,7 @@ var CheckCatalogUtil = class _CheckCatalogUtil {
       categories: ["lint"],
       packages: ["flake8"],
       commands: ["flake8"],
+      configSource: "python config",
       configMarkers: [{ pattern: /max-complexity/, categories: ["complexity"] }]
     },
     {
@@ -2637,6 +2711,7 @@ var CheckCatalogUtil = class _CheckCatalogUtil {
       languages: ["go"],
       categories: ["lint"],
       commands: ["golangci-lint"],
+      configSource: "golangci config",
       configMarkers: [
         { pattern: /\b(gocognit|gocyclo|cyclop)\b/, categories: ["complexity"] },
         { pattern: /\b(unused|deadcode)\b/, categories: ["deadCode"] },
@@ -2705,6 +2780,9 @@ var GuardUtil = class _GuardUtil {
     }
     return void 0;
   }
+  static isKeyOf(record, value) {
+    return value !== void 0 && Object.hasOwn(record, value);
+  }
   static parseJson(text) {
     try {
       return JSON.parse(text);
@@ -2742,6 +2820,12 @@ var MONOREPO_FILES = ["pnpm-workspace.yaml", "lerna.json", "turbo.json", "nx.jso
 var MIN_LANGUAGE_EDITS = 5;
 var PACKAGE_ENTRY_FIELDS = ["exports", "main", "module", "bin"];
 var UNMAPPED_PREFIX = "unmapped:";
+var DEDICATED_CONFIG_SOURCES = /* @__PURE__ */ new Set(["eslint config", "golangci config"]);
+var MATCH_KIND_TO_EDIT_KEYS = {
+  language: (match) => [match.language],
+  notCode: () => [],
+  unmapped: (match) => [`${UNMAPPED_PREFIX}${match.extension}`]
+};
 var CheckInventoryService = class _CheckInventoryService {
   constructor(projectDir) {
     this.projectDir = projectDir;
@@ -2783,12 +2867,7 @@ var CheckInventoryService = class _CheckInventoryService {
   }
   static languagesOf(sessions) {
     const matches = sessions.flatMap((session) => session.tools).filter((call) => call.category === "edit" && call.filePath !== void 0).map((call) => CheckCatalogUtil.languageOf(call.filePath ?? ""));
-    const keys = matches.flatMap((match) => {
-      if (match.kind === "notCode") {
-        return [];
-      }
-      return [match.kind === "language" ? match.language : `${UNMAPPED_PREFIX}${match.extension}`];
-    });
+    const keys = matches.flatMap((match) => _CheckInventoryService.editKeysOf(match));
     return Object.entries(CollectionUtil.countBy(keys)).map(([key, edits]) => key.startsWith(UNMAPPED_PREFIX) ? {
       edits,
       language: "unmapped",
@@ -2835,13 +2914,11 @@ var CheckInventoryService = class _CheckInventoryService {
     };
   }
   ownConfigText(definition, files) {
-    if (definition.name === "eslint") {
-      return files.sourceToText["eslint config"];
-    }
-    if (definition.name === "golangci-lint") {
-      return files.sourceToText["golangci config"];
-    }
-    return definition.languages.includes("python") ? files.sourceToText["python config"] : "";
+    return definition.configSource ? files.sourceToText[definition.configSource] : "";
+  }
+  static editKeysOf(match) {
+    const keysOf = MATCH_KIND_TO_EDIT_KEYS[match.kind];
+    return keysOf(match);
   }
   sourcesOf(definition, files, runsTool) {
     const names = [definition.name, ...definition.packages ?? [], ...definition.commands ?? []];
@@ -2849,14 +2926,13 @@ var CheckInventoryService = class _CheckInventoryService {
     const scripts = Object.values(GuardUtil.asRecord(files.packageJson?.scripts) ?? {}).map(String).join("\n");
     const isInPackageJson = (definition.packages ?? []).some((name) => dependencies.has(name)) || (definition.commands ?? []).some((command) => _CheckInventoryService.mentions(scripts, command));
     const sources = isInPackageJson ? ["package.json"] : [];
-    const isEslint = definition.name === "eslint" && files.sourceToText["eslint config"] !== "";
-    const isGolangci = definition.name === "golangci-lint" && files.sourceToText["golangci config"] !== "";
+    const ownConfig = definition.configSource;
+    const ownConfigSources = ownConfig && DEDICATED_CONFIG_SOURCES.has(ownConfig) && files.sourceToText[ownConfig] !== "" ? [ownConfig] : [];
     const isPython = definition.languages.includes("python") && names.some((name) => _CheckInventoryService.mentions(files.sourceToText["python config"], name));
     const isInCi = runsTool(files.sourceToText.ci);
     return [
       ...sources,
-      ...isEslint ? ["eslint config"] : [],
-      ...isGolangci ? ["golangci config"] : [],
+      ...ownConfigSources,
       ...isPython ? ["python config"] : [],
       ...isInCi ? ["ci"] : []
     ];
@@ -2925,6 +3001,11 @@ var AnalysisService = class _AnalysisService {
   constructor(context) {
     this.context = context;
   }
+  static FIX_LOOP_PART_TO_SUMMARY = {
+    all: (cost, fixLoop) => _AnalysisService.offset(cost, fixLoop, 0),
+    withoutFixLoops: (cost, fixLoop) => _AnalysisService.offset(cost, fixLoop, -1),
+    onlyFixLoops: (_cost, fixLoop) => fixLoop
+  };
   static LAST_ANALYSIS_FILE = "last-analysis.json";
   async analyze(options) {
     const { config, store, provider } = this.context;
@@ -3167,10 +3248,9 @@ var AnalysisService = class _AnalysisService {
       outputTokens: 0,
       usd: 0
     };
-    if (fixLoops === "onlyFixLoops") {
-      return fixLoop;
-    }
-    const sign = fixLoops === "withoutFixLoops" ? -1 : 0;
+    return _AnalysisService.FIX_LOOP_PART_TO_SUMMARY[fixLoops](cost, fixLoop);
+  }
+  static offset(cost, fixLoop, sign) {
     return {
       activeMinutes: cost.activeMinutes + sign * fixLoop.activeMinutes,
       tokens: cost.tokens + sign * fixLoop.tokens,
@@ -3197,6 +3277,7 @@ import { basename, dirname, join as join3, relative } from "node:path";
 
 // src/Shared/Utils/FrontmatterUtil.ts
 var BLOCK_TEXT_MARKERS = /* @__PURE__ */ new Set(["|", ">", "|-", ">-"]);
+var PARENTHESIS_TO_DEPTH_CHANGE = /* @__PURE__ */ new Map([["(", 1], [")", -1]]);
 var FrontmatterUtil = class _FrontmatterUtil {
   static parse(text) {
     const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
@@ -3225,7 +3306,8 @@ var FrontmatterUtil = class _FrontmatterUtil {
     const content = line.trimStart();
     const isIndented = content.length < line.length;
     const isListItem = isIndented && /^-\s/.test(content);
-    if (isListItem && key && state.blockMode !== "text") {
+    const isInTextBlock = state.blockMode === "text";
+    if (isListItem && key && !isInTextBlock) {
       const previous = state.data[key];
       const list = Array.isArray(previous) ? previous : [];
       const item = content.slice(1).trim();
@@ -3234,7 +3316,7 @@ var FrontmatterUtil = class _FrontmatterUtil {
       state.blockMode = "list";
       return;
     }
-    if (isIndented && key && state.blockMode === "text") {
+    if (isIndented && key && isInTextBlock) {
       state.data[key] = `${String(state.data[key] ?? "")} ${line.trim()}`.trim();
       return;
     }
@@ -3275,7 +3357,7 @@ var FrontmatterUtil = class _FrontmatterUtil {
     let current = "";
     let depth = 0;
     for (const character of value) {
-      depth += Number(character === "(") - Number(character === ")");
+      depth += PARENTHESIS_TO_DEPTH_CHANGE.get(character) ?? 0;
       const isSeparator = depth <= 0 && /\s/.test(character);
       if (isSeparator) {
         entries.push(current);
@@ -3342,6 +3424,8 @@ var GitUtil = class {
 };
 
 // src/Providers/ClaudeCode/Services/ClaudeCodeInventoryService.ts
+var PROJECT_SCOPES = /* @__PURE__ */ new Set(["project", "local"]);
+var READ_ONLY_SCOPES = /* @__PURE__ */ new Set(["plugin", "managed"]);
 var DEFAULT_RETENTION_DAYS = 30;
 var MAX_DESCRIPTION_CHARS = 300;
 var MAX_COMPONENT_DEPTH = 4;
@@ -3367,7 +3451,7 @@ var InventoryBuilder = class {
     return true;
   }
   displayPath(file, scope) {
-    const isProjectFile = scope === "project" || scope === "local";
+    const isProjectFile = PROJECT_SCOPES.has(scope);
     return isProjectFile ? relative(this.projectDir, file) : PathUtil.tildify(file);
   }
   async changeOf(file, scope) {
@@ -3429,7 +3513,7 @@ ${content.toString("base64")}`);
       ...latestChange,
       files: extraFiles.length ? extraFiles.map((extraFile) => relative(pieceFolder, extraFile)) : void 0,
       preloadedSkills: filePiece.kind === "agent" ? FrontmatterUtil.asList(data.skills) : void 0,
-      isEditable: filePiece.scope !== "plugin" && filePiece.scope !== "managed",
+      isEditable: !READ_ONLY_SCOPES.has(filePiece.scope),
       plugin: filePiece.plugin
     });
   }
@@ -3945,10 +4029,80 @@ var UNKNOWN_API_ERROR = "unknown";
 var TOKENS_PER_THOUSAND2 = 1e3;
 var VALID_TOOL_NAME = /^[\w.:-]{1,100}$/;
 var MALFORMED_TOOL_NAME = "(malformed tool name)";
+var REJECTED_WITHOUT_FEEDBACK = "rejected without feedback";
+var describeShellCall = (input) => {
+  const command = GuardUtil.asString(input.command);
+  return command === void 0 ? void 0 : {
+    key: NormalizeUtil.commandKey(command),
+    category: "shell",
+    summary: command
+  };
+};
+var describeSkillCall = (input) => {
+  const skill = (GuardUtil.firstString(input, ["skill", "command", "name"]) ?? "unknown").replace(/^\//, "");
+  return {
+    key: `Skill:${skill}`,
+    category: "skill",
+    summary: `skill ${skill}`,
+    skill
+  };
+};
+var TOOL_NAME_TO_DESCRIBER = /* @__PURE__ */ new Map([["Bash", describeShellCall], ["Skill", describeSkillCall]]);
+var keepText = (text) => text;
+var rejectionExcerpt = (text) => ClaudeCodeTranscriptUtil.rejectionFeedback(text) ?? REJECTED_WITHOUT_FEEDBACK;
+var RESULT_KIND_TO_EXCERPT = {
+  ok: () => void 0,
+  user_rejected: rejectionExcerpt,
+  error: keepText,
+  permission_denied: keepText,
+  interrupted: keepText,
+  hook_blocked: keepText
+};
+var CONTENT_BLOCK_TYPE_TO_TEXT = {
+  image: () => "[image]",
+  text: (block) => GuardUtil.asString(block.text) ?? ""
+};
 var ClaudeCodeSessionService = class {
   constructor(homeDir) {
     this.homeDir = homeDir;
   }
+  lineTypeToHandler = {
+    "attachment": (context, line) => {
+      this.handleAttachment(context, line);
+    },
+    "cost-state": (context, line) => {
+      this.handleCostState(context, line);
+    },
+    "system": (context, line, isMainFile) => {
+      this.handleSystemLine(context, line, isMainFile);
+    },
+    "assistant": (context, line) => {
+      this.withMessage(line, (message) => {
+        this.handleAssistantLine(context, line, message);
+      });
+    },
+    "user": (context, line) => {
+      this.withMessage(line, (message) => {
+        this.handleUserLine(context, line, message);
+      });
+    }
+  };
+  attachmentTypeToHandler = {
+    environment: (context, _line, attachment) => {
+      this.readEnvironment(context, GuardUtil.asRecord(attachment.snapshot));
+    },
+    queued_command: (context, line, attachment) => {
+      this.handleQueuedCommand(context, line, attachment);
+    }
+  };
+  systemSubtypeToHandler = {
+    compact_boundary: (context, line) => {
+      this.handleCompaction(context, line);
+    },
+    turn_duration: (context, line, isMainFile) => {
+      this.handleTurnDuration(context, line, isMainFile);
+    }
+  };
   async discoverTranscripts(options) {
     const projectsDir = join5(this.homeDir, "projects");
     const projectFolders = await readdir3(projectsDir).catch(() => []);
@@ -4154,27 +4308,14 @@ var ClaudeCodeSessionService = class {
       eventsAtMs.push(line.occurredAtMs);
       context.threadIdToEventsAtMs.set(line.thread.id, eventsAtMs);
     }
-    if (lineType === "attachment") {
-      this.handleAttachment(context, line);
-      return;
+    if (GuardUtil.isKeyOf(this.lineTypeToHandler, lineType)) {
+      this.lineTypeToHandler[lineType](context, line, isMainFile);
     }
-    if (lineType === "cost-state") {
-      this.handleCostState(context, line);
-      return;
-    }
-    if (lineType === "system") {
-      this.handleSystemLine(context, line, isMainFile);
-      return;
-    }
-    const message = GuardUtil.asRecord(record.message);
-    if (!message) {
-      return;
-    }
-    if (lineType === "assistant") {
-      this.handleAssistantLine(context, line, message);
-    }
-    if (lineType === "user") {
-      this.handleUserLine(context, line, message);
+  }
+  withMessage(line, handle) {
+    const message = GuardUtil.asRecord(line.record.message);
+    if (message) {
+      handle(message);
     }
   }
   threadOfLine(context, record, isMainFile) {
@@ -4270,14 +4411,21 @@ var ClaudeCodeSessionService = class {
       return;
     }
     const textParts = [];
-    for (const block of GuardUtil.asArray(content).map((item) => GuardUtil.asRecord(item))) {
-      if (block?.type === "tool_result") {
+    const blockTypeToHandler = {
+      tool_result: (block) => {
         this.handleToolResult(context, line, block);
-        continue;
+      },
+      text: (block) => {
+        const text = GuardUtil.asString(block.text);
+        if (text !== void 0) {
+          textParts.push(text);
+        }
       }
-      const text = GuardUtil.asString(block?.text);
-      if (block?.type === "text" && text !== void 0) {
-        textParts.push(text);
+    };
+    for (const block of GuardUtil.asArray(content).map((item) => GuardUtil.asRecord(item))) {
+      const blockType = GuardUtil.asString(block?.type);
+      if (block && GuardUtil.isKeyOf(blockTypeToHandler, blockType)) {
+        blockTypeToHandler[blockType](block);
       }
     }
     if (textParts.length) {
@@ -4331,13 +4479,15 @@ var ClaudeCodeSessionService = class {
     reported.isCostPartial ||= line.record.hasUnknownModelCost === true;
   }
   handleSystemLine(context, line, isMainFile) {
+    const subtype = GuardUtil.asString(line.record.subtype);
+    if (GuardUtil.isKeyOf(this.systemSubtypeToHandler, subtype)) {
+      this.systemSubtypeToHandler[subtype](context, line, isMainFile);
+    }
+  }
+  handleTurnDuration(context, line, isMainFile) {
     const durationMs = GuardUtil.asNumber(line.record.durationMs);
     const isMainTurn = isMainFile && line.record.isSidechain !== true;
-    if (line.record.subtype === "compact_boundary") {
-      this.handleCompaction(context, line);
-      return;
-    }
-    if (line.record.subtype === "turn_duration" && isMainTurn && durationMs !== void 0) {
+    if (isMainTurn && durationMs !== void 0) {
       context.facts.reported.turns.push({
         durationMs,
         endedAtMs: line.occurredAtMs
@@ -4366,14 +4516,16 @@ var ClaudeCodeSessionService = class {
   // Why: a prompt typed while the agent is busy is written as a `queued_command` attachment, never as a user line; other queued commands (finished background tasks, other sessions) are not the person's words.
   handleAttachment(context, line) {
     const attachment = GuardUtil.asRecord(line.record.attachment);
-    if (attachment?.type === "environment") {
-      this.readEnvironment(context, GuardUtil.asRecord(attachment.snapshot));
-      return;
+    const attachmentType = GuardUtil.asString(attachment?.type);
+    if (attachment && GuardUtil.isKeyOf(this.attachmentTypeToHandler, attachmentType)) {
+      this.attachmentTypeToHandler[attachmentType](context, line, attachment);
     }
-    const prompt = GuardUtil.asString(attachment?.prompt);
-    const originKind = GuardUtil.asString(GuardUtil.asRecord(attachment?.origin)?.kind) ?? HUMAN_ORIGIN;
-    const isQueuedHumanPrompt = attachment?.type === "queued_command" && attachment.commandMode === "prompt" && attachment.isMeta !== true && originKind === HUMAN_ORIGIN;
-    if (isQueuedHumanPrompt && prompt !== void 0) {
+  }
+  handleQueuedCommand(context, line, attachment) {
+    const prompt = GuardUtil.asString(attachment.prompt);
+    const originKind = GuardUtil.asString(GuardUtil.asRecord(attachment.origin)?.kind) ?? HUMAN_ORIGIN;
+    const isHumanPrompt = attachment.commandMode === "prompt" && attachment.isMeta !== true && originKind === HUMAN_ORIGIN;
+    if (isHumanPrompt && prompt !== void 0) {
       this.handlePrompt(context, line, prompt);
     }
   }
@@ -4445,13 +4597,7 @@ var ClaudeCodeSessionService = class {
     };
   }
   resultExcerptText(text, kind) {
-    if (kind === "ok") {
-      return void 0;
-    }
-    if (kind === "user_rejected") {
-      return ClaudeCodeTranscriptUtil.rejectionFeedback(text) ?? "rejected without feedback";
-    }
-    return text;
+    return RESULT_KIND_TO_EXCERPT[kind](text);
   }
   readModel(message) {
     const model = GuardUtil.asString(message.model);
@@ -4462,10 +4608,8 @@ var ClaudeCodeSessionService = class {
       return content;
     }
     return GuardUtil.asArray(content).map((item) => GuardUtil.asRecord(item)).map((block) => {
-      if (block?.type === "image") {
-        return "[image]";
-      }
-      return block?.type === "text" ? GuardUtil.asString(block.text) ?? "" : "";
+      const blockType = GuardUtil.asString(block?.type);
+      return block && GuardUtil.isKeyOf(CONTENT_BLOCK_TYPE_TO_TEXT, blockType) ? CONTENT_BLOCK_TYPE_TO_TEXT[blockType](block) : "";
     }).join("\n");
   }
   buildToolCall(block, toolUseId, callContext) {
@@ -4486,14 +4630,10 @@ var ClaudeCodeSessionService = class {
     };
   }
   describeToolCall(name, input, projectDir) {
-    const command = GuardUtil.asString(input.command);
-    if (name === "Bash" && command !== void 0) {
-      return {
-        key: NormalizeUtil.commandKey(command),
-        category: "shell",
-        summary: command
-      };
-    }
+    const byName = TOOL_NAME_TO_DESCRIBER.get(name)?.(input);
+    return byName ?? this.describeByKind(name, input, projectDir);
+  }
+  describeByKind(name, input, projectDir) {
     const filePath = GuardUtil.firstString(input, ["file_path", "notebook_path", "path"]);
     const isReadTool = READ_TOOLS.has(name);
     if ((isReadTool || EDIT_TOOLS.has(name)) && filePath !== void 0) {
@@ -4516,15 +4656,6 @@ var ClaudeCodeSessionService = class {
         category: "delegation",
         summary: `${subagentType}: ${GuardUtil.asString(input.description) ?? ""}`,
         subagentPromptHash: delegatedPrompt === void 0 ? void 0 : HashUtil.sha(delegatedPrompt.trim())
-      };
-    }
-    if (name === "Skill") {
-      const skill = (GuardUtil.firstString(input, ["skill", "command", "name"]) ?? "unknown").replace(/^\//, "");
-      return {
-        key: `Skill:${skill}`,
-        category: "skill",
-        summary: `skill ${skill}`,
-        skill
       };
     }
     if (name.startsWith("mcp__")) {
@@ -5163,6 +5294,11 @@ var ARGUMENT_SPEC = {
   "version": { type: "boolean", short: "v" }
 };
 var CLIModule = class _CLIModule {
+  suggestionsSubcommandToHandler = {
+    list: async (invocation) => this.listSuggestions(invocation),
+    add: async (invocation) => this.addSuggestions(invocation),
+    set: async (invocation) => this.setSuggestionStatus(invocation)
+  };
   commandNameToHandler = {
     analyze: async ({ values, common }) => new AnalyzeCommand().run({
       ...common,
@@ -5270,7 +5406,7 @@ Output is JSON on stdout. Nothing leaves your machine.`;
     if (nodeMajor < MIN_NODE_MAJOR) {
       throw new Error(`Node.js ${MIN_NODE_MAJOR}+ is required (found ${process.version}).`);
     }
-    if (!this.isCommandName(commandName)) {
+    if (!GuardUtil.isKeyOf(this.commandNameToHandler, commandName)) {
       throw new Error(`Unknown command: ${commandName}. Run \`imh --help\`.`);
     }
     const result = await this.commandNameToHandler[commandName]({
@@ -5289,45 +5425,45 @@ Output is JSON on stdout. Nothing leaves your machine.`;
     process.stdout.write(`${JSON.stringify(result, null, values.pretty ? JSON_INDENT2 : 0)}
 `);
   }
-  isCommandName(value) {
-    return Object.hasOwn(this.commandNameToHandler, value);
+  async runSuggestions(invocation) {
+    const [subcommand = "list"] = invocation.rest;
+    if (!GuardUtil.isKeyOf(this.suggestionsSubcommandToHandler, subcommand)) {
+      throw new Error(`Unknown suggestions command: ${subcommand}`);
+    }
+    return this.suggestionsSubcommandToHandler[subcommand](invocation);
   }
-  async runSuggestions({ values, rest, common }) {
-    const [subcommand = "list", id, status] = rest;
-    const command = new SuggestionsCommand();
-    if (subcommand === "list") {
-      const statusFilter = values.status;
-      if (statusFilter !== void 0 && !SuggestionService.isStatus(statusFilter)) {
-        throw new Error(`Unknown status: ${statusFilter}`);
-      }
-      return command.list({
-        ...common,
-        status: statusFilter
-      });
+  async listSuggestions({ values, common }) {
+    const statusFilter = values.status;
+    if (statusFilter !== void 0 && !SuggestionService.isStatus(statusFilter)) {
+      throw new Error(`Unknown status: ${statusFilter}`);
     }
-    if (subcommand === "add") {
-      const rawJson = values.file ? await readFile6(values.file, "utf8") : await this.readStdin();
-      const items = GuardUtil.parseJson(rawJson);
-      if (items === void 0) {
-        throw new Error("Suggestions must be valid JSON.");
-      }
-      return command.add({
-        ...common,
-        items
-      });
+    return new SuggestionsCommand().list({
+      ...common,
+      status: statusFilter
+    });
+  }
+  async addSuggestions({ values, common }) {
+    const rawJson = values.file ? await readFile6(values.file, "utf8") : await this.readStdin();
+    const items = GuardUtil.parseJson(rawJson);
+    if (items === void 0) {
+      throw new Error("Suggestions must be valid JSON.");
     }
-    if (subcommand === "set") {
-      if (!id || !status || !SuggestionService.isStatus(status)) {
-        throw new Error("Usage: imh suggestions set <id> <pending|accepted|rejected|applied> [--note text]");
-      }
-      return command.setStatus({
-        ...common,
-        id,
-        status,
-        note: values.note
-      });
+    return new SuggestionsCommand().add({
+      ...common,
+      items
+    });
+  }
+  async setSuggestionStatus({ values, rest, common }) {
+    const [, id, status] = rest;
+    if (!id || !status || !SuggestionService.isStatus(status)) {
+      throw new Error("Usage: imh suggestions set <id> <pending|accepted|rejected|applied> [--note text]");
     }
-    throw new Error(`Unknown suggestions command: ${subcommand}`);
+    return new SuggestionsCommand().setStatus({
+      ...common,
+      id,
+      status,
+      note: values.note
+    });
   }
   readProvider(value) {
     if (value === void 0) {

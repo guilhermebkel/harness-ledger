@@ -12,6 +12,8 @@ interface ParseState {
 
 const BLOCK_TEXT_MARKERS = new Set(["|", ">", "|-", ">-"]);
 
+const PARENTHESIS_TO_DEPTH_CHANGE = new Map([["(", 1], [")", -1]]);
+
 export class FrontmatterUtil {
   static parse(text: string): Frontmatter {
     const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
@@ -41,7 +43,8 @@ export class FrontmatterUtil {
     const content = line.trimStart();
     const isIndented = content.length < line.length;
     const isListItem = isIndented && /^-\s/.test(content);
-    if (isListItem && key && state.blockMode !== "text") {
+    const isInTextBlock = state.blockMode === "text";
+    if (isListItem && key && !isInTextBlock) {
       const previous = state.data[key];
       const list = Array.isArray(previous) ? previous : [];
       const item = content.slice(1).trim();
@@ -50,7 +53,7 @@ export class FrontmatterUtil {
       state.blockMode = "list";
       return;
     }
-    if (isIndented && key && state.blockMode === "text") {
+    if (isIndented && key && isInTextBlock) {
       state.data[key] = `${String(state.data[key] ?? "")} ${line.trim()}`.trim();
       return;
     }
@@ -100,7 +103,7 @@ export class FrontmatterUtil {
     let current = "";
     let depth = 0;
     for (const character of value) {
-      depth += Number(character === "(") - Number(character === ")");
+      depth += PARENTHESIS_TO_DEPTH_CHANGE.get(character) ?? 0;
       const isSeparator = depth <= 0 && /\s/.test(character);
       if (isSeparator) {
         entries.push(current);

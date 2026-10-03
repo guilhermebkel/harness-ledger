@@ -19,6 +19,9 @@ import type {
   SettingsSummary,
 } from "@/Providers/ClaudeCode/Protocols/ClaudeCodeProtocol.js";
 
+const PROJECT_SCOPES = new Set<PieceScope>(["project", "local"]);
+// Why: plugin and managed pieces are rewritten by their owner on update, so a suggestion can't edit them.
+const READ_ONLY_SCOPES = new Set<PieceScope>(["plugin", "managed"]);
 const DEFAULT_RETENTION_DAYS = 30;
 const MAX_DESCRIPTION_CHARS = 300;
 const MAX_COMPONENT_DEPTH = 4;
@@ -50,7 +53,7 @@ class InventoryBuilder {
   }
 
   displayPath(file: string, scope: PieceScope): string {
-    const isProjectFile = scope === "project" || scope === "local";
+    const isProjectFile = PROJECT_SCOPES.has(scope);
     return isProjectFile ? relative(this.projectDir, file) : PathUtil.tildify(file);
   }
 
@@ -119,7 +122,7 @@ class InventoryBuilder {
       ...latestChange,
       files: extraFiles.length ? extraFiles.map((extraFile) => relative(pieceFolder, extraFile)) : undefined,
       preloadedSkills: filePiece.kind === "agent" ? FrontmatterUtil.asList(data.skills) : undefined,
-      isEditable: filePiece.scope !== "plugin" && filePiece.scope !== "managed",
+      isEditable: !READ_ONLY_SCOPES.has(filePiece.scope),
       plugin: filePiece.plugin,
     });
   }

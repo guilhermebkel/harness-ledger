@@ -1,5 +1,5 @@
 import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
-import type { AssistantMessage, SessionFacts, ToolCall } from "@/Shared/Protocols/SessionProtocol.js";
+import type { AssistantMessage, SessionFacts, ToolCall, ToolResultKind } from "@/Shared/Protocols/SessionProtocol.js";
 import type { FailureChain, FailureChainKind, StepCost } from "@/Shared/Protocols/SignalProtocol.js";
 import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
 import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.js";
@@ -13,6 +13,9 @@ const MAX_CHAIN_ATTEMPTS = 10;
 const MAX_CALLS_BETWEEN_ATTEMPTS = 10;
 
 type ChainStep = "skip" | "failure" | "recovery" | "stop";
+
+// Why: the person stopped or refused the call, so what follows is a new turn, not another attempt.
+const STOPPING_RESULT_KINDS = new Set<ToolResultKind>(["interrupted", "user_rejected"]);
 
 export class FailureChainService {
   constructor(private readonly idleMs: number) {}
@@ -41,26 +44,35 @@ export class FailureChainService {
 
   static isChainableFailure(call: ToolCall): boolean {
     const result = call.result;
-    return result?.isError === true && result.kind !== "interrupted" && result.kind !== "user_rejected";
+    return result?.isError === true && !STOPPING_RESULT_KINDS.has(result.kind);
   }
 
   private chainFrom(first: ToolCall, laterCalls: ToolCall[], index: SessionIndex): FailureChain {
     const failures = [first];
     let recovery: ToolCall | undefined;
     let callsSinceAttempt = 0;
+    const stepToIsLast: Record<ChainStep, (candidate: ToolCall) => boolean> = {
+      stop: () => true,
+      skip: () => {
+        callsSinceAttempt += 1;
+        return false;
+      },
+      failure: (candidate) => {
+        callsSinceAttempt = 0;
+        failures.push(candidate);
+        return failures.length >= MAX_CHAIN_ATTEMPTS;
+      },
+      recovery: (candidate) => {
+        recovery = candidate;
+        return true;
+      },
+    };
     laterCalls.some((candidate) => {
       const lastAttempt = failures.at(-1) ?? first;
       const isTooFar = callsSinceAttempt >= MAX_CALLS_BETWEEN_ATTEMPTS
         || (candidate.calledAtMs ?? 0) - (lastAttempt.calledAtMs ?? 0) > this.idleMs;
       const step = isTooFar ? "stop" : this.stepOf(first, candidate);
-      callsSinceAttempt = step === "skip" ? callsSinceAttempt + 1 : 0;
-      if (step === "failure") {
-        failures.push(candidate);
-      }
-      if (step === "recovery") {
-        recovery = candidate;
-      }
-      return step === "stop" || step === "recovery" || failures.length >= MAX_CHAIN_ATTEMPTS;
+      return stepToIsLast[step](candidate);
     });
     const window = this.chainWindow(first, failures, recovery, index);
     return {
@@ -80,7 +92,7 @@ export class FailureChainService {
     if (result === undefined) {
       return "skip";
     }
-    if (result.kind === "interrupted" || result.kind === "user_rejected") {
+    if (STOPPING_RESULT_KINDS.has(result.kind)) {
       return "stop";
     }
     return result.isError ? "failure" : "recovery";

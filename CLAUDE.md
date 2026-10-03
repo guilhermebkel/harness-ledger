@@ -18,7 +18,7 @@ ADR 0008 has the reasons; `docs/code-standards.md` ("Architecture") has the rule
 - Tests sit next to the file they test (`*.test.ts`). There is no `test/` folder.
 - `dist/imh.mjs`: the bundled script the skill runs. Generated, committed (ADR 0004).
 - `.github/workflows/`: `ci.yml` (shared checks) and one workflow per provider (`claude-code.yml` validates the plugin and skill).
-- `scripts/`: `build.mjs` (bundle) and `survey-transcripts.mjs` (the shape of a folder of transcripts, without their content).
+- `scripts/`: `build.mjs` (bundle), `survey-transcripts.mjs` (the shape of a folder of transcripts, without their content) and `eslint-local-rules.mjs` (this repo's own lint rules, tested next to it).
 - Adding a provider (Codex, Cursor, ...): follow `docs/adding-a-provider.md`. It covers finding the sessions, exporting a sample of the last 7 days, learning the format, mapping it to the shared model and checking it on real sessions.
 
 ## Commands
@@ -42,6 +42,7 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 - While iterating, run only what you need (`pnpm exec vitest run <file>`, `pnpm exec eslint <file>`); keep the full run for the end.
 - Provider-specific code (paths, transcript and settings formats, tool names, prompt tags, env variables) lives only in `src/Providers/<Provider>/`. `src/Shared/` never imports a provider except through `ProviderModule`, and providers never import each other (ADR 0008, enforced by lint). If shared code needs provider knowledge, extend the shared model or `BaseProviderAdapter` instead.
 - Write classes: static-only Utils, Services with constructor-injected dependencies, Commands with `run`. Protocols hold only types.
+- Never compare the same expression with fixed strings twice in a function: dispatch through a `Record<Key, Handler>` (or a `Set` for shared answers) so TypeScript ties the rule to the union (enforced by lint, `local/literal-dispatch`).
 - Layers import only the ones below them: Protocols < Utils < Services/Adapters < Commands < Modules (enforced by lint; `docs/code-standards.md`).
 - Put each test next to the file it tests, named `<File>.test.ts`, and follow `docs/test-standards.md`: expected values written by hand, exact assertions, no logic in tests, doubles only at the process's edges (lint enforces part of it).
 - Import across folders with the `@/` alias (`@/Shared/Utils/TimeUtil.js`), never `../`; same-folder imports use `./` (enforced by lint). The alias is defined in `tsconfig.json` (`paths`) and mirrored in `vitest.config.mjs`.

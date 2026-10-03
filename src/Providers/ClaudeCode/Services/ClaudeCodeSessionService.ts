@@ -57,8 +57,98 @@ const UNKNOWN_API_ERROR = "unknown";
 const TOKENS_PER_THOUSAND = 1000;
 const VALID_TOOL_NAME = /^[\w.:-]{1,100}$/;
 const MALFORMED_TOOL_NAME = "(malformed tool name)";
+const REJECTED_WITHOUT_FEEDBACK = "rejected without feedback";
+
+type ToolDescriber = (input: UnknownRecord) => ClaudeCodeToolDescription | undefined;
+
+const describeShellCall: ToolDescriber = (input) => {
+  const command = GuardUtil.asString(input.command);
+  return command === undefined
+    ? undefined
+    : {
+        key: NormalizeUtil.commandKey(command),
+        category: "shell",
+        summary: command,
+      };
+};
+const describeSkillCall: ToolDescriber = (input) => {
+  const skill = (GuardUtil.firstString(input, ["skill", "command", "name"]) ?? "unknown").replace(/^\//, "");
+  return {
+    key: `Skill:${skill}`,
+    category: "skill",
+    summary: `skill ${skill}`,
+    skill,
+  };
+};
+// Why: a Map because the keys are Claude Code's tool names, spelled as the transcript spells them.
+const TOOL_NAME_TO_DESCRIBER = new Map<string, ToolDescriber>([["Bash", describeShellCall], ["Skill", describeSkillCall]]);
+
+type AttachmentHandler = (
+  context: ClaudeCodeParseContext,
+  line: ClaudeCodeTranscriptLine,
+  attachment: UnknownRecord,
+) => void;
+
+type ClaudeCodeLineType = "attachment" | "cost-state" | "system" | "assistant" | "user";
+type LineHandler = (context: ClaudeCodeParseContext, line: ClaudeCodeTranscriptLine, isMainFile: boolean) => void;
+
+const keepText = (text: string): string => text;
+const rejectionExcerpt = (text: string): string =>
+  ClaudeCodeTranscriptUtil.rejectionFeedback(text) ?? REJECTED_WITHOUT_FEEDBACK;
+const RESULT_KIND_TO_EXCERPT: Record<ToolResultKind, (text: string) => string | undefined> = {
+  ok: () => undefined,
+  user_rejected: rejectionExcerpt,
+  error: keepText,
+  permission_denied: keepText,
+  interrupted: keepText,
+  hook_blocked: keepText,
+};
+const CONTENT_BLOCK_TYPE_TO_TEXT: Record<"image" | "text", (block: UnknownRecord) => string> = {
+  image: () => "[image]",
+  text: (block) => GuardUtil.asString(block.text) ?? "",
+};
 
 export class ClaudeCodeSessionService {
+  private readonly lineTypeToHandler: Record<ClaudeCodeLineType, LineHandler> = {
+    "attachment": (context, line) => {
+      this.handleAttachment(context, line);
+    },
+    "cost-state": (context, line) => {
+      this.handleCostState(context, line);
+    },
+    "system": (context, line, isMainFile) => {
+      this.handleSystemLine(context, line, isMainFile);
+    },
+    "assistant": (context, line) => {
+      this.withMessage(line, (message) => {
+        this.handleAssistantLine(context, line, message);
+      });
+    },
+    "user": (context, line) => {
+      this.withMessage(line, (message) => {
+        this.handleUserLine(context, line, message);
+      });
+    },
+  };
+
+  private readonly attachmentTypeToHandler: Record<"environment" | "queued_command", AttachmentHandler> = {
+    environment: (context, _line, attachment) => {
+      this.readEnvironment(context, GuardUtil.asRecord(attachment.snapshot));
+    },
+    queued_command: (context, line, attachment) => {
+      this.handleQueuedCommand(context, line, attachment);
+    },
+  };
+
+  private readonly systemSubtypeToHandler: Record<"compact_boundary" | "turn_duration", LineHandler> = {
+    compact_boundary: (context, line) => {
+      this.handleCompaction(context, line);
+    },
+    turn_duration: (context, line, isMainFile) => {
+      this.handleTurnDuration(context, line, isMainFile);
+    },
+  };
+
   constructor(private readonly homeDir: string) {}
 
   async discoverTranscripts(options: DiscoverOptions): Promise<TranscriptFile[]> {
@@ -290,27 +380,18 @@ export class ClaudeCodeSessionService {
       eventsAtMs.push(line.occurredAtMs);
       context.threadIdToEventsAtMs.set(line.thread.id, eventsAtMs);
     }
-    if (lineType === "attachment") {
-      this.handleAttachment(context, line);
-      return;
+    if (GuardUtil.isKeyOf(this.lineTypeToHandler, lineType)) {
+      this.lineTypeToHandler[lineType](context, line, isMainFile);
     }
-    if (lineType === "cost-state") {
-      this.handleCostState(context, line);
-      return;
-    }
-    if (lineType === "system") {
-      this.handleSystemLine(context, line, isMainFile);
-      return;
-    }
-    const message = GuardUtil.asRecord(record.message);
-    if (!message) {
-      return;
-    }
-    if (lineType === "assistant") {
-      this.handleAssistantLine(context, line, message);
-    }
-    if (lineType === "user") {
-      this.handleUserLine(context, line, message);
+  }
+
+  private withMessage(
+    line: ClaudeCodeTranscriptLine,
+    handle: (message: UnknownRecord) => void,
+  ): void {
+    const message = GuardUtil.asRecord(line.record.message);
+    if (message) {
+      handle(message);
     }
   }
 
@@ -421,14 +502,21 @@ export class ClaudeCodeSessionService {
       return;
     }
     const textParts: string[] = [];
-    for (const block of GuardUtil.asArray(content).map((item) => GuardUtil.asRecord(item))) {
-      if (block?.type === "tool_result") {
+    const blockTypeToHandler: Record<"tool_result" | "text", (block: UnknownRecord) => void> = {
+      tool_result: (block) => {
         this.handleToolResult(context, line, block);
-        continue;
-      }
-      const text = GuardUtil.asString(block?.text);
-      if (block?.type === "text" && text !== undefined) {
-        textParts.push(text);
+      },
+      text: (block) => {
+        const text = GuardUtil.asString(block.text);
+        if (text !== undefined) {
+          textParts.push(text);
+        }
+      },
+    };
+    for (const block of GuardUtil.asArray(content).map((item) => GuardUtil.asRecord(item))) {
+      const blockType = GuardUtil.asString(block?.type);
+      if (block && GuardUtil.isKeyOf(blockTypeToHandler, blockType)) {
+        blockTypeToHandler[blockType](block);
       }
     }
     if (textParts.length) {
@@ -495,13 +583,20 @@ export class ClaudeCodeSessionService {
     line: ClaudeCodeTranscriptLine,
     isMainFile: boolean,
   ): void {
+    const subtype = GuardUtil.asString(line.record.subtype);
+    if (GuardUtil.isKeyOf(this.systemSubtypeToHandler, subtype)) {
+      this.systemSubtypeToHandler[subtype](context, line, isMainFile);
+    }
+  }
+
+  private handleTurnDuration(
+    context: ClaudeCodeParseContext,
+    line: ClaudeCodeTranscriptLine,
+    isMainFile: boolean,
+  ): void {
     const durationMs = GuardUtil.asNumber(line.record.durationMs);
     const isMainTurn = isMainFile && line.record.isSidechain !== true;
-    if (line.record.subtype === "compact_boundary") {
-      this.handleCompaction(context, line);
-      return;
-    }
-    if (line.record.subtype === "turn_duration" && isMainTurn && durationMs !== undefined) {
+    if (isMainTurn && durationMs !== undefined) {
       context.facts.reported.turns.push({
         durationMs,
         endedAtMs: line.occurredAtMs,
@@ -535,17 +630,21 @@ export class ClaudeCodeSessionService {
   // Why: a prompt typed while the agent is busy is written as a `queued_command` attachment, never as a user line; other queued commands (finished background tasks, other sessions) are not the person's words.
   private handleAttachment(context: ClaudeCodeParseContext, line: ClaudeCodeTranscriptLine): void {
     const attachment = GuardUtil.asRecord(line.record.attachment);
-    if (attachment?.type === "environment") {
-      this.readEnvironment(context, GuardUtil.asRecord(attachment.snapshot));
-      return;
+    const attachmentType = GuardUtil.asString(attachment?.type);
+    if (attachment && GuardUtil.isKeyOf(this.attachmentTypeToHandler, attachmentType)) {
+      this.attachmentTypeToHandler[attachmentType](context, line, attachment);
     }
-    const prompt = GuardUtil.asString(attachment?.prompt);
-    const originKind = GuardUtil.asString(GuardUtil.asRecord(attachment?.origin)?.kind) ?? HUMAN_ORIGIN;
-    const isQueuedHumanPrompt = attachment?.type === "queued_command"
-      && attachment.commandMode === "prompt"
-      && attachment.isMeta !== true
-      && originKind === HUMAN_ORIGIN;
-    if (isQueuedHumanPrompt && prompt !== undefined) {
+  }
+
+  private handleQueuedCommand(
+    context: ClaudeCodeParseContext,
+    line: ClaudeCodeTranscriptLine,
+    attachment: UnknownRecord,
+  ): void {
+    const prompt = GuardUtil.asString(attachment.prompt);
+    const originKind = GuardUtil.asString(GuardUtil.asRecord(attachment.origin)?.kind) ?? HUMAN_ORIGIN;
+    const isHumanPrompt = attachment.commandMode === "prompt" && attachment.isMeta !== true && originKind === HUMAN_ORIGIN;
+    if (isHumanPrompt && prompt !== undefined) {
       this.handlePrompt(context, line, prompt);
     }
   }
@@ -627,13 +726,7 @@ export class ClaudeCodeSessionService {
   }
 
   private resultExcerptText(text: string, kind: ToolResultKind): string | undefined {
-    if (kind === "ok") {
-      return undefined;
-    }
-    if (kind === "user_rejected") {
-      return ClaudeCodeTranscriptUtil.rejectionFeedback(text) ?? "rejected without feedback";
-    }
-    return text;
+    return RESULT_KIND_TO_EXCERPT[kind](text);
   }
 
   private readModel(message: UnknownRecord): string | undefined {
@@ -648,10 +741,8 @@ export class ClaudeCodeSessionService {
     return GuardUtil.asArray(content)
       .map((item) => GuardUtil.asRecord(item))
       .map((block) => {
-        if (block?.type === "image") {
-          return "[image]";
-        }
-        return block?.type === "text" ? (GuardUtil.asString(block.text) ?? "") : "";
+        const blockType = GuardUtil.asString(block?.type);
+        return block && GuardUtil.isKeyOf(CONTENT_BLOCK_TYPE_TO_TEXT, blockType) ? CONTENT_BLOCK_TYPE_TO_TEXT[blockType](block) : "";
       })
       .join("\n");
   }
@@ -676,14 +767,11 @@ export class ClaudeCodeSessionService {
   }
 
   private describeToolCall(name: string, input: UnknownRecord, projectDir?: string): ClaudeCodeToolDescription {
-    const command = GuardUtil.asString(input.command);
-    if (name === "Bash" && command !== undefined) {
-      return {
-        key: NormalizeUtil.commandKey(command),
-        category: "shell",
-        summary: command,
-      };
-    }
+    const byName = TOOL_NAME_TO_DESCRIBER.get(name)?.(input);
+    return byName ?? this.describeByKind(name, input, projectDir);
+  }
+
+  private describeByKind(name: string, input: UnknownRecord, projectDir?: string): ClaudeCodeToolDescription {
     const filePath = GuardUtil.firstString(input, ["file_path", "notebook_path", "path"]);
     const isReadTool = READ_TOOLS.has(name);
     if ((isReadTool || EDIT_TOOLS.has(name)) && filePath !== undefined) {
@@ -706,15 +794,6 @@ export class ClaudeCodeSessionService {
         category: "delegation",
         summary: `${subagentType}: ${GuardUtil.asString(input.description) ?? ""}`,
         subagentPromptHash: delegatedPrompt === undefined ? undefined : HashUtil.sha(delegatedPrompt.trim()),
-      };
-    }
-    if (name === "Skill") {
-      const skill = (GuardUtil.firstString(input, ["skill", "command", "name"]) ?? "unknown").replace(/^\//, "");
-      return {
-        key: `Skill:${skill}`,
-        category: "skill",
-        summary: `skill ${skill}`,
-        skill,
       };
     }
     if (name.startsWith("mcp__")) {

@@ -44,6 +44,7 @@ const MAX_FAILED_COMMANDS_TO_SEARCH = 15;
 const FAILED_COMMAND_PREFIX = "failed_command:";
 
 type FixLoopPart = "all" | "withoutFixLoops" | "onlyFixLoops";
+type CostPicker = (cost: CostSummary, fixLoop: CostSummary) => CostSummary;
 const FAILURE_SIGNAL_TYPES = new Set<SignalType>(["failed_command", "tool_error", "permission_denied", "hook_blocked", "api_error"]);
 const REREAD_SIGNAL_TYPES = new Set<SignalType>(["repeated_read", "subagent_reread", "context_compaction"]);
 const CORRECTION_SIGNAL_TYPES = new Set<SignalType>(["user_correction", "interruption"]);
@@ -53,6 +54,12 @@ const COST_METHOD
     + "totals don't overlap: failures exclude fix loops, and corrections exclude turns already counted as failures.";
 
 export class AnalysisService {
+  private static readonly FIX_LOOP_PART_TO_SUMMARY: Record<FixLoopPart, CostPicker> = {
+    all: (cost, fixLoop) => AnalysisService.offset(cost, fixLoop, 0),
+    withoutFixLoops: (cost, fixLoop) => AnalysisService.offset(cost, fixLoop, -1),
+    onlyFixLoops: (_cost, fixLoop) => fixLoop,
+  };
+
   static readonly LAST_ANALYSIS_FILE = "last-analysis.json";
 
   constructor(private readonly context: ContextService) {}
@@ -336,10 +343,10 @@ export class AnalysisService {
       outputTokens: 0,
       usd: 0,
     };
-    if (fixLoops === "onlyFixLoops") {
-      return fixLoop;
-    }
-    const sign = fixLoops === "withoutFixLoops" ? -1 : 0;
+    return AnalysisService.FIX_LOOP_PART_TO_SUMMARY[fixLoops](cost, fixLoop);
+  }
+
+  private static offset(cost: CostSummary, fixLoop: CostSummary, sign: number): CostSummary {
     return {
       activeMinutes: cost.activeMinutes + sign * fixLoop.activeMinutes,
       tokens: cost.tokens + sign * fixLoop.tokens,

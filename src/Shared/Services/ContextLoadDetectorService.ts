@@ -9,6 +9,18 @@ import { TokenUsageUtil } from "@/Shared/Utils/TokenUsageUtil.js";
 import { AttributionService } from "./AttributionService.js";
 import type { OccurrenceCollectorService } from "./OccurrenceCollectorService.js";
 
+const keyOf = (call: ToolCall): string => call.key;
+const CATEGORY_TO_SOURCE: Record<ToolCategory, (call: ToolCall) => string> = {
+  read: (call) => call.filePath ?? call.key,
+  shell: (call) => (NormalizeUtil.isExplorationCommand(call.key) ? call.summary : call.key),
+  edit: keyOf,
+  search: keyOf,
+  plan: keyOf,
+  delegation: keyOf,
+  skill: keyOf,
+  mcp: keyOf,
+  other: keyOf,
+};
 const TOKENS_PER_THOUSAND = 1000;
 // Why: edits, plans and delegations return little or a summary, so they don't load material.
 const LOADING_CATEGORIES = new Set<ToolCategory>(["read", "shell", "search", "mcp", "skill", "other"]);
@@ -112,11 +124,7 @@ export class ContextLoadDetectorService {
    * (`cat a.ts` and `cat b.ts` are different material), otherwise its key (every `git diff` prints a diff).
    */
   private sourceOf(call: ToolCall): string {
-    if (call.category === "read" && call.filePath) {
-      return call.filePath;
-    }
-    const isExploration = call.category === "shell" && NormalizeUtil.isExplorationCommand(call.key);
-    return isExploration ? call.summary : call.key;
+    return CATEGORY_TO_SOURCE[call.category](call);
   }
 
   private inThousands(tokens: number): number {

@@ -97,6 +97,7 @@ export class CheckCatalogUtil {
       categories: ["lint"],
       packages: ["eslint"],
       commands: ["eslint"],
+      configSource: "eslint config",
       configMarkers: [{ pattern: /["'](complexity|max-depth|max-nested-callbacks)["']/, categories: ["complexity"] }],
     },
     {
@@ -253,6 +254,7 @@ export class CheckCatalogUtil {
       categories: ["lint"],
       packages: ["ruff"],
       commands: ["ruff"],
+      configSource: "python config",
       configMarkers: [
         { pattern: /\bC90\d?\b|mccabe/, categories: ["complexity"] },
         { pattern: /["']PT\d*["']|flake8-pytest-style/, categories: ["testLint"] },
@@ -270,6 +272,7 @@ export class CheckCatalogUtil {
       categories: ["lint"],
       packages: ["flake8"],
       commands: ["flake8"],
+      configSource: "python config",
       configMarkers: [{ pattern: /max-complexity/, categories: ["complexity"] }],
     },
     {
@@ -326,6 +329,7 @@ export class CheckCatalogUtil {
       languages: ["go"],
       categories: ["lint"],
       commands: ["golangci-lint"],
+      configSource: "golangci config",
       configMarkers: [
         { pattern: /\b(gocognit|gocyclo|cyclop)\b/, categories: ["complexity"] },
         { pattern: /\b(unused|deadcode)\b/, categories: ["deadCode"] },

@@ -50,6 +50,8 @@ type SignalThreshold = "always" | {
   minSessions?: keyof SignalThresholds;
 };
 
+type CarrierFinder = (piece: HarnessPiece, session: SessionFacts) => AssistantMessage[];
+
 interface PieceSignalFields {
   type: SignalType;
   title: string;
@@ -133,6 +135,22 @@ export class SignalService {
     repeated_request: { minSessions: "minRepeatedRequestSessions" },
     unused_piece: "always",
     large_piece: "always",
+  };
+
+  // Why: what a piece adds to the context stays there: instructions in every message, an agent's prompt in its
+  // thread, a skill or command from its first use on.
+  private static readonly afterFirstUse: CarrierFinder = (piece, session) =>
+    SignalService.messagesAfterFirstUse(piece, session);
+
+  private static readonly PIECE_KIND_TO_CARRIERS: Record<PieceKind, CarrierFinder> = {
+    instructions: (_piece, session) => session.messages,
+    agent: (piece, session) => session.messages.filter((message) => message.thread.agentType === piece.name),
+    skill: SignalService.afterFirstUse,
+    command: SignalService.afterFirstUse,
+    hook: SignalService.afterFirstUse,
+    mcp: SignalService.afterFirstUse,
+    plugin: SignalService.afterFirstUse,
+    settings: SignalService.afterFirstUse,
   };
 
   private readonly costService: CostService;
@@ -354,12 +372,10 @@ export class SignalService {
   }
 
   private messagesCarrying(piece: HarnessPiece, session: SessionFacts): AssistantMessage[] {
-    if (piece.kind === "instructions") {
-      return session.messages;
-    }
-    if (piece.kind === "agent") {
-      return session.messages.filter((message) => message.thread.agentType === piece.name);
-    }
+    return SignalService.PIECE_KIND_TO_CARRIERS[piece.kind](piece, session);
+  }
+
+  private static messagesAfterFirstUse(piece: HarnessPiece, session: SessionFacts): AssistantMessage[] {
     const threadIdToFirstUseAtMs = new Map<string, number>();
     for (const call of session.tools.filter((toolCall) => toolCall.skill === piece.name)) {
       const earlierUseAtMs = threadIdToFirstUseAtMs.get(call.thread.id) ?? Infinity;

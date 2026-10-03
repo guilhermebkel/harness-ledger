@@ -5,6 +5,7 @@ import vitest from "@vitest/eslint-plugin";
 import sonarjs from "eslint-plugin-sonarjs";
 import globals from "globals";
 import tseslint from "typescript-eslint";
+import { localRules } from "./scripts/eslint-local-rules.mjs";
 
 const NO_PARENT_IMPORTS = { group: ["../*", "../**"], message: "Import from \"@/...\" instead of a relative parent path." };
 const NO_PROVIDER_IMPORTS = {
@@ -16,7 +17,7 @@ const NO_OTHER_PROVIDER_IMPORTS = {
   message: "A provider must not import another provider (ADR 0008).",
 };
 
-const TEST_FILES = "src/**/*.test.ts";
+const TEST_FILES = ["src/**/*.test.ts", "scripts/**/*.test.mjs"];
 
 const LAYER_TO_FORBIDDEN_LAYERS = {
   Protocols: ["Utils", "Services", "Adapters", "Commands", "Modules"],
@@ -42,7 +43,7 @@ function layerPattern(layer, forbiddenLayers) {
 const layerConfigs = SCOPES.flatMap(({ dir, patterns }) =>
   Object.entries(LAYER_TO_FORBIDDEN_LAYERS).map(([layer, forbiddenLayers]) => ({
     files: [`${dir}/${layer}/**/*.ts`],
-    ignores: [TEST_FILES, ...Object.keys(LAYER_EXCEPTIONS)],
+    ignores: [...TEST_FILES, ...Object.keys(LAYER_EXCEPTIONS)],
     rules: { "no-restricted-imports": ["error", { patterns: [...patterns, layerPattern(layer, forbiddenLayers)] }] },
   })),
 );
@@ -58,34 +59,6 @@ const layerExceptionConfigs = Object.entries(LAYER_EXCEPTIONS).map(([file, forbi
 const MAX_COGNITIVE_COMPLEXITY = 15;
 const MAX_DEPTH = 3;
 const MAX_PARAMS = 5;
-
-// Why: a comment must protect a rule the code doesn't show, so it says which one up front (docs/code-standards.md).
-const COMMENT_MARKER = /^Why: \S/;
-const TOOL_DIRECTIVE = /^(eslint-disable|eslint-enable|@ts-expect-error|global )/;
-const localPlugin = {
-  rules: {
-    "comment-marker": {
-      meta: { type: "suggestion", messages: { missing: "Delete this comment, or start it with \"Why:\" and the hidden rule it protects." } },
-      create(context) {
-        return {
-          "Program:exit"() {
-            let previousLineCommentEnd = -1;
-            for (const comment of context.sourceCode.getAllComments()) {
-              // Why: consecutive line comments are one comment; only the first line carries the marker.
-              const isContinuation = comment.type === "Line" && comment.loc.start.line === previousLineCommentEnd + 1;
-              previousLineCommentEnd = comment.type === "Line" ? comment.loc.end.line : -1;
-              const firstLine = comment.value.split("\n").map((line) => line.replace(/^\s*\*?\s?/, "").trim()).find(Boolean) ?? "";
-              const isAllowed = COMMENT_MARKER.test(firstLine) || TOOL_DIRECTIVE.test(firstLine);
-              if (comment.type !== "Shebang" && !isContinuation && !isAllowed) {
-                context.report({ loc: comment.loc, messageId: "missing" });
-              }
-            }
-          },
-        };
-      },
-    },
-  },
-};
 
 const BOOLEAN_PREFIXES = ["is", "has", "should", "can", "must", "was", "did"];
 
@@ -103,7 +76,7 @@ export default tseslint.config(
     arrowParens: true,
   }),
   {
-    plugins: { sonarjs, local: localPlugin },
+    plugins: { sonarjs, local: localRules },
     languageOptions: {
       globals: globals.node,
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
@@ -163,6 +136,7 @@ export default tseslint.config(
       "sonarjs/no-all-duplicated-branches": "error",
       "sonarjs/no-identical-conditions": "error",
       "local/comment-marker": "error",
+      "local/literal-dispatch": "error",
       "sonarjs/expression-complexity": "error",
       "sonarjs/no-nested-template-literals": "error",
       "sonarjs/no-nested-functions": "error",
@@ -170,7 +144,9 @@ export default tseslint.config(
       "sonarjs/no-nested-assignment": "error",
       "sonarjs/no-nested-incdec": "error",
       "sonarjs/shorthand-property-grouping": "error",
-      "sonarjs/function-name": "error",
+      // Why: handler maps keyed by snake_case ids (`user_rejected: (failure) => …`) keep the id's spelling, like any
+      // other external key; declared functions are still camelCase through naming-convention.
+      "sonarjs/function-name": ["error", { format: "^(?:[_a-z][a-zA-Z0-9]*|[a-z]+(?:_[a-z]+)+)$" }],
       "sonarjs/super-linear-regex": "error",
       "sonarjs/elseif-without-else": "error",
       "sonarjs/no-duplicate-string": "error",
@@ -221,7 +197,7 @@ export default tseslint.config(
   ...layerConfigs,
   ...layerExceptionConfigs,
   {
-    files: [TEST_FILES, "src/Providers/*/Utils/*FixtureUtil.ts"],
+    files: [...TEST_FILES, "src/Providers/*/Utils/*FixtureUtil.ts"],
     rules: {
       "@typescript-eslint/no-magic-numbers": "off",
       "no-restricted-properties": "off",
@@ -231,7 +207,7 @@ export default tseslint.config(
     },
   },
   {
-    files: [TEST_FILES],
+    files: TEST_FILES,
     plugins: { vitest },
     rules: {
       ...vitest.configs.recommended.rules,
