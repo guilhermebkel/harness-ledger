@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "patch, minor or major; none releases the current version as is (first release)"
+        required: true
+        default: patch
+        type: choice
+        options: [patch, minor, major, none]
+
+concurrency:
+  group: master-writes
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Bump the version in package.json and plugin.json
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          if [ "$BUMP" != "none" ]; then
+            pnpm version "$BUMP" --no-git-tag-version
+          fi
+          node -e '
+            const fs = require("node:fs");
+            const { version } = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            const pluginPath = ".claude-plugin/plugin.json";
+            const plugin = fs.readFileSync(pluginPath, "utf8");
+            fs.writeFileSync(pluginPath, plugin.replace(/"version": "[^"]*"/, `"version": "${version}"`));
+            const marketplacePath = ".claude-plugin/marketplace.json";
+            const marketplace = fs.readFileSync(marketplacePath, "utf8");
+            fs.writeFileSync(marketplacePath, marketplace.replace(/"ref": "[^"]*"/, `"ref": "v${version}"`));
+          '
+          VERSION=$(node -p 'require("./package.json").version')
+          if git rev-parse -q --verify "refs/tags/v$VERSION" > /dev/null; then
+            echo "v$VERSION is already released; pick patch, minor or major." >&2
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      - run: pnpm release:check
+      - run: pnpm build
+      - name: Commit, tag and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json dist/
+          if ! git diff --cached --quiet; then
+            git commit -m "release: v$VERSION [skip ci]"
+          fi
+          git tag -a "v$VERSION" -m "v$VERSION"
+          git push origin HEAD:master "v$VERSION"
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "v$VERSION" --title "v$VERSION" --generate-notes --verify-tag

@@ -1,0 +1,75 @@
+import { describe, expect, it } from "vitest";
+import { ClaudeCodeFixtureUtil } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.ts";
+import { SuggestionService } from "@/Shared/Services/SuggestionService.ts";
+import { AnalyzeCommand } from "@/Shared/Commands/AnalyzeCommand.ts";
+import { SuggestionsCommand } from "@/Shared/Commands/SuggestionsCommand.ts";
+
+const command = new SuggestionsCommand();
+const NPM_TEST_SIGNAL = "failed_command:npm test";
+
+const history = ClaudeCodeFixtureUtil.useHistoryFixture();
+
+describe("SuggestionsCommand.add()", () => {
+  it("gives stable ids, never duplicates, and marks signals as handled", async () => {
+    const suggestion = {
+      title: "Enforce pnpm in test-runner",
+      class: "rule_ignored",
+      piece: "agent:test-runner",
+      signals: [NPM_TEST_SIGNAL],
+    };
+    const firstAdd = await command.add({ ...history.commonOptions(), items: [suggestion] });
+    const secondAdd = await command.add({ ...history.commonOptions(), items: [suggestion] });
+    const id = SuggestionService.idOf(suggestion);
+    expect(firstAdd.added).toStrictEqual([id]);
+    expect(secondAdd.added).toStrictEqual([]);
+    expect(secondAdd.existing).toStrictEqual([{ id, status: "pending" }]);
+
+    await command.setStatus({ ...history.commonOptions(), id, status: "rejected", note: "we keep npm in CI" });
+    const analysis = await new AnalyzeCommand().run(history.commonOptions());
+    const npmTest = analysis.signals.find((signal) => signal.id === NPM_TEST_SIGNAL);
+    expect(npmTest?.handledBy).toStrictEqual({ suggestionId: id, status: "rejected" });
+    expect(await command.list({ ...history.commonOptions(), status: "rejected" })).toHaveLength(1);
+  });
+
+  it("costs each suggestion by the occurrences it covers, and the occurrences add up to the signal", async () => {
+    const analysis = await new AnalyzeCommand().run(history.commonOptions());
+    const npmTest = analysis.signals.find((signal) => signal.id === NPM_TEST_SIGNAL);
+    const [first, ...others] = npmTest?.evidence ?? [];
+    expect(others).toHaveLength(2);
+    const wrongCommand = { title: "Enforce pnpm", class: "rule_ignored", signals: [NPM_TEST_SIGNAL] };
+    const result = await command.add({
+      ...history.commonOptions(),
+      items: [
+        { ...wrongCommand, occurrences: [{ sessionId: first?.sessionId, line: first?.line }] },
+        {
+          ...wrongCommand,
+          title: "Add a test script",
+          piece: "instructions:project",
+          occurrences: others.map((evidence) => ({ sessionId: evidence.sessionId, line: evidence.line })),
+        },
+      ],
+    });
+    const [onlyFirst, theRest] = result.added.map((id) => result.suggestionIdToSuggestionCost[id]);
+    expect(onlyFirst?.occurrences).toBe(1);
+    expect(theRest?.occurrences).toBe(2);
+    expect((onlyFirst?.tokens ?? 0) + (theRest?.tokens ?? 0)).toBe(npmTest?.cost.tokens);
+    expect(result.covered?.tokens).toBe(npmTest?.cost.tokens);
+  });
+
+  it("rejects suggestions without signals or with an unknown class", async () => {
+    await expect(command.add({ ...history.commonOptions(), items: [{ title: "x", class: "rule_ignored", signals: [] }] })).rejects.toThrow("needs a title, at least one signal id");
+    await expect(command.add({ ...history.commonOptions(), items: [{ title: "x", class: "other", signals: ["a"] }] })).rejects.toThrow("and a class");
+  });
+});
+
+describe("SuggestionsCommand.setStatus()", () => {
+  it("records the harness fingerprint when a suggestion is applied", async () => {
+    const { added } = await command.add({
+      ...history.commonOptions(),
+      items: [{ title: "Trim reviewer", class: "structure_change", piece: "agent:code-reviewer", signals: ["x"] }],
+    });
+    const applied = await command.setStatus({ ...history.commonOptions(), id: added[0]!, status: "applied" });
+    expect(applied.appliedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(applied.appliedFingerprint).toMatch(/\w+/);
+  });
+});

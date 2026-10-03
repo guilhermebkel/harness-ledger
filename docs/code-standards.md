@@ -1,0 +1,113 @@
+# Code standards
+
+How code in this repository is written. `pnpm lint` enforces the rules marked **(lint)**; the rest are checked in review. When a rule and readability disagree, raise it in the PR instead of working around the rule.
+
+**A rule that a tool can check is a tool, not a sentence.** When a rule here can be a lint rule, a type or a test, it becomes one (this repo's own rules live in `scripts/eslint-local-rules.mjs`); text is for what no tool can check. A written rule the agent keeps breaking is the sign it should move.
+
+## Architecture
+
+The layout and its reasons are in ADR 0008.
+
+- **Providers and Shared (lint).** Code that knows a provider (its paths, file formats, tool names, prompt tags, env variables) lives in `src/Providers/<Provider>/`. Everything else lives in `src/Shared/` and knows no provider. `src/Shared/` never imports from `src/Providers/`; the one exception is `Shared/Modules/ProviderModule.ts`, which creates a provider by type. A provider never imports another provider. When shared code needs something only a provider knows, add it to the shared model and let the adapter fill it in (as with a tool call's `category`), or add a method to `BaseProviderAdapter`.
+- **Layers (lint).** Inside `src/Shared/` and each provider, folders form layers and a layer imports only the ones below it: `Protocols` (types) < `Utils` < `Services` and `Adapters` < `Commands` < `Modules`. The one exception is `Shared/Services/ContextService.ts`, which reaches `ProviderModule` to create the provider (ADR 0008). Tests may import any layer: nothing imports them. Import cycles fail `pnpm quality` (dpdm, `import type` ignored).
+- **Imports use `@/` and the real file name (lint).** `@/` points to `src/` (tsconfig `paths`, read by tsc, esbuild and Vitest). Every import in `src/`, in the same folder too, is `@/Shared/Utils/TimeUtil.ts`: never `../` or `./`, and never the `.js` that `NodeNext` would ask for. tsc only type-checks (`noEmit`) and esbuild bundles, so `allowImportingTsExtensions` lets the import name the file that exists; one style means searching for a file's `@/` path finds every importer.
+- **Same folders on both sides.** `Adapters/` (provider contract and implementations), `Commands/` (one class per CLI command, Shared only), `Modules/` (CLI and provider factory, Shared only), `Services/` (business rules), `Protocols/` (types only), `Utils/` (helpers). A provider repeats the folders it needs.
+- **Names say the folder.** Files are `PascalCase` and end in their role: `ClaudeCodeProviderAdapter`, `SignalService`, `AnalyzeCommand`, `SessionProtocol`, `TimeUtil`. Provider files start with the provider's name. Test builders (classes with instance state that write fixtures) end in `Builder` and live in `Utils/`: `ClaudeCodeTranscriptBuilder`, `SessionFactsBuilder`.
+- **Classes, not loose functions.** Utils are classes with static methods only. Services are classes whose dependencies come in through the constructor. Commands are classes with a `run` method (or one method per subcommand). Runtime constants belong to the class that owns them as `static readonly` members (`SessionUtil.MAIN_THREAD_ID`); module-private constants can stay at module level.
+- **One class per file, named after it (lint).** A file declares one class and is named after it (`max-classes-per-file`, `local/class-matches-file`). A helper class that only one service uses still gets its own file in the same folder (`ClaudeCodePieceCollectorService` beside `ClaudeCodeInventoryService`).
+- **Protocols hold only types.** No values, no functions. A type used by one file stays in that file.
+
+## Naming
+
+- **Casing (lint).** Variables, functions and parameters are `camelCase`. Types, interfaces and classes are `PascalCase`. Module-level constants and `static readonly` class constants are `UPPER_CASE` (`MAX_EXCERPT_CHARS`, `CostService.DEFAULT_MODEL_FAMILY_TO_PRICE`). Constants inside a function are `camelCase`.
+- **Descriptive names (lint).** No single-letter identifiers, including loop indexes and callback parameters: `(session) => …`, not `(s) => …`; `index`, not `i`. A name says what the value is in this domain: `transcript`, `signal`, `piece`, never `data`, `item`, `value` or `obj` when something more specific exists.
+- **Booleans (lint).** Variables, parameters and properties of type `boolean` start with `is`, `has`, `should`, `can`, `must`, `was` or `did`: `isPartial`, `hasChanged`, `shouldSkipCache`. Names are affirmative: `isFilled`, never `isNotEmpty`; negate at the call site.
+- **Maps and records (lint).** Every `Record` or `Map` is named after its key and value, `keyToValue`, whether it is a variable, a parameter, a property or a type: `threadIdToMessages`, `suggestionIdToSuggestionCost`, `fieldIdToFieldValue`, `ModelFamilyToPrice`, and `UPPER_CASE` constants like `STATUS_TO_RECORD`. Lint (`local/map-name`) checks the name contains `To` (or `_TO_`); a `Record<string, unknown>` is a plain object and is exempt. A unit or currency goes in the name too (`inputUsdPerMillionTokens`), never in a comment.
+- **Units.** A number with a unit carries it in the name: `idleMs`, `contentChars`, `approxTokens`, `maxBytes`, `activeMinutes`, `usd`.
+- **Points in time.** ISO strings end in `At` (`createdAt`, `firstSeenAt`). Epoch milliseconds end in `AtMs` (`startedAtMs`). A bare `Ms` suffix is always a duration (`activeMs`), never a timestamp.
+- **Plurals.** Use correct English plurals (`indices`, `entries`, `summaries`).
+- **English everywhere.** Identifiers, comments, docs and error messages are in English.
+
+## TypeScript
+
+- **No `any` (lint).** Data from outside the program (transcripts, settings files, stdin, git output) is `unknown` and is narrowed with `GuardUtil` (`asRecord`, `asString`, `asNumber`, `asArray`) before use.
+- **No vague types for known shapes.** Don't type a field as `object`, `Record<string, unknown>` or `string` when its shape or its set of values is known. Declare the shape, or a union of string literals.
+- **Exhaustive unions (lint).** A `switch` over a union handles every member; add `default: return assertNever(value)` when the switch must stay exhaustive as the union grows. Prefer a `Record<Union, …>` map, which the compiler checks for completeness.
+- **Reuse types.** Before declaring a type, look for an existing one with the same or a larger shape and derive from it (`Pick`, `Omit`, `Partial`, `&`, `Extract`). Two types with copied fields are a bug waiting to happen.
+- **One member per line (lint, partly).** Type literals and interfaces with more than one member are written one member per line. Lint forces the braces onto their own lines; review checks the rest.
+- **Types next to the code that owns them.** The shared model lives in `src/Shared/Protocols/`; a provider's own types live in its `Protocols/` folder; types used by a single file stay in that file.
+
+## Logic
+
+- **Braces always (lint).** `if`, `else`, `for` and `while` always have a block, even for a single `return` or `continue`.
+- **No magic numbers (lint).** Every number other than `0`, `1` and `-1` is a named constant with its unit: `const MAX_EXCERPT_CHARS = 200`. Thresholds that a user could reasonably want to tune belong in `.imh/config.json` (`ConfigService`), not in code. Tests are exempt.
+- **Maps over comparing with fixed values (lint).** When code decides what to do by comparing a value with fixed strings, the decision is a `Record<Key, Handler>`, so a new member of the union is a compile error until it has its handler; a forgotten `if` passes silently. Lint (`local/literal-dispatch`) flags a comparison with a fixed string when it picks which code runs (the condition of an `if` that does work, or of a ternary, alone or inside `&&`/`||`), any second comparison of the same expression in one function, and any `switch` over fixed values. Allowed: a guard that leaves early (an `if` without `else` whose block ends in `return`, `throw`, `continue` or `break`), a comparison that only becomes a value (returned, passed to a call, stored in a named boolean), a `typeof` check, and a check against `""`. A special case of a union is a map with no-op entries for the rest (`STATUS_TO_FINGERPRINT`), so a new status has to say whether it needs the same step. A set of values that share an answer is a `Set` (`STOPPING_RESULT_KINDS.has(kind)`, `SessionUtil.MCP_CATEGORIES.has(category)`). Look up keys that come from outside with `GuardUtil.isKeyOf`; for a discriminated union, type the map so each handler gets its own member (`{ [Kind in MatchKind]: (match: MatchOf<Kind>) => R }`, as `LanguageMatch` does). Keys spelled by an external format that break the naming rules (Claude Code's `Bash`, `Skill`) go in a `Map`.
+
+  ```ts
+  // Before
+  if (lineType === "attachment") { this.handleAttachment(context, line); return; }
+  if (lineType === "system") { this.handleSystemLine(context, line, isMainFile); return; }
+
+  // After
+  if (GuardUtil.isKeyOf(this.lineTypeToHandler, lineType)) {
+    this.lineTypeToHandler[lineType](context, line, isMainFile);
+  }
+  ```
+- **Small functions (lint).** A function's cognitive complexity stays at 15 or below (`sonarjs/cognitive-complexity`, SonarSource's default), blocks nest at most 3 deep (`max-depth`) and a function takes at most 5 parameters (`max-params`; group the rest in an options object). When a function grows past that, extract the body of a loop or a branch into a named private method rather than raising the limit. Lint also rejects identical functions, duplicated branches, collapsible `if`s, expressions with more than three `&&`, `||` or ternary operators, template literals inside template literals, functions nested more than four deep, a `switch` inside a `switch`, and assignments or `++`/`--` inside expressions.
+- **Name a call before passing it on (lint).** A call passed as an argument to another call, directly or with `...`, stays simple: if it takes three or more arguments or receives another call, store its result in a named variable first. `set.add(keyOf(call))` is fine; `push(this.piece(permissions, path, scope))` and `first(asRecord(parseJson(text)))` are not.
+- **Safe regular expressions (lint).** A regex must not backtrack super-linearly (`sonarjs/super-linear-regex`): bound repetitions that sit next to each other (`[\w.-]{0,40}`) or replace the regex with string methods (`trimEnd()`, `indexOf`). Keep each one simple (`regex-complexity` ≤ 20, no duplicated characters in a class, `\w` over `[A-Za-z0-9_]`); a long list of alternatives is a named array joined into a `RegExp`.
+- **Explicit order and branches (lint).** `sort()` and `toSorted()` take a comparator; for strings in code-unit order use `CollectionUtil.compareCodeUnits`, which keeps ids and hashes stable. `reverse()` works on a copy (`toReversed()`). Every `else if` chain ends in `else`, or the branches become independent `if`s. A loop has at most one `break` or `continue`; more means a helper method. A function returns one type.
+- **Names and literals (lint).** Functions and object methods are `camelCase`; a handler in a map keyed by snake_case ids keeps the id's spelling (`user_rejected: (failure) => …`). A string literal repeated three times becomes a constant. Shorthand properties are grouped at the start or the end of an object.
+- **Tests follow the same rules (lint).** Tests and fixtures get no exemption from complexity, nesting, parameters, nested calls or duplication. The only exemptions are for format: magic numbers, the key spelling of external formats and `!` (non-null).
+- **No nested ternaries (lint).** A ternary holds one simple condition. Anything more becomes a named variable or an `if` block.
+- **Name intermediate steps.** Complex conditions go into a named boolean (`const isAfterChange = …`). Long chains are broken into named steps that say what each result is.
+- **One responsibility per function, and the name says it.** A function named `readX` doesn't write; a function named `findX` doesn't create. No hidden side effects.
+- **No mutable default parameters.** A default that is an array, object or `Map` is never mutated inside the function.
+- **No duplicated logic.** Search before adding a helper; reuse or extract to a Util in `src/Shared/Utils/` (or the provider's `Utils/`) instead of reimplementing. Only flag duplication you can point to.
+- **Unmapped values stay visible.** When a mapping has no entry for a value (a file extension with no language, a model with no price, a dependency outside the check catalog, an unresolved subagent type), the script never drops the value and never guesses: it returns the raw value, redacted, marked as unmapped (`unpricedModels`, `agent:unknown`), and marks the result built on that mapping as partial, with the reason, the way signals use `isPartial`. A conclusion like "no complexity check" is only stated when nothing unmapped could contradict it. The skill may interpret an unmapped value's meaning (that `.ex` is Elixir, that a package is a linter), searching the web if needed, but never turns it into a number: a missing figure such as a price becomes a proposed entry in `.imh/config.json` with its source, the person confirms it, and the script recomputes (ADR 0002). Every unmapped value also becomes a gap in the analysis (`GapService`), with a prefilled issue link (ADR 0010).
+- **No `console` (lint).** Output goes through the CLI's single writer (`process.stdout` / `process.stderr` in `CLIModule`).
+- **Floating promises (lint).** Every promise is awaited or explicitly returned.
+
+## When lint rules collide
+
+- **`as Type` against `!`.** `non-nullable-type-assertion-style` rejects `value as Type` when it only drops `undefined`, and `no-non-null-assertion` rejects `value!`. Restructure instead: find with `.some()` and keep the match, pass the value as a parameter, or narrow with a guard that returns early.
+- **`non-nullable-type-assertion-style` is off.** It asks for `value!` where `no-non-null-assertion` forbids it, so the two could never both pass; narrow with a guard instead (tests may use `!`).
+- **Copies use the ES2023 methods.** `sonarjs/no-misleading-array-reverse` rejects `sort()` and `reverse()` on an array you keep; use `toSorted()` and `toReversed()` (`tsconfig` loads the ES2023 lib; Node 20 has them), not `[...array].sort()`.
+- **`RegExp.escape` isn't in TypeScript's lib yet.** Use `RegExpUtil.escape` (and `RegExpUtil.wholeTerm` for a whole word).
+- **Visitor keys in local rules are quoted** (`"IfStatement"(node)`, `"Program:exit"()`); unquoted AST names fail `sonarjs/function-name`.
+
+## Boundaries and security
+
+- **Environment variables (lint).** `process.env` is read only in `EnvUtil` (`src/Shared/Utils/EnvUtil.ts`). Which variables a provider reads is that provider's business (`ClaudeCodePathUtil`).
+- **Validate at the edge.** Input is checked where it enters: CLI arguments in `CLIModule`, JSON from stdin or files in the service that parses it (`SuggestionService.parse`), transcript lines in the provider adapter. Code past the edge trusts its types.
+- **Redact on the way out.** Every string that can reach output passes through `redact()` or `excerpt()`, which mask secrets and show the home folder (and the user name in it) as `~`. Hook commands and MCP configs keep names and shapes only, never env values, headers or arguments (ADR 0007). Any new output path gets a test with a fake secret.
+- **Parse defensively.** Transcript formats are internal and change between agent versions. A bad or unknown line is counted, never thrown; a missing field degrades the result and marks it partial, never crashes the run.
+- **Never write outside `.imh/`.** The script only writes to the data directory. Applying changes to the harness is the skill's job, after confirmation.
+
+## Before committing
+
+Commit once per task, not per file: make all the edits, then verify once. Before the commit, `pnpm lint`, `pnpm typecheck` (tsc), `pnpm quality` and `pnpm test` must pass. `pnpm check` runs all of this plus a build to a scratch file; CI runs the same. `pnpm quality` runs knip (unused files, exports and dependencies; `knip.json`), dpdm (import cycles) and jscpd (code duplicated across files in `src/` and `scripts/`, tests and fixtures included; `.jscpd.json`). A finding there means delete the dead code or extract the shared part, not add an ignore. While iterating, run only the relevant test or file (`pnpm exec vitest run <file>`).
+
+## Dependencies
+
+- **pnpm only (ADR 0004).** Commit `pnpm-lock.yaml`; never commit `package-lock.json`.
+- **The lockfile changes only with `package.json`.** A diff that touches `pnpm-lock.yaml` without `package.json` is accidental. Check with:
+
+  ```bash
+  git diff --name-only "$(git merge-base HEAD origin/master)" | grep -E "package\.json|pnpm-lock\.yaml"
+  ```
+
+- **No runtime dependencies.** Runtime code uses Node built-ins only. Dev dependencies are fine.
+- **Don't commit `dist/`.** Only the `Release` workflow rebuilds and commits it (ADR 0004).
+
+## Tests
+
+How tests are written (where they live, what they assert, fixtures and doubles) is in `docs/test-standards.md`. The rules above apply to tests too, with the exemptions listed there.
+
+## Formatting and comments
+
+- **Formatting (lint).** ESLint Stylistic formats the code: 2-space indent, double quotes, semicolons, trailing commas in multi-line literals, lines up to 120 characters. `pnpm lint:fix` applies it.
+- **No alignment (lint).** Never add spaces to align values into columns: it makes every future change a noisy diff.
+- **No comments by default (lint).** Code carries no comments. A comment stays only when the code guards a rule it doesn't show and someone could change it without knowing, breaking something later: a quirk of a provider's transcript format, a security rule (ADR 0007), a limit calibrated on real sessions, an order that matters. Such a comment starts with `Why:` and names the rule (`// Why: Claude Code repeats the message's usage on every content-block line.`). Lint (`local/comment-marker`) rejects any other comment except tool directives (`eslint-disable`, `@ts-expect-error`); consecutive `//` lines count as one comment. Descriptions of what a function or field does, section labels and usage notes don't stay: the names and the docs carry them.
+- **A comment sits on the line it explains (lint).** It goes right above the statement, constant or map entry where its rule happens, never above a whole function, method, class or type (`local/comment-placement`): the reader meets it where the rule can break. Not `// Why: cost-state is a running total` above `handleCostState()`, but above the `runStartToCostUsd.set(...)` that replaces a run's earlier total. Lint also rejects a file header (the file's role is in its name, ADR or doc) and any comment in `Protocols/`: a type applies no rule, so the rule goes where it is applied and the meaning goes in the name (`inputUsdPerMillionTokens`, not `// USD per million tokens`).
+- **Delete what the code already says; keep the reason true (review).** When the name, the condition or the constant already states the rule, the comment goes: `uniqueId` returning `${id}@${scope}` needs no note that two scopes can share a name, and `READ_ONLY_SCOPES` needs no note that it is read-only. What stays names the reason, and the real one: the list of subagent-type keys exists because Claude Code versions use different keys, not because of the newest one. Lint can't check either, so review does.

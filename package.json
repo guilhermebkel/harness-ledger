@@ -1,0 +1,57 @@
+{
+  "name": "improve-my-harness",
+  "version": "0.1.0",
+  "description": "Improve your coding-agent harness with evidence from your own sessions.",
+  "license": "MIT",
+  "author": "Guilherme Mota",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/guilhermebkel/improve-my-harness.git"
+  },
+  "type": "module",
+  "bin": {
+    "imh": "dist/imh.mjs"
+  },
+  "files": [
+    "dist",
+    ".claude-plugin",
+    "skills"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:verify": "node scripts/build.mjs --outfile node_modules/.cache/imh/imh.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run",
+    "quality": "knip && jscpd --silent && dpdm --no-warning --no-tree --transform --progress false --exit-code circular:1 'src/**/*.ts'",
+    "check": "pnpm typecheck && pnpm lint && pnpm quality && pnpm test && pnpm build:verify",
+    "release:check": "pnpm check && publint"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/node": "^22.0.0",
+    "@vitest/eslint-plugin": "^1.6.27",
+    "dpdm": "^4.3.0",
+    "esbuild": "^0.24.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-sonarjs": "^4.2.2",
+    "globals": "^17.13.0",
+    "jscpd": "^5.4.0",
+    "knip": "^6.39.0",
+    "publint": "^0.3.25",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.71.0",
+    "vitest": "^2.1.0"
+  },
+  "packageManager": "pnpm@10.28.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

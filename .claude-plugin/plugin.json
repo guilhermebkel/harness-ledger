@@ -1,0 +1,14 @@
+{
+  "name": "improve-my-harness",
+  "displayName": "improve-my-harness",
+  "version": "0.1.0",
+  "description": "Improve your coding-agent harness with evidence from your own sessions.",
+  "author": {
+    "name": "Guilherme Mota",
+    "url": "https://github.com/guilhermebkel"
+  },
+  "homepage": "https://github.com/guilhermebkel/improve-my-harness",
+  "repository": "https://github.com/guilhermebkel/improve-my-harness",
+  "license": "MIT",
+  "keywords": ["harness", "skills", "subagents", "hooks", "transcripts", "insights", "evals"]
+}

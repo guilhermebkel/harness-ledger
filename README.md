@@ -55,6 +55,12 @@ Requires Node.js 20+ for the local analysis script.
 
 Other agents: see the [Roadmap](#roadmap).
 
+### Recommended model
+
+Run the skill on the most capable reasoning model you have (in Claude Code, pick it with `/model` first). The local script does the reading and the counting, so the model only gets a compact summary; what it adds is judgment: grouping signals by cause, telling real friction from ordinary work, and choosing the fix. That's the part a smaller model gets wrong. It's a recommendation: the skill runs on any model and says so once when it isn't the strongest.
+
+To see what a run cost you, check the skill's own row the next time you analyze: `node dist/imh.mjs analyze --piece skill:improve-my-harness` (the session running an analysis is left out, so earlier runs are what you see).
+
 ## Usage
 
 Run `/improve-my-harness` and pick what you want, or just ask in plain text:
@@ -92,7 +98,7 @@ Not every failure needs more instructions. Each finding falls into one class, an
 ## Privacy
 
 - Everything runs locally. Transcripts are read in place and never copied or sent anywhere; only findings (with references) are stored, in `.imh/`.
-- No telemetry.
+- No telemetry. When the analysis meets something it can't map (a new transcript format, a model with no price), the report offers a link to a prefilled GitHub issue holding only names and counts. You read it and decide whether to send it; nothing is sent on its own.
 - Some agents delete old transcripts automatically (Claude Code keeps 30 days by default). `improve-my-harness` tells you how much history is available, but never changes your retention settings.
 
 ## How it compares
@@ -106,13 +112,13 @@ Not every failure needs more instructions. Each finding falls into one class, an
 ### Supported agents
 
 - [x] Claude Code
-- [ ] Codex
-- [ ] Cursor
+- [ ] Codex ([#3](https://github.com/guilhermebkel/improve-my-harness/issues/3))
+- [ ] Cursor ([#4](https://github.com/guilhermebkel/improve-my-harness/issues/4))
 
 ### Features
 
 - [ ] **v1 — Insights:** history analysis, harness inventory, classified findings, suggestions, before/after comparison.
-- [ ] **v2 — Bench:** prove a suggestion before adopting it. Replay tasks from your sessions or past PRs with different models, reasoning effort, subagents or harness pieces; filter by tests; blind human review with a calibrated LLM judge; recommend the **cheapest configuration that still does the job**.
+- [ ] **v2 — Bench** ([#2](https://github.com/guilhermebkel/improve-my-harness/issues/2)): prove a suggestion before adopting it. Replay tasks from your sessions or past PRs with different models, reasoning effort, subagents or harness pieces; filter by tests; blind human review with a calibrated LLM judge; recommend the **cheapest configuration that still does the job**.
 - [ ] **Cross-agent comparison:** when you use more than one agent on the same project, compare which harness fails less on similar tasks.
 - [ ] **Team mode:** aggregate sessions across a team.
 - [ ] **Scheduled runs:** periodic analysis that opens a PR with suggested changes for human review.
@@ -123,7 +129,28 @@ This project applies the ideas behind *Test-Driven Prompting* (CBSoft 2026): def
 
 ## Contributing
 
-Issues and PRs are welcome. For larger changes, please open an issue first to discuss the approach. Adding support for a new agent means writing two adapters — a session reader and a harness mapper — on top of the shared core.
+Issues and PRs are welcome. For larger changes, please open an issue first to discuss the approach. Adding support for a new agentic tool (a provider) means a new `src/Providers/<Provider>/` folder whose adapter extends `BaseProviderAdapter`, one entry in `ProviderModule`, and one CI workflow; [`docs/adding-a-provider.md`](docs/adding-a-provider.md) walks through it.
+
+### Development
+
+```bash
+pnpm install
+pnpm test         # tests next to the code, end to end on synthetic transcripts
+pnpm lint         # ESLint (typescript-eslint + stylistic); see docs/code-standards.md and docs/test-standards.md
+pnpm build        # bundles src/ into dist/imh.mjs (committed by the Release workflow, so the plugin needs no install step)
+pnpm check        # typecheck + lint + quality + tests + a build to a scratch file
+```
+
+The skill calls the bundled script; you can also run it directly:
+
+```bash
+node dist/imh.mjs analyze --project /path/to/repo --since 14d --pretty
+node dist/imh.mjs --help
+```
+
+Vocabulary is in [`GLOSSARY.md`](GLOSSARY.md) and design decisions in [`docs/adr/`](docs/adr/).
+
+Layout: `src/Providers/<Provider>/` reads one tool's sessions and harness into the shared model; `src/Shared/` (commands, services, protocols, utils) extracts signals, usage and before/after without knowing which tool produced them; `skills/improve-my-harness/` is what the agent reads. Before committing, run `pnpm check` (lint, typecheck, tests, build).
 
 ## License
 

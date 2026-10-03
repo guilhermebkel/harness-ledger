@@ -1,0 +1,37 @@
+name: Rule question
+description: A signal or cost rule that looks wrong for your project. Usually opened from a link in an improve-my-harness report.
+title: "[rule] "
+labels: ["rule-question", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The link that opened this form filled in the signal and the rule behind it, plus your own explanation. It never includes text from your sessions. Read it before submitting. If an issue with the same fingerprint (the code at the end of the title) is already open, add your case there.
+  - type: input
+    id: signal
+    attributes:
+      label: Signal
+      description: The signal type and id from the analysis.
+    validations:
+      required: true
+  - type: textarea
+    id: rule
+    attributes:
+      label: Rule
+      description: How the analysis counts and prices this signal (docs/cost-model.md).
+    validations:
+      required: true
+  - type: textarea
+    id: explanation
+    attributes:
+      label: Why it looks wrong here
+      description: In your own words. For example, "plans are rejected on purpose in our flow" or "this command is expected to fail".
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      placeholder: imh 0.1.0 · claude-code 2.1.287 · darwin
+    validations:
+      required: true
