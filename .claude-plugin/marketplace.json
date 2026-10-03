@@ -11,7 +11,7 @@
       "source": {
         "source": "github",
         "repo": "guilhermebkel/improve-my-harness",
-        "ref": "v0.1.0"
+        "ref": "v0.2.0"
       },
       "description": "Reads the sessions your coding agent already saves, maps your harness and suggests evidence-based improvements.",
       "category": "productivity",

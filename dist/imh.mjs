@@ -7,7 +7,6 @@ import { parseArgs } from "node:util";
 
 // src/Shared/Utils/CollectionUtil.ts
 var CollectionUtil = class {
-  // Why: the default `sort()` order (UTF-16 code units), stated explicitly; suggestion ids depend on it.
   static compareCodeUnits = (left, right) => {
     if (left === right) {
       return 0;
@@ -29,7 +28,6 @@ var CollectionUtil = class {
     items.push(item);
     keyToItems.set(key, items);
   }
-  // Why: results keep the input order.
   static async mapWithConcurrency(items, concurrency, work) {
     const results = [];
     let nextIndex = 0;
@@ -54,7 +52,6 @@ var RegExpUtil = class _RegExpUtil {
   static escape(text) {
     return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
-  // Why: whole terms only: "cat" must not match "category", and "lint" must not match "eslint-plugin".
   static wholeTerm(term, flags = "") {
     return new RegExp(`(?<![\\w-])${_RegExpUtil.escape(term)}(?![\\w-])`, flags);
   }
@@ -314,7 +311,6 @@ var NormalizeUtil = class _NormalizeUtil {
     const errorText = structuredReason ? `reason: ${structuredReason}` : head;
     return RedactUtil.redact(errorText).replace(/(["'`]).{1,200}?\1/g, "'\u2026'").replace(/(?:[A-Za-z]:)?[~.]?\/[\w@.+-]+(?:\/[\w@.+-]+)*/g, "<path>").replace(/\b\d+(\.\d+)*\b/g, "N").replace(/\s+/g, " ").slice(0, MAX_ERROR_KEY_CHARS).trim();
   }
-  // Why: a heuristic, for English and Portuguese.
   static isCorrection(text) {
     return CORRECTION_START.test(text.trim().slice(0, CORRECTION_PREFIX_CHARS));
   }
@@ -386,7 +382,6 @@ var NumberUtil = class {
     const factor = DECIMAL_BASE ** digits;
     return Math.round(value * factor) / factor;
   }
-  // Why: a rough estimate from text length, good enough to compare sizes.
   static approxTokens(text) {
     return Math.ceil(text.length / CHARS_PER_TOKEN);
   }
@@ -427,9 +422,9 @@ var TimeUtil = class _TimeUtil {
     h: _TimeUtil.MS_PER_HOUR,
     d: _TimeUtil.MS_PER_DAY,
     w: DAYS_PER_WEEK * _TimeUtil.MS_PER_DAY,
+    // Why: "m" is months, not minutes ("3m").
     m: DAYS_PER_MONTH * _TimeUtil.MS_PER_DAY
   };
-  // Why: "3m" means months, not minutes.
   static parsePointInTime(value, nowAtMs = Date.now()) {
     if (!value) {
       return void 0;
@@ -452,7 +447,6 @@ var TimeUtil = class _TimeUtil {
   static toIso(atMs) {
     return atMs === void 0 ? void 0 : new Date(atMs).toISOString();
   }
-  // Why: gaps longer than `idleMs` mean the person was away.
   static activeTime(sortedEventsAtMs, idleMs) {
     let activeMs = 0;
     for (let index = 1; index < sortedEventsAtMs.length; index++) {
@@ -495,8 +489,7 @@ var TokenUsageUtil = class _TokenUsageUtil {
   static sum(usages) {
     return usages.reduce((total, usage) => _TokenUsageUtil.add(total, usage), _TokenUsageUtil.zero());
   }
-  // Why: includes cache reads and writes.
-  static input(usage) {
+  static inputWithCache(usage) {
     return usage.input + usage.cacheRead + usage.cacheWrite;
   }
   static total(usage) {
@@ -507,7 +500,7 @@ var TokenUsageUtil = class _TokenUsageUtil {
 // src/Shared/Utils/VersionUtil.ts
 var VersionUtil = class {
   // Why: esbuild replaces it at build time; "dev" when running from source.
-  static VERSION = true ? "0.1.0" : "dev";
+  static VERSION = true ? "0.2.0" : "dev";
 };
 
 // src/Shared/Services/AttributionService.ts
@@ -561,7 +554,6 @@ var AttributionService = class _AttributionService {
     const isBuiltInAgent = !isKnown && kind === "agent" && name !== UNKNOWN_SUBAGENT_TYPE;
     return isBuiltInAgent ? `${pieceId}${_AttributionService.BUILT_IN_SUFFIX}` : pieceId;
   }
-  // Why: a slash command runs either a skill or a command file; the skill wins when both exist.
   commandPieceId(name) {
     return this.pieceIds.has(`skill:${name}`) ? `skill:${name}` : `command:${name}`;
   }
@@ -579,7 +571,6 @@ var AttributionService = class _AttributionService {
       }
     }
   }
-  // Why: a skill a call loads joins the turn's pieces; an agent it starts is only inherited by the next prompt.
   attributeCall(call, turn, index) {
     const skillName = call.skillInUse ?? call.skill;
     if (skillName) {
@@ -610,39 +601,35 @@ var CACHE_READ_INPUT_RATIO = 0.1;
 var CACHE_WRITE_INPUT_RATIO = 1.25;
 var DEFAULT_PRICED_VENDOR = "claude";
 var CostService = class _CostService {
-  constructor(prices) {
-    this.prices = prices;
+  constructor(modelFamilyToPrice) {
+    this.modelFamilyToPrice = modelFamilyToPrice;
   }
   // Why: list prices may be outdated; .imh/config.json overrides them.
-  static DEFAULT_PRICES = {
+  static DEFAULT_MODEL_FAMILY_TO_PRICE = {
     opus: {
-      input: 5,
-      output: 25
+      inputUsdPerMillionTokens: 5,
+      outputUsdPerMillionTokens: 25
     },
     sonnet: {
-      input: 3,
-      output: 15
+      inputUsdPerMillionTokens: 3,
+      outputUsdPerMillionTokens: 15
     },
     haiku: {
-      input: 1,
-      output: 5
+      inputUsdPerMillionTokens: 1,
+      outputUsdPerMillionTokens: 5
     },
     [DEFAULT_FAMILY]: {
-      input: 3,
-      output: 15
+      inputUsdPerMillionTokens: 3,
+      outputUsdPerMillionTokens: 15
     }
   };
-  /**
-   * Why: The price-table key for a model: a listed family it contains, "default" for an unnamed model or an
-   * unlisted Claude model, and undefined for anything else, which is left unpriced rather than guessed.
-   * Add a key to `prices` in .imh/config.json (e.g. "glm") to price other models.
-   */
   modelFamily(model) {
     const normalizedModel = model?.toLowerCase();
     if (!normalizedModel) {
       return DEFAULT_FAMILY;
     }
-    const family = Object.keys(this.prices).find((key) => key !== DEFAULT_FAMILY && normalizedModel.includes(key));
+    const listedFamilies = Object.keys(this.modelFamilyToPrice);
+    const family = listedFamilies.find((key) => key !== DEFAULT_FAMILY && normalizedModel.includes(key));
     if (family) {
       return family;
     }
@@ -651,19 +638,19 @@ var CostService = class _CostService {
   isPriced(model) {
     return this.modelFamily(model) !== void 0;
   }
-  // Why: 0 for an unpriced model; callers report those models so the gap is visible.
   costUsd(usage, model) {
     const family = this.modelFamily(model);
     if (family === void 0) {
       return 0;
     }
-    const price = this.prices[family] ?? this.prices[DEFAULT_FAMILY] ?? _CostService.DEFAULT_PRICES[DEFAULT_FAMILY];
+    const price = this.modelFamilyToPrice[family] ?? this.modelFamilyToPrice[DEFAULT_FAMILY] ?? _CostService.DEFAULT_MODEL_FAMILY_TO_PRICE[DEFAULT_FAMILY];
     if (!price) {
       return 0;
     }
-    const cacheReadPrice = price.cacheRead ?? price.input * CACHE_READ_INPUT_RATIO;
-    const cacheWritePrice = price.cacheWrite ?? price.input * CACHE_WRITE_INPUT_RATIO;
-    const weightedTokens = usage.input * price.input + usage.output * price.output + usage.cacheRead * cacheReadPrice + usage.cacheWrite * cacheWritePrice;
+    const inputPrice = price.inputUsdPerMillionTokens;
+    const cacheReadPrice = price.cacheReadUsdPerMillionTokens ?? inputPrice * CACHE_READ_INPUT_RATIO;
+    const cacheWritePrice = price.cacheWriteUsdPerMillionTokens ?? inputPrice * CACHE_WRITE_INPUT_RATIO;
+    const weightedTokens = usage.input * inputPrice + usage.output * price.outputUsdPerMillionTokens + usage.cacheRead * cacheReadPrice + usage.cacheWrite * cacheWritePrice;
     return weightedTokens / TOKENS_PER_MILLION;
   }
 };
@@ -677,18 +664,17 @@ var OccurrenceCollectorService = class {
       type,
       title,
       occurrences: [],
-      counters: {},
+      detailToValueToCount: {},
       details: {}
     };
     group.occurrences.push(occurrence);
     this.idToGroup.set(id, group);
     return group;
   }
-  // Why: amounts other than 1 weigh a value, e.g. by tokens.
   count(group, detail, value, amount = 1) {
-    const valueToCount = group.counters[detail] ?? /* @__PURE__ */ new Map();
+    const valueToCount = group.detailToValueToCount[detail] ?? /* @__PURE__ */ new Map();
     valueToCount.set(value, (valueToCount.get(value) ?? 0) + amount);
-    group.counters[detail] = valueToCount;
+    group.detailToValueToCount[detail] = valueToCount;
   }
   groups() {
     return [...this.idToGroup.values()];
@@ -785,8 +771,6 @@ var FailureChainService = class _FailureChainService {
     }
     return result.isError ? "failure" : "recovery";
   }
-  // Why: a recovery does the same job another way (`npm test` → `pnpm test`) or reruns it after a fix; looking
-  // around (`ls`, `cat`) or moving on to other work (`git add` after a failed script) is not one.
   static doesSameJob(first, candidate) {
     if (candidate.category !== first.category) {
       return false;
@@ -810,8 +794,6 @@ var FailureChainService = class _FailureChainService {
     const isOtherWork = candidate.category === "shell" && !NormalizeUtil.isExplorationCommand(candidate.key);
     return candidate.category === first.category && (first.category !== "shell" || isOtherWork);
   }
-  // Why: a fix loop reruns the identical command after changes; the same key with other arguments
-  // (`python3 a.py`, `python3 b.py`) is a different command.
   static kindOf(first, recovery) {
     if (recovery === void 0) {
       return "unrecovered";
@@ -821,9 +803,6 @@ var FailureChainService = class _FailureChainService {
     }
     return recovery.summary === first.summary ? "fix_loop" : "wrong_command";
   }
-  // Why: the cost runs from the first failed call until the call that worked was issued, with every message in
-  // between (reasoning, looking around, fixes); the working call's own run is not waste. Unrecovered chains end
-  // at the agent's reaction to the last failure.
   chainWindow(first, failures, recovery, index) {
     const startAtMs = first.calledAtMs;
     const messages = index.threadIdToMessages.get(first.thread.id) ?? [];
@@ -920,8 +899,6 @@ var SignalDetectorService = class _SignalDetectorService {
     retry: () => void 0,
     unrecovered: () => void 0
   };
-  // Why: failures run first and corrections last: a turn's messages already in a failure chain or a rejected
-  // plan are left out of the correction that follows, so no turn is counted twice.
   detectInSession(session, index) {
     this.countedMessageIds = /* @__PURE__ */ new Set();
     this.detectToolFailures(session, index);
@@ -1016,7 +993,6 @@ var SignalDetectorService = class _SignalDetectorService {
     };
     return this.resultKindToRecorder[result.kind](failure);
   }
-  // Why: the person said no to the call (a plan, a command): that is a correction of the turn, not a failure.
   addRejection({ call, result, occurrence }) {
     const attributedTo = occurrence.pieces.join(",");
     const title = `User corrected the agent (${attributedTo})`;
@@ -1059,7 +1035,6 @@ var SignalDetectorService = class _SignalDetectorService {
     ].filter((atMs) => atMs !== void 0 && rejectedAtMs !== void 0 && atMs < rejectedAtMs).reduce((latest, atMs) => Math.max(latest, atMs), Number.NEGATIVE_INFINITY);
     return this.turnCost(index, turnStartAtMs, rejectedAtMs);
   }
-  // Why: a chain's cost is shared equally by its failures, so the totals add up to the chain once.
   static shareOf(chain) {
     const share = 1 / chain.failures.length;
     return {
@@ -1102,7 +1077,6 @@ var SignalDetectorService = class _SignalDetectorService {
       group.details.maxContextTokens = Math.max(group.details.maxContextTokens ?? 0, contextTokens) || void 0;
     }
   }
-  // Why: what a compaction costs is reading again, after it, the files the thread had read before it.
   compactionCost(session, index, compaction) {
     const compactedAtMs = compaction.occurredAtMs ?? 0;
     const nextCompactionAtMs = session.compactions.filter((other) => other.thread.id === compaction.thread.id && (other.occurredAtMs ?? 0) > compactedAtMs).reduce((earliest, other) => Math.min(earliest, other.occurredAtMs ?? Infinity), Infinity);
@@ -1234,7 +1208,6 @@ var SignalDetectorService = class _SignalDetectorService {
   isSuccessfulRead(call) {
     return call.category === "read" && call.filePath !== void 0 && call.result?.isError !== true;
   }
-  // Why: cost of a failed request: the wait until the thread got a real answer (retries and fallbacks).
   apiErrorCost(apiError, index) {
     const failedAtMs = apiError.occurredAtMs ?? 0;
     const answer = (index.threadIdToMessages.get(apiError.thread.id) ?? []).find(
@@ -1247,7 +1220,6 @@ var SignalDetectorService = class _SignalDetectorService {
       model: answer?.model
     };
   }
-  // Why: cost of an unnecessary read: its duration and the tokens it added to the context.
   readCost(read, index) {
     const durationMs = (read.result?.returnedAtMs ?? 0) - (read.calledAtMs ?? 0);
     return {
@@ -1259,8 +1231,6 @@ var SignalDetectorService = class _SignalDetectorService {
       model: index.threadIdToMessages.get(read.thread.id)?.[0]?.model
     };
   }
-  // Why: a turn's cost is an upper bound: every message of every thread in it, minus messages another signal
-  // already counted. The messages it counts are then marked counted too.
   turnCost(index, turnStartAtMs, turnEndAtMs) {
     const isOpenTurn = turnStartAtMs === void 0 || !Number.isFinite(turnStartAtMs);
     if (isOpenTurn || turnEndAtMs === void 0) {
@@ -1283,7 +1253,6 @@ var SignalDetectorService = class _SignalDetectorService {
       model: turnMessages[0]?.model
     };
   }
-  // Why: reading a file again is legitimate after it was edited, changed by a command, or compacted out of context.
   wasChangedBetween(session, firstRead, laterRead) {
     const fromAtMs = firstRead.calledAtMs ?? 0;
     const toAtMs = laterRead.calledAtMs ?? 0;
@@ -1399,10 +1368,6 @@ var WorkflowDetectorService = class {
     }
     return [...threadIdToCalls.values()];
   }
-  /**
-   * Why: Longest workflows first, so the whole procedure wins over its pieces: a shorter sequence inside a kept
-   * one is dropped when the kept one happens in about as many sessions. Then the most widespread first.
-   */
   withoutSubsumed(candidates) {
     const longestFirst = candidates.toSorted((left, right) => {
       const lengthDifference = right.steps.length - left.steps.length;
@@ -1433,8 +1398,6 @@ var WorkflowDetectorService = class {
     const endedAtMs = lastCall?.result?.returnedAtMs ?? lastCall?.calledAtMs ?? 0;
     return endedAtMs - (calls[0]?.calledAtMs ?? endedAtMs);
   }
-  // Why: a script still runs the commands and still takes one call; what it saves is everything the agent did
-  // around them: the other messages in the window (reasoning, reading logs, rebuilding the next step).
   workflowCost(calls, index) {
     const first = calls[0];
     const last = calls.at(-1);
@@ -1468,6 +1431,8 @@ var WorkflowDetectorService = class {
 var keyOf = (call) => call.key;
 var CATEGORY_TO_SOURCE = {
   read: (call) => call.filePath ?? call.key,
+  // Why: a command that only looks around is the material itself (`cat a.ts` and `cat b.ts` differ); any other is its
+  // key (every `git diff` prints a diff).
   shell: (call) => NormalizeUtil.isExplorationCommand(call.key) ? call.summary : call.key,
   edit: keyOf,
   search: keyOf,
@@ -1507,8 +1472,6 @@ var ContextLoadDetectorService = class _ContextLoadDetectorService {
       }
     }
   }
-  // Why: loaded material is re-sent as cached input with every later message of the thread, until a compaction
-  // drops it; that carry, not the first load, is most of what it costs.
   static laterMessagesOf(session, sessionIdToIndex, call) {
     const loadedAtMs = call.result?.returnedAtMs ?? call.calledAtMs ?? 0;
     const droppedAtMs = session.compactions.filter((compaction) => compaction.thread.id === call.thread.id && (compaction.occurredAtMs ?? 0) > loadedAtMs).reduce((earliest, compaction) => Math.min(earliest, compaction.occurredAtMs ?? Infinity), Infinity);
@@ -1552,10 +1515,6 @@ var ContextLoadDetectorService = class _ContextLoadDetectorService {
       return totalTokens >= thresholds.minHeavySourceTokens && (isRepeated || hasHugeResult);
     });
   }
-  /**
-   * Why: The material a call loads: a file for reads; for shell, the exact command when it only looks around
-   * (`cat a.ts` and `cat b.ts` are different material), otherwise its key (every `git diff` prints a diff).
-   */
   sourceOf(call) {
     return CATEGORY_TO_SOURCE[call.category](call);
   }
@@ -1632,7 +1591,7 @@ var SIGNAL_TYPE_TO_COST_METHOD = {
 var SignalService = class _SignalService {
   constructor(options) {
     this.options = options;
-    this.costService = new CostService(options.prices);
+    this.costService = new CostService(options.modelFamilyToPrice);
   }
   static SIGNAL_TYPE_TO_THRESHOLD = {
     failed_command: { minOccurrences: "minFailures", minSessions: "minFailureSessions" },
@@ -1651,9 +1610,9 @@ var SignalService = class _SignalService {
     unused_piece: "always",
     large_piece: "always"
   };
+  static afterFirstUse = (piece, session) => _SignalService.messagesAfterFirstUse(piece, session);
   // Why: what a piece adds to the context stays there: instructions in every message, an agent's prompt in its
   // thread, a skill or command from its first use on.
-  static afterFirstUse = (piece, session) => _SignalService.messagesAfterFirstUse(piece, session);
   static PIECE_KIND_TO_CARRIERS = {
     instructions: (_piece, session) => session.messages,
     agent: (piece, session) => session.messages.filter((message) => message.thread.agentType === piece.name),
@@ -1754,14 +1713,15 @@ var SignalService = class _SignalService {
     return {
       activeMinutes: TimeUtil.msToMinutes(activeMs),
       tokens: TokenUsageUtil.total(usage),
-      inputTokens: TokenUsageUtil.input(usage),
+      inputTokens: TokenUsageUtil.inputWithCache(usage),
       outputTokens: usage.output,
       usd: NumberUtil.round(usd)
     };
   }
   topCountedValues(group) {
     const countedDetails = {};
-    for (const [detail, valueToCount] of Object.entries(group.counters)) {
+    const detailEntries = Object.entries(group.detailToValueToCount);
+    for (const [detail, valueToCount] of detailEntries) {
       const countedValues = [...valueToCount.entries()].sort((left, right) => right[1] - left[1]).slice(0, MAX_COUNTED_VALUES).map(([value, count]) => ({
         value,
         count
@@ -1775,7 +1735,6 @@ var SignalService = class _SignalService {
     const score = signal.cost.activeMinutes * SCORE_WEIGHTS.perActiveMinute + signal.cost.usd * SCORE_WEIGHTS.perUsd + signal.sessions * SCORE_WEIGHTS.perSession + countedOccurrences * SCORE_WEIGHTS.perOccurrence - (signal.isPartial ? SCORE_WEIGHTS.partialPenalty : 0);
     return NumberUtil.round(score);
   }
-  // Why: needs enough sessions for absence to mean something.
   unusedPieceSignals(sessions, inventory) {
     if (sessions.length < this.options.minSessionsForUnused) {
       return [];
@@ -1830,7 +1789,6 @@ var SignalService = class _SignalService {
       ...SessionUtil.MCP_CATEGORIES.has(call.category) ? [call.key] : []
     ];
   }
-  // Why: instructions are loaded on every turn, so their size costs every time.
   largePieceSignals(sessions, inventory) {
     return inventory.pieces.filter((piece) => piece.isEditable && SIZE_KINDS.has(piece.kind)).filter((piece) => piece.approxTokens >= this.options.largePieceTokens).map((piece) => {
       const carriers = sessions.flatMap((session) => this.messagesCarrying(piece, session));
@@ -1885,7 +1843,6 @@ var SignalService = class _SignalService {
       score: 0
     };
   }
-  // Why: a piece changed after the newest evidence may already be fixed, so the signal is partial.
   markPiecesChangedAfterEvidence(signals, inventory) {
     const pieceIdToPiece = new Map(inventory.pieces.map((piece) => [piece.id, piece]));
     for (const signal of signals) {
@@ -1908,7 +1865,6 @@ var SignalService = class _SignalService {
       }
     }
   }
-  // Why: round-robin across sessions shows the spread instead of the first N.
   spreadEvidence(sortedOccurrences) {
     const maxEvidence = this.options.maxEvidence;
     const sessionIdToOccurrences = /* @__PURE__ */ new Map();
@@ -1931,7 +1887,7 @@ var SignalService = class _SignalService {
     return {
       activeMs: occurrence.activeMs,
       tokens: TokenUsageUtil.total(occurrence.usage),
-      inputTokens: TokenUsageUtil.input(occurrence.usage),
+      inputTokens: TokenUsageUtil.inputWithCache(occurrence.usage),
       outputTokens: occurrence.usage.output,
       usd: NumberUtil.round(this.costService.costUsd(occurrence.usage, occurrence.model), OCCURRENCE_USD_DIGITS)
     };
@@ -1944,8 +1900,8 @@ var PER_INVOCATION_USD_DIGITS = 3;
 var UsageService = class {
   costService;
   attribution;
-  constructor(prices, pieceIds) {
-    this.costService = new CostService(prices);
+  constructor(modelFamilyToPrice, pieceIds) {
+    this.costService = new CostService(modelFamilyToPrice);
     this.attribution = new AttributionService(pieceIds);
   }
   pieceUsage(sessions) {
@@ -2128,10 +2084,6 @@ var CompareService = class _CompareService {
       }
     };
   }
-  /**
-   * Why: Time counts as much as money: a change that keeps the cost but makes the work faster is an improvement.
-   * Lower is better for every metric.
-   */
   significantMoves(before, after) {
     const metricToValues = {
       errorRate: [before.errorRate, after.errorRate],
@@ -2147,6 +2099,7 @@ var CompareService = class _CompareService {
       return {
         metric,
         relativeChange: NumberUtil.round(relativeChange, RELATIVE_CHANGE_DIGITS),
+        // Why: lower is better for every metric, and time counts as much as money.
         direction: relativeChange < 0 ? "better" : "worse",
         isInVerdict: !_CompareService.TOKEN_METRICS.has(metric)
       };
@@ -2167,13 +2120,13 @@ var CompareService = class _CompareService {
     return isGlobalPiece ? AttributionService.MAIN_PIECE : piece;
   }
   sideMetrics(sessions, piece) {
-    const usage = new UsageService(this.config.prices, /* @__PURE__ */ new Set([piece])).pieceUsage(sessions).find((entry) => entry.piece === this.usagePieceOf(piece));
+    const usage = new UsageService(this.config.modelFamilyToPrice, /* @__PURE__ */ new Set([piece])).pieceUsage(sessions).find((entry) => entry.piece === this.usagePieceOf(piece));
     const attributed = this.attributedToPiece(sessions, piece);
     const corrections = attributed.corrections;
     const invocations = usage?.invocations ?? 0;
     const signalService = new SignalService({
       idleMs: this.idleMs,
-      prices: this.config.prices,
+      modelFamilyToPrice: this.config.modelFamilyToPrice,
       maxEvidence: 0,
       minSessionsForUnused: Infinity,
       largePieceTokens: Infinity,
@@ -2195,8 +2148,6 @@ var CompareService = class _CompareService {
       recoveryMinutesPerInvocation: invocations ? NumberUtil.round(TimeUtil.msToMinutes(attributed.recoveryMs) / invocations) : void 0
     };
   }
-  // Why: a global piece (instructions, hooks, settings) is behind every turn; any other piece only answers for
-  // the corrections and failures that happened while it ran.
   attributedToPiece(sessions, piece) {
     const usagePiece = this.usagePieceOf(piece);
     const isGlobalPiece = usagePiece === AttributionService.MAIN_PIECE && piece !== AttributionService.MAIN_PIECE;
@@ -2275,7 +2226,6 @@ import { isAbsolute, join } from "node:path";
 // src/Shared/Utils/PathUtil.ts
 import { homedir as homedir2 } from "node:os";
 var PathUtil = class {
-  // Why: outputs must not leak usernames.
   static tildify(path) {
     const home = homedir2();
     return path.startsWith(home) ? `~${path.slice(home.length)}` : path;
@@ -2791,7 +2741,6 @@ var GuardUtil = class _GuardUtil {
   static asArray(value) {
     return Array.isArray(value) ? value : [];
   }
-  // Why: agents rename fields between versions.
   static firstString(record, keys) {
     for (const key of keys) {
       const value = _GuardUtil.asString(record?.[key]);
@@ -2878,8 +2827,6 @@ var CheckInventoryService = class _CheckInventoryService {
       isMissingPartial: partialReasons.length > 0
     };
   }
-  // Why: a check the catalog doesn't know must not let `missing` claim the category is uncovered, so dependencies
-  // whose names look like checks are listed for the skill to look up.
   static unmappedToolsOf(files) {
     const requirementNames = files.sourceToText["python config"].split("\n").map((line) => /^([A-Za-z0-9_.-]+)\s*(?:[=<>~!]|$)/.exec(line.trim())?.[1]).filter((name) => name !== void 0);
     const knownPackages = CheckCatalogUtil.knownPackages();
@@ -2958,8 +2905,6 @@ var CheckInventoryService = class _CheckInventoryService {
       ...isInCi ? ["ci"] : []
     ];
   }
-  // Why: the agent and CI often run a check through a package.json script (`pnpm lint` running eslint), so a run
-  // counts when it calls the tool directly or a script that does.
   static scriptRunsOf(definition, files) {
     const commands = definition.commands ?? [];
     const scripts = GuardUtil.asRecord(files.packageJson?.scripts) ?? {};
@@ -3020,7 +2965,6 @@ var IssueLinkUtil = class _IssueLinkUtil {
     const platforms = versions.platforms.length ? versions.platforms.join(", ") : "unknown";
     return `imh ${versions.imh} \xB7 ${versions.provider} ${agentVersions} \xB7 ${platforms}`;
   }
-  // Why: sessions span many agent versions; the oldest and newest are what a format change is dated by.
   static versionRange(sortedVersions) {
     const oldest = sortedVersions[0];
     const newest = sortedVersions.at(-1);
@@ -3035,7 +2979,7 @@ var IssueLinkUtil = class _IssueLinkUtil {
       title,
       template: `${request.template}.yml`
     });
-    for (const [field, value] of Object.entries(request.fields)) {
+    for (const [field, value] of Object.entries(request.fieldIdToFieldValue)) {
       const redacted = RedactUtil.redact(value);
       params.set(field, _IssueLinkUtil.fit(redacted, MAX_FIELD_CHARS));
     }
@@ -3049,7 +2993,6 @@ var IssueLinkUtil = class _IssueLinkUtil {
   static fit(text, maxChars) {
     return text.length > maxChars ? `${text.slice(0, maxChars - TRUNCATED.length)}${TRUNCATED}` : text;
   }
-  // Why: the longest field is cut first, so a short field like the versions always survives.
   static withinLimit(params) {
     const base = `${REPOSITORY_URL}/issues/new?`;
     let url = `${base}${params.toString()}`;
@@ -3101,7 +3044,6 @@ var GapService = class _GapService {
       details: [`invocations: ${usage.invocations}`, `sessions: ${usage.sessions}`]
     }))
   };
-  // Why: a scoped package often names the company (`@acme/lint-config`); the scope never goes in a link.
   static publicName(packageName) {
     const shortName = RedactUtil.excerpt(packageName, MAX_NAME_CHARS);
     return shortName.startsWith("@") ? `${PRIVATE_SCOPE}/${shortName.split("/").slice(1).join("/")}` : shortName;
@@ -3116,7 +3058,6 @@ var GapService = class _GapService {
       platforms: CollectionUtil.unique(platforms).sort(CollectionUtil.compareCodeUnits)
     };
   }
-  // Why: numeric, so 2.1.99 comes before 2.1.100 and the range in a link is oldest to newest.
   static compareVersions = (left, right) => left.localeCompare(right, "en", { numeric: true });
   gapsOf(input) {
     return Object.keys(this.kindToDrafts).flatMap((kind) => this.kindToDrafts[kind](input).map((draft) => this.gapOf(kind, draft)));
@@ -3128,7 +3069,7 @@ var GapService = class _GapService {
       fingerprint,
       template: "mapping-gap",
       title: `[gap] ${draft.title}`,
-      fields: {
+      fieldIdToFieldValue: {
         kind,
         details: details.join("\n"),
         versions: IssueLinkUtil.versionsText(this.versions)
@@ -3208,7 +3149,7 @@ var AnalysisService = class _AnalysisService {
     const sessions = isFocused ? loaded.sessions.filter((session) => focusPieces.some((piece) => CompareService.usesPiece(session, piece))) : loaded.sessions;
     const allSignals = new SignalService({
       idleMs: this.context.idleMs,
-      prices: config.prices,
+      modelFamilyToPrice: config.modelFamilyToPrice,
       maxEvidence: SAVED_EVIDENCE_PER_SIGNAL,
       minSessionsForUnused: config.minSessionsForUnused,
       largePieceTokens: config.largePieceTokens,
@@ -3220,7 +3161,7 @@ var AnalysisService = class _AnalysisService {
     await this.addInstructionMentions(signals, inventory);
     const pieceIds = new Set(inventory.pieces.map((piece) => piece.id));
     const totals = this.totalsOf(sessions, signals);
-    const usage = new UsageService(config.prices, pieceIds).pieceUsage(sessions);
+    const usage = new UsageService(config.modelFamilyToPrice, pieceIds).pieceUsage(sessions);
     const checks = await new CheckInventoryService(this.context.projectDir).inspect(sessions, inventory);
     const versions = GapService.versionsOf(sessions, VersionUtil.VERSION, inventory.provider);
     const gaps = new GapService(versions).gapsOf({
@@ -3270,7 +3211,7 @@ var AnalysisService = class _AnalysisService {
       },
       process: this.processProfile(sessions, pieceIds),
       commonCommands: this.commonCommands(sessions),
-      suggestions: CollectionUtil.countBy(suggestions.map((suggestion) => suggestion.status)),
+      suggestionStatusToCount: CollectionUtil.countBy(suggestions.map((suggestion) => suggestion.status)),
       dataDir: store.root,
       totals,
       usage,
@@ -3282,7 +3223,6 @@ var AnalysisService = class _AnalysisService {
     await store.writeJson(_AnalysisService.LAST_ANALYSIS_FILE, analysis);
     return this.compact(analysis, options);
   }
-  // Why: an exact id wins over a longer id that merely starts with it.
   static signalById(analysis, signalId) {
     const signal = analysis.signals.find((candidate) => candidate.id === signalId) ?? analysis.signals.find((candidate) => candidate.id.startsWith(signalId));
     if (!signal) {
@@ -3316,7 +3256,6 @@ var AnalysisService = class _AnalysisService {
       (signalPiece) => pieces.some((piece) => AttributionService.isSamePiece(signalPiece, piece))
     );
   }
-  // Why: a signal with a suggestion, in any status, is never suggested again.
   markHandledSignals(signals, suggestions) {
     const signalIdToSuggestion = /* @__PURE__ */ new Map();
     for (const suggestion of suggestions) {
@@ -3415,12 +3354,12 @@ var AnalysisService = class _AnalysisService {
     };
   }
   unpricedModels(sessions) {
-    const costService = new CostService(this.context.config.prices);
+    const costService = new CostService(this.context.config.modelFamilyToPrice);
     const models = sessions.flatMap((session) => session.messages.map((message) => message.model)).filter((model) => model !== void 0 && !costService.isPriced(model));
     return CollectionUtil.unique(models).map((model) => RedactUtil.redact(model)).sort(CollectionUtil.compareCodeUnits);
   }
   sessionTotals(sessions) {
-    const costService = new CostService(this.context.config.prices);
+    const costService = new CostService(this.context.config.modelFamilyToPrice);
     let usage = TokenUsageUtil.zero();
     let usd = 0;
     let mainActiveMs = 0;
@@ -3437,7 +3376,7 @@ var AnalysisService = class _AnalysisService {
       activeMinutes: TimeUtil.msToMinutes(mainActiveMs),
       subagentActiveMinutes: TimeUtil.msToMinutes(subagentActiveMs),
       tokens: TokenUsageUtil.total(usage),
-      inputTokens: TokenUsageUtil.input(usage),
+      inputTokens: TokenUsageUtil.inputWithCache(usage),
       outputTokens: usage.output,
       usd: NumberUtil.round(usd)
     };
@@ -3496,17 +3435,16 @@ var FrontmatterUtil = class _FrontmatterUtil {
     const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
     if (!match) {
       return {
-        data: {},
+        keyToValue: {},
         body: text
       };
     }
-    const state = { data: {}, currentKey: void 0, blockMode: void 0 };
+    const state = { keyToValue: {}, currentKey: void 0, blockMode: void 0 };
     for (const rawLine of (match[1] ?? "").split(/\r?\n/)) {
       _FrontmatterUtil.readLine(state, rawLine.trimEnd());
     }
-    const data = state.data;
     return {
-      data,
+      keyToValue: state.keyToValue,
       body: text.slice(match[0].length)
     };
   }
@@ -3521,16 +3459,16 @@ var FrontmatterUtil = class _FrontmatterUtil {
     const isListItem = isIndented && /^-\s/.test(content);
     const isInTextBlock = state.blockMode === "text";
     if (isListItem && key && !isInTextBlock) {
-      const previous = state.data[key];
+      const previous = state.keyToValue[key];
       const list = Array.isArray(previous) ? previous : [];
       const item = content.slice(1).trim();
       list.push(_FrontmatterUtil.unquote(item));
-      state.data[key] = list;
+      state.keyToValue[key] = list;
       state.blockMode = "list";
       return;
     }
     if (isIndented && key && isInTextBlock) {
-      state.data[key] = `${String(state.data[key] ?? "")} ${line.trim()}`.trim();
+      state.keyToValue[key] = `${String(state.keyToValue[key] ?? "")} ${line.trim()}`.trim();
       return;
     }
     const keyValue = /^([\w-]+):(.*)$/.exec(line);
@@ -3542,9 +3480,8 @@ var FrontmatterUtil = class _FrontmatterUtil {
     state.currentKey = newKey;
     state.blockMode = BLOCK_TEXT_MARKERS.has(value) ? "text" : void 0;
     const isFlowList = value.startsWith("[") && value.endsWith("]");
-    state.data[newKey] = isFlowList ? _FrontmatterUtil.parseFlowList(value) : _FrontmatterUtil.parseScalar(value);
+    state.keyToValue[newKey] = isFlowList ? _FrontmatterUtil.parseFlowList(value) : _FrontmatterUtil.parseScalar(value);
   }
-  // Why: a list can be a YAML list, a flow list or a comma- or space-separated string (`tools: Read, Bash`).
   static asList(value) {
     if (value === void 0 || value === "") {
       return void 0;
@@ -3564,7 +3501,6 @@ var FrontmatterUtil = class _FrontmatterUtil {
   static parseFlowList(value) {
     return value.slice(1, -1).split(",").map((entry) => _FrontmatterUtil.unquote(entry.trim())).filter(Boolean);
   }
-  // Why: `Bash(git log *)` must stay one entry.
   static splitOutsideParentheses(value) {
     const entries = [];
     let current = "";
@@ -3599,7 +3535,6 @@ var GIT_MAX_OUTPUT_BYTES = GIT_MAX_OUTPUT_MEBIBYTES * BYTES_PER_MEBIBYTE;
 var COMMIT_MARKER = "__COMMIT__";
 var PORCELAIN_PATH_OFFSET = 3;
 var GitUtil = class {
-  // Why: one `git log` call for all paths; empty outside a git repository.
   static async readChangeDates(repositoryDir, paths) {
     const changeDates = {
       pathToCommittedAt: /* @__PURE__ */ new Map(),
@@ -3681,7 +3616,6 @@ var ClaudeCodePieceCollectorService = class {
       modifiedSource: "mtime"
     } : {};
   }
-  // Why: path and content both go in, so renaming a reference changes the skill's hash.
   async fileHash(file) {
     const fileStat = await stat(file).catch(() => void 0);
     const isHashable = fileStat !== void 0 && fileStat.size <= MAX_HASHED_FILE_BYTES;
@@ -3689,7 +3623,6 @@ var ClaudeCodePieceCollectorService = class {
     return HashUtil.sha(`${relative(this.projectDir, file)}
 ${content.toString("base64")}`);
   }
-  // Why: the same name can exist in two scopes (a user and a project skill); both are kept, with distinct ids.
   uniqueId(kind, name, scope) {
     const baseId = `${kind}:${name}`;
     const isTaken = this.pieces.some((piece) => piece.id === baseId);
@@ -3701,7 +3634,7 @@ ${content.toString("base64")}`);
     if (text === void 0) {
       return;
     }
-    const { data } = FrontmatterUtil.parse(text);
+    const { keyToValue } = FrontmatterUtil.parse(text);
     const extraFiles = filePiece.extraFiles ?? [];
     const extraHashes = await Promise.all(extraFiles.map(async (extraFile) => this.fileHash(extraFile)));
     const changes = await Promise.all(
@@ -3718,12 +3651,12 @@ ${content.toString("base64")}`);
       hash: extraFiles.length ? HashUtil.sha([text, ...extraHashes].join("\n")) : HashUtil.sha(text),
       bytes: Buffer.byteLength(text),
       approxTokens: NumberUtil.approxTokens(text),
-      description: FrontmatterUtil.asText(data.description)?.slice(0, MAX_DESCRIPTION_CHARS),
-      model: FrontmatterUtil.asText(data.model),
-      tools: FrontmatterUtil.asList(data.tools ?? data["allowed-tools"]),
+      description: FrontmatterUtil.asText(keyToValue.description)?.slice(0, MAX_DESCRIPTION_CHARS),
+      model: FrontmatterUtil.asText(keyToValue.model),
+      tools: FrontmatterUtil.asList(keyToValue.tools ?? keyToValue["allowed-tools"]),
       ...latestChange,
       files: extraFiles.length ? extraFiles.map((extraFile) => relative(pieceFolder, extraFile)) : void 0,
-      preloadedSkills: KINDS_WITH_SKILLS.has(filePiece.kind) ? FrontmatterUtil.asList(data.skills) : void 0,
+      preloadedSkills: KINDS_WITH_SKILLS.has(filePiece.kind) ? FrontmatterUtil.asList(keyToValue.skills) : void 0,
       isEditable: !READ_ONLY_SCOPES.has(filePiece.scope),
       plugin: filePiece.plugin
     });
@@ -3856,9 +3789,8 @@ var ClaudeCodeInventoryService = class {
   }
   async declaredNameOf(file) {
     const text = await readFile4(file, "utf8").catch(() => "");
-    return FrontmatterUtil.asText(FrontmatterUtil.parse(text).data.name);
+    return FrontmatterUtil.asText(FrontmatterUtil.parse(text).keyToValue.name);
   }
-  // Why: Claude Code names nested components with `:` (`agents/review/security.md` → `review:security`).
   nameFromPath(baseDir, file) {
     return relative2(baseDir, file).replace(/\.md$/, "").replace(/[\\/]/g, ":");
   }
@@ -3898,7 +3830,6 @@ var ClaudeCodeInventoryService = class {
     }
     return files;
   }
-  // Why: settings are read from lowest to highest precedence, so later files win.
   async addSettings(builder, shouldIncludeUser) {
     const projectDir = builder.projectDir;
     const settingsFiles = [];
@@ -4045,7 +3976,6 @@ var ClaudeCodeInventoryService = class {
       };
     });
   }
-  // Why: plugins are read-only for the user, so findings about them become recommendations, never edits.
   async addPlugins(builder, pluginIdToIsEnabled) {
     for (const [pluginId, installPath] of await this.readInstalledPlugins()) {
       if (pluginIdToIsEnabled.get(pluginId) === false) {
@@ -4078,7 +4008,6 @@ var ClaudeCodeInventoryService = class {
       });
     }
   }
-  // Why: `installed_plugins.json` has an older and a versioned shape; both are accepted.
   async readInstalledPlugins() {
     const pluginIdToInstallPath = /* @__PURE__ */ new Map();
     const installedFile = join3(this.homeDir, "plugins", "installed_plugins.json");
@@ -4107,7 +4036,6 @@ import { basename as basename2, isAbsolute as isAbsolute2, join as join5, relati
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 var JsonlUtil = class _JsonlUtil {
-  // Why: streams line by line, so transcripts of any size use bounded memory.
   static async read(file, handlers) {
     const lines = createInterface({
       input: createReadStream(file, { encoding: "utf8" }),
@@ -4141,7 +4069,6 @@ import { join as join4 } from "node:path";
 
 // src/Shared/Utils/EnvUtil.ts
 var EnvUtil = class {
-  // Why: an empty string counts as unset.
   static read(name) {
     const value = process.env[name];
     return value === "" ? void 0 : value;
@@ -4150,7 +4077,6 @@ var EnvUtil = class {
 
 // src/Providers/ClaudeCode/Utils/ClaudeCodePathUtil.ts
 var ClaudeCodePathUtil = class {
-  // Why: `IMH_CLAUDE_HOME` exists so tests can point at a fixture.
   static homeDir() {
     return EnvUtil.read("IMH_CLAUDE_HOME") ?? EnvUtil.read("CLAUDE_CONFIG_DIR") ?? join4(homedir3(), ".claude");
   }
@@ -4159,7 +4085,6 @@ var ClaudeCodePathUtil = class {
     const defaultPath = configDir ? join4(configDir, ".claude.json") : join4(homedir3(), ".claude.json");
     return EnvUtil.read("IMH_CLAUDE_JSON") ?? defaultPath;
   }
-  // Why: Claude Code keeps a project's transcripts in `projects/<cwd with every non-alphanumeric character replaced by "-">`.
   static encodeProjectDir(projectDir) {
     return projectDir.replace(/[^a-zA-Z0-9]/g, "-");
   }
@@ -4193,7 +4118,6 @@ var ClaudeCodeTranscriptUtil = class _ClaudeCodeTranscriptUtil {
   static isInterruption(text) {
     return text.trim().startsWith(INTERRUPTION_PREFIX);
   }
-  // Why: Claude Code writes this notice when it compacts a conversation; the person didn't type it.
   static isCompactionCaveat(text) {
     return COMPACTION_CAVEAT.test(text);
   }
@@ -4253,7 +4177,7 @@ var MALFORMED_TOOL_NAME = "(malformed tool name)";
 var REJECTED_WITHOUT_FEEDBACK = "rejected without feedback";
 var MAX_UNKNOWN_TYPE_CHARS = 60;
 var DETACHED_BRANCH_NAMES = /* @__PURE__ */ new Set(["HEAD"]);
-var COMPACTION_TRIGGERS = {
+var COMPACTION_TRIGGER_TO_IS_KNOWN = {
   auto: true,
   manual: true
 };
@@ -4715,7 +4639,6 @@ var ClaudeCodeSessionService = class {
       occurredAtMs: line.occurredAtMs
     });
   }
-  // Why: older transcripts have no environment record; the working directory's shape still tells the platform.
   platformFromPath(projectDir) {
     if (projectDir === void 0) {
       return void 0;
@@ -4728,13 +4651,11 @@ var ClaudeCodeSessionService = class {
     }
     return projectDir.startsWith("/home/") ? "linux" : void 0;
   }
-  // Why: Claude Code records the platform and shell in an `environment` attachment; the first one wins.
   readEnvironment(context, snapshot) {
     const environment = context.facts.environment;
     environment.platform ??= GuardUtil.asString(snapshot?.platform);
     environment.shell ??= GuardUtil.asString(snapshot?.shell);
   }
-  // Why: `cost-state` is a running total; the last line of each run holds that run's total.
   handleCostState(context, line) {
     const costUsd = GuardUtil.asNumber(line.record.totalCostUSD);
     if (costUsd === void 0) {
@@ -4765,7 +4686,7 @@ var ClaudeCodeSessionService = class {
   handleCompaction(context, line) {
     const metadata = GuardUtil.asRecord(line.record.compactMetadata);
     const rawTrigger = GuardUtil.asString(metadata?.trigger);
-    const trigger = GuardUtil.isKeyOf(COMPACTION_TRIGGERS, rawTrigger) ? rawTrigger : "auto";
+    const trigger = GuardUtil.isKeyOf(COMPACTION_TRIGGER_TO_IS_KNOWN, rawTrigger) ? rawTrigger : "auto";
     const contextTokens = GuardUtil.asNumber(metadata?.preTokens);
     const tokensText = contextTokens === void 0 ? "" : ` at ~${Math.round(contextTokens / TOKENS_PER_THOUSAND2)}k tokens`;
     context.facts.compactions.push({
@@ -4782,7 +4703,6 @@ var ClaudeCodeSessionService = class {
     }
     return GuardUtil.asArray(message.content).map((item) => GuardUtil.asString(GuardUtil.asRecord(item)?.text) ?? "").join("\n");
   }
-  // Why: a prompt typed while the agent is busy is written as a `queued_command` attachment, never as a user line; other queued commands (finished background tasks, other sessions) are not the person's words.
   handleAttachment(context, line) {
     const attachment = GuardUtil.asRecord(line.record.attachment);
     const attachmentType = GuardUtil.asString(attachment?.type);
@@ -4974,7 +4894,6 @@ var ClaudeCodeProviderAdapter = class extends BaseProviderAdapter {
   retentionNote(retentionDays) {
     return `Claude Code deletes transcripts older than ${retentionDays} days at startup. improve-my-harness never changes this setting.`;
   }
-  // Why: paths are resolved on every call, so an environment change (as in tests) is picked up.
   sessionService() {
     return new ClaudeCodeSessionService(this.paths().homeDir);
   }
@@ -5012,7 +4931,7 @@ var ConfigService = class _ConfigService {
   }
   static DEFAULT_CONFIG = {
     idleMinutes: 5,
-    prices: CostService.DEFAULT_PRICES,
+    modelFamilyToPrice: CostService.DEFAULT_MODEL_FAMILY_TO_PRICE,
     minSessionsCompare: 5,
     minRelativeChange: 0.2,
     minSessionsForUnused: 10,
@@ -5039,9 +4958,9 @@ var ConfigService = class _ConfigService {
     const defaults = _ConfigService.DEFAULT_CONFIG;
     const config = {
       ...defaults,
-      prices: {
-        ...CostService.DEFAULT_PRICES,
-        ...this.readPrices(GuardUtil.asRecord(userConfig.prices))
+      modelFamilyToPrice: {
+        ...CostService.DEFAULT_MODEL_FAMILY_TO_PRICE,
+        ...this.readModelFamilyToPrice(GuardUtil.asRecord(userConfig.modelFamilyToPrice))
       },
       signalThresholds: this.readThresholds(GuardUtil.asRecord(userConfig.signalThresholds))
     };
@@ -5057,24 +4976,24 @@ var ConfigService = class _ConfigService {
     }
     return thresholds;
   }
-  readPrices(userPrices) {
-    const prices = {};
+  readModelFamilyToPrice(userPrices) {
+    const modelFamilyToPrice = {};
     for (const [family, value] of Object.entries(userPrices ?? {})) {
       const price = GuardUtil.asRecord(value);
-      const input = this.readNonNegative(price?.input);
-      const output = this.readNonNegative(price?.output);
+      const input = this.readNonNegative(price?.inputUsdPerMillionTokens);
+      const output = this.readNonNegative(price?.outputUsdPerMillionTokens);
       if (input === void 0 || output === void 0) {
         continue;
       }
       const modelPrice = {
-        input,
-        output,
-        cacheRead: this.readNonNegative(price?.cacheRead),
-        cacheWrite: this.readNonNegative(price?.cacheWrite)
+        inputUsdPerMillionTokens: input,
+        outputUsdPerMillionTokens: output,
+        cacheReadUsdPerMillionTokens: this.readNonNegative(price?.cacheReadUsdPerMillionTokens),
+        cacheWriteUsdPerMillionTokens: this.readNonNegative(price?.cacheWriteUsdPerMillionTokens)
       };
-      prices[family] = modelPrice;
+      modelFamilyToPrice[family] = modelPrice;
     }
-    return prices;
+    return modelFamilyToPrice;
   }
   readNonNegative(value) {
     const number = GuardUtil.asNumber(value);
@@ -5102,15 +5021,10 @@ var StoreService = class _StoreService {
   static forProject(projectDir, dataDir) {
     return new _StoreService(dataDir ?? join6(projectDir, DATA_DIR_NAME));
   }
-  /**
-   * Why: Reads a file this tool wrote. Its shape is trusted because only this tool writes it;
-   * files people may edit by hand (config.json) are validated by their reader.
-   */
   async readJson(relativePath) {
     const text = await readFile6(join6(this.root, relativePath), "utf8").catch(() => void 0);
     return text === void 0 ? void 0 : GuardUtil.parseJson(text);
   }
-  // Why: writes atomically (temp file + rename), so a crash never leaves a half-written file.
   async writeJson(relativePath, value, shouldIndent = true) {
     const file = join6(this.root, relativePath);
     await mkdir(dirname2(file), { recursive: true });
@@ -5217,15 +5131,10 @@ var SessionLoaderService = class {
       unparsedLines: sessions.reduce((total, facts) => total + facts.unparsedLines, 0)
     };
   }
-  // Why: also changes when the idle threshold changes, since it is part of the parsed facts.
   cacheSignature(transcript, idleMs) {
     const subagentSignature = transcript.subagentFiles.map((subagentFile) => `${subagentFile.file}:${subagentFile.modifiedAtMs}:${subagentFile.bytes}`).join("|");
     return `${this.provider.type}:${transcript.modifiedAtMs}:${transcript.bytes}:${idleMs}:${subagentSignature}`;
   }
-  /**
-   * Why: A transcript in the project's own folder always belongs to it, even if the project moved since.
-   * One in a prefix-matched folder (`my-app-2`, a subfolder) belongs only when its cwd is inside the project.
-   */
   belongsToProject(facts, transcript, options) {
     if (options.shouldReadAllProjects || transcript?.isExactProject) {
       return true;
@@ -5306,7 +5215,6 @@ var CompareCommand = class {
       changePoint.source
     );
   }
-  // Why: `--at` first, then the last applied suggestion for the piece, then the piece's last change.
   async findChangePoint(context, options) {
     const explicitAtMs = TimeUtil.parsePointInTime(options.changedAt);
     if (explicitAtMs !== void 0) {
@@ -5378,7 +5286,8 @@ var IssueCommand = class {
       template: "rule-question",
       title: `[rule] ${signal.type}`,
       fingerprint: IssueLinkUtil.fingerprintOf("rule_question", signal.type),
-      fields: {
+      // Why: only the signal, its rule and the person's own words go in; never an excerpt from a session (ADR 0010).
+      fieldIdToFieldValue: {
         signal: `${signal.type}: ${RedactUtil.excerpt(signal.id, MAX_SIGNAL_ID_CHARS)}`,
         rule: `${signal.cost.method} (${signal.cost.bound})`,
         explanation: options.note,
@@ -5402,8 +5311,8 @@ var StatusCommand = class {
       node: process.version,
       transcripts: loaded.available,
       retention: inventory.retention,
-      pieces: CollectionUtil.countBy(inventory.pieces.map((piece) => piece.kind)),
-      suggestions: CollectionUtil.countBy(suggestions.map((suggestion) => suggestion.status)),
+      pieceKindToCount: CollectionUtil.countBy(inventory.pieces.map((piece) => piece.kind)),
+      suggestionStatusToCount: CollectionUtil.countBy(suggestions.map((suggestion) => suggestion.status)),
       dataDir: context.store.root,
       config: context.config
     };
@@ -5543,8 +5452,6 @@ var SuggestionCostService = class _SuggestionCostService {
       bound: signal.cost.bound
     };
   }
-  // Why: the signal's own cost minus what other suggestions claimed; occurrences past the saved evidence are in
-  // the signal's cost, so they stay with the suggestion that takes the rest.
   remainderPart(signal, claimedKeys) {
     const claimed = signal.evidence.filter((item) => claimedKeys.has(_SuggestionCostService.keyOf(item)));
     const claimedCost = _SuggestionCostService.sum(claimed.map((item) => item.cost));
@@ -5599,7 +5506,6 @@ var SuggestionService = class _SuggestionService {
     accepted: () => void 0,
     rejected: () => void 0
   };
-  // Why: occurrences join the identity only when listed, so ids of suggestions without them never change.
   static idOf(suggestion) {
     const sortedSignals = suggestion.signals.toSorted(CollectionUtil.compareCodeUnits).join("|");
     const occurrenceKeys = (suggestion.occurrences ?? []).map((occurrence) => `${occurrence.sessionId}:${occurrence.line}`);
@@ -5665,7 +5571,6 @@ var SuggestionService = class _SuggestionService {
     const suggestions = await this.store.loadSuggestions();
     return status ? suggestions.filter((suggestion) => suggestion.status === status) : suggestions;
   }
-  // Why: a suggestion whose id already exists is left as is.
   async add(newSuggestions, costs = []) {
     const suggestions = await this.store.loadSuggestions();
     const createdAt = (/* @__PURE__ */ new Date()).toISOString();
@@ -5673,13 +5578,13 @@ var SuggestionService = class _SuggestionService {
       added: [],
       existing: [],
       total: 0,
-      costs: {}
+      suggestionIdToSuggestionCost: {}
     };
     for (const [itemIndex, newSuggestion] of newSuggestions.entries()) {
       const id = _SuggestionService.idOf(newSuggestion);
       const cost = costs[itemIndex];
       if (cost) {
-        result.costs[id] = cost;
+        result.suggestionIdToSuggestionCost[id] = cost;
       }
       const existing = suggestions.find((suggestion) => suggestion.id === id);
       if (existing) {
@@ -5743,7 +5648,6 @@ var SuggestionsCommand = class {
     const context = await ContextService.create(options);
     return new SuggestionService(context.store).list(options.status);
   }
-  // Why: costs are computed (and conflicts refused) before anything is saved, from the last analysis.
   async add(options) {
     const newSuggestions = SuggestionService.parse(options.items);
     const context = await ContextService.create(options);
@@ -5847,7 +5751,6 @@ var CLIModule = class _CLIModule {
       options: ARGUMENT_SPEC
     });
   }
-  // Why: never call `process.exit()`: it cuts stdout short when it is a pipe (how agents run the script) and the JSON is larger than 64 KB.
   run(argv) {
     this.main(argv).then(
       () => {
