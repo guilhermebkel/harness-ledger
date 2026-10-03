@@ -1,11 +1,5 @@
 name: Release
 
-# The marketplace serves the plugin from the tag in marketplace.json ("ref"), not from master, and installed
-# copies update only when `version` in plugin.json changes (ADR 0004). Run this from the Actions tab on master:
-# in one commit it bumps plugin.json and package.json, points the marketplace at the new tag and rebuilds dist/;
-# then it tags vX.Y.Z and publishes a GitHub Release with notes from the merged pull requests. Nothing else
-# changes `version`, the marketplace ref or dist/.
-
 on:
   workflow_dispatch:
     inputs:

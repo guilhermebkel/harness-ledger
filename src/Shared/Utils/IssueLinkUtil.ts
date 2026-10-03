@@ -21,13 +21,13 @@ export class IssueLinkUtil {
     return `imh ${versions.imh} · ${versions.provider} ${agentVersions} · ${platforms}`;
   }
 
-  // Why: sessions span many agent versions; the oldest and newest are what a format change is dated by.
   private static versionRange(sortedVersions: string[]): string {
     const oldest = sortedVersions[0];
     const newest = sortedVersions.at(-1);
     if (oldest === undefined || newest === undefined) {
       return "unknown";
     }
+    // Why: sessions span many agent versions; the oldest and newest are what a format change is dated by.
     return sortedVersions.length > MAX_LISTED_VERSIONS
       ? `${oldest} to ${newest} (${sortedVersions.length} versions)`
       : sortedVersions.join(", ");
@@ -39,7 +39,7 @@ export class IssueLinkUtil {
       title,
       template: `${request.template}.yml`,
     });
-    for (const [field, value] of Object.entries(request.fields)) {
+    for (const [field, value] of Object.entries(request.fieldIdToFieldValue)) {
       const redacted = RedactUtil.redact(value);
       params.set(field, IssueLinkUtil.fit(redacted, MAX_FIELD_CHARS));
     }
@@ -55,11 +55,11 @@ export class IssueLinkUtil {
     return text.length > maxChars ? `${text.slice(0, maxChars - TRUNCATED.length)}${TRUNCATED}` : text;
   }
 
-  // Why: the longest field is cut first, so a short field like the versions always survives.
   private static withinLimit(params: URLSearchParams): string {
     const base = `${REPOSITORY_URL}/issues/new?`;
     let url = `${base}${params.toString()}`;
     while (url.length > MAX_URL_CHARS) {
+      // Why: the longest field is cut first, so a short field like the versions always survives.
       const [longestField, longestValue] = [...params.entries()]
         .reduce((longest, entry) => (entry[1].length > longest[1].length ? entry : longest));
       if (longestValue.length <= TRUNCATED.length) {

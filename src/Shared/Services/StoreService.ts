@@ -1,5 +1,3 @@
-// Why: only derived, redacted data lives in .imh/; transcripts are read in place and never copied (ADR 0007).
-
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.ts";
@@ -23,19 +21,17 @@ export class StoreService {
     return new StoreService(dataDir ?? join(projectDir, DATA_DIR_NAME));
   }
 
-  /**
-   * Why: Reads a file this tool wrote. Its shape is trusted because only this tool writes it;
-   * files people may edit by hand (config.json) are validated by their reader.
-   */
   async readJson<Shape>(relativePath: string): Promise<Shape | undefined> {
     const text = await readFile(join(this.root, relativePath), "utf8").catch(() => undefined);
+    // Why: only this tool writes these files, so their shape is trusted; files people edit by hand (config.json) are
+    // validated by their reader.
     return text === undefined ? undefined : (GuardUtil.parseJson(text) as Shape | undefined);
   }
 
-  // Why: writes atomically (temp file + rename), so a crash never leaves a half-written file.
   async writeJson(relativePath: string, value: unknown, shouldIndent = true): Promise<void> {
     const file = join(this.root, relativePath);
     await mkdir(dirname(file), { recursive: true });
+    // Why: written to a temporary file and renamed, so a crash never leaves a half-written file.
     const temporaryFile = `${file}.${process.pid}.tmp`;
     const serialized = JSON.stringify(value, null, shouldIndent ? JSON_INDENT : 0);
     await writeFile(temporaryFile, serialized);

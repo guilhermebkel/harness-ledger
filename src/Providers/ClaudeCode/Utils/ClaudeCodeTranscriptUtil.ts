@@ -7,7 +7,6 @@ const HARNESS_INJECTED_BLOCKS
 const INTERRUPTION_PREFIX = "[Request interrupted by user";
 const PERMISSION_DENIED
   = /(permission to use .+ (?:has been|was) denied|permission for this action was denied|denied by (?:the )?(?:claude code )?(?:permission|auto[- ]mode)|requires approval|not allowed by your permission settings)/i;
-// Why: the person said no (often with feedback), as opposed to a rule or classifier blocking the call.
 const USER_REJECTED = /(doesn'?t want to proceed with this tool use|tool use was rejected|denied by (?:the )?user)/i;
 const REJECTION_FEEDBACK_MARKER = /the user said:/i;
 // Why: recent versions write `toolDenialKind` on the result line; it is more reliable than the text.
@@ -41,7 +40,6 @@ export class ClaudeCodeTranscriptUtil {
     return text.trim().startsWith(INTERRUPTION_PREFIX);
   }
 
-  // Why: Claude Code writes this notice when it compacts a conversation; the person didn't type it.
   static isCompactionCaveat(text: string): boolean {
     return COMPACTION_CAVEAT.test(text);
   }

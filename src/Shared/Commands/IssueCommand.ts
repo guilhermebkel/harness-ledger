@@ -7,8 +7,6 @@ import { RedactUtil } from "@/Shared/Utils/RedactUtil.ts";
 
 const MAX_SIGNAL_ID_CHARS = 120;
 
-// Why: a rule question carries the signal and the rule that produced it, and the person's own words; never an
-// excerpt from a session.
 export class IssueCommand {
   async run(options: IssueOptions): Promise<IssueLink> {
     const context = await ContextService.create(options);
@@ -18,7 +16,8 @@ export class IssueCommand {
       template: "rule-question",
       title: `[rule] ${signal.type}`,
       fingerprint: IssueLinkUtil.fingerprintOf("rule_question", signal.type),
-      fields: {
+      // Why: only the signal, its rule and the person's own words go in; never an excerpt from a session (ADR 0010).
+      fieldIdToFieldValue: {
         signal: `${signal.type}: ${RedactUtil.excerpt(signal.id, MAX_SIGNAL_ID_CHARS)}`,
         rule: `${signal.cost.method} (${signal.cost.bound})`,
         explanation: options.note,

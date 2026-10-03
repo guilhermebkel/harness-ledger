@@ -1,6 +1,5 @@
 import { RedactUtil } from "@/Shared/Utils/RedactUtil.ts";
 
-// Why: a workflow is made of the other commands.
 const EXPLORATION_PROGRAMS = new Set([
   "ls", "cat", "find", "grep", "rg", "sed", "head", "tail", "wc", "echo", "pwd", "tree", "which", "sort", "awk",
   "cut", "jq", "file", "stat", "du", "diff", "true", "sleep", "less", "printf", "date", "env", "type",
@@ -153,7 +152,6 @@ export class NormalizeUtil {
       .trim();
   }
 
-  // Why: a heuristic, for English and Portuguese.
   static isCorrection(text: string): boolean {
     return CORRECTION_START.test(text.trim().slice(0, CORRECTION_PREFIX_CHARS));
   }

@@ -1,6 +1,6 @@
 export class CollectionUtil {
-  // Why: the default `sort()` order (UTF-16 code units), stated explicitly; suggestion ids depend on it.
   static readonly compareCodeUnits = (left: string, right: string): number => {
+    // Why: the default `sort()` order (UTF-16 code units), stated explicitly; suggestion ids depend on it.
     if (left === right) {
       return 0;
     }
@@ -25,7 +25,6 @@ export class CollectionUtil {
     keyToItems.set(key, items);
   }
 
-  // Why: results keep the input order.
   static async mapWithConcurrency<Item, Result>(
     items: Item[],
     concurrency: number,

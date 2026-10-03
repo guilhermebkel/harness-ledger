@@ -40,7 +40,6 @@ const TITLE_EXCERPT_CHARS = 80;
 const EXAMPLE_EXCERPT_CHARS = 200;
 const MIN_REQUEST_WORDS = 3;
 const MAX_REQUEST_CHARS = 600;
-// Why: after these commands, reading a file again is legitimate.
 const FILE_CHANGING_COMMAND = /\b(git (checkout|pull|merge|rebase|stash)|sed -i|prettier|eslint --fix|npm run format)/;
 
 const COMPACTION_TRIGGER_TO_TITLE: Record<CompactionTrigger, string> = {
@@ -116,10 +115,10 @@ export class SignalDetectorService {
     this.failureChains = new FailureChainService(options.idleMs);
   }
 
-  // Why: failures run first and corrections last: a turn's messages already in a failure chain or a rejected
-  // plan are left out of the correction that follows, so no turn is counted twice.
   detectInSession(session: SessionFacts, index: SessionIndex): void {
     this.countedMessageIds = new Set();
+    // Why: failures run before corrections: a turn's messages already in a failure chain or a rejected plan are left
+    // out of the correction that follows, so no turn is counted twice.
     this.detectToolFailures(session, index);
     this.detectRepeatedReads(session, index);
     this.detectSubagentRereads(session, index);
@@ -217,10 +216,10 @@ export class SignalDetectorService {
     return this.resultKindToRecorder[result.kind](failure);
   }
 
-  // Why: the person said no to the call (a plan, a command): that is a correction of the turn, not a failure.
   private addRejection({ call, result, occurrence }: Failure): void {
     const attributedTo = occurrence.pieces.join(",");
     const title = `User corrected the agent (${attributedTo})`;
+    // Why: the person said no to the call (a plan, a command): a correction of the turn, not a failure.
     this.collector.add(`user_correction:${attributedTo}`, "user_correction", title, {
       ...occurrence,
       ref: {
@@ -269,8 +268,8 @@ export class SignalDetectorService {
     return this.turnCost(index, turnStartAtMs, rejectedAtMs);
   }
 
-  // Why: a chain's cost is shared equally by its failures, so the totals add up to the chain once.
   private static shareOf(chain: FailureChain): StepCost {
+    // Why: shared equally by the chain's failures, so the totals add up to the chain once.
     const share = 1 / chain.failures.length;
     return {
       activeMs: chain.cost.activeMs * share,
@@ -317,7 +316,6 @@ export class SignalDetectorService {
     }
   }
 
-  // Why: what a compaction costs is reading again, after it, the files the thread had read before it.
   private compactionCost(session: SessionFacts, index: SessionIndex, compaction: ContextCompaction): StepCost {
     const compactedAtMs = compaction.occurredAtMs ?? 0;
     const nextCompactionAtMs = session.compactions
@@ -325,6 +323,7 @@ export class SignalDetectorService {
       .reduce((earliest, other) => Math.min(earliest, other.occurredAtMs ?? Infinity), Infinity);
     const threadReads = session.tools
       .filter((call) => call.thread.id === compaction.thread.id && this.isSuccessfulRead(call));
+    // Why: a compaction costs the reads, after it, of files the thread had read before it.
     const filesReadBefore = new Set(threadReads
       .filter((call) => (call.calledAtMs ?? 0) < compactedAtMs)
       .map((call) => call.filePath));
@@ -473,9 +472,9 @@ export class SignalDetectorService {
     return call.category === "read" && call.filePath !== undefined && call.result?.isError !== true;
   }
 
-  // Why: cost of a failed request: the wait until the thread got a real answer (retries and fallbacks).
   private apiErrorCost(apiError: ApiError, index: SessionIndex): StepCost {
     const failedAtMs = apiError.occurredAtMs ?? 0;
+    // Why: a failed request costs the wait until the thread got a real answer (retries and fallbacks).
     const answer = (index.threadIdToMessages.get(apiError.thread.id) ?? []).find(
       (message) => message.model !== undefined && (message.sentAtMs ?? 0) > failedAtMs,
     );
@@ -487,7 +486,6 @@ export class SignalDetectorService {
     };
   }
 
-  // Why: cost of an unnecessary read: its duration and the tokens it added to the context.
   private readCost(read: ToolCall, index: SessionIndex): StepCost {
     const durationMs = (read.result?.returnedAtMs ?? 0) - (read.calledAtMs ?? 0);
     return {
@@ -500,8 +498,6 @@ export class SignalDetectorService {
     };
   }
 
-  // Why: a turn's cost is an upper bound: every message of every thread in it, minus messages another signal
-  // already counted. The messages it counts are then marked counted too.
   private turnCost(index: SessionIndex, turnStartAtMs?: number, turnEndAtMs?: number): StepCost {
     const isOpenTurn = turnStartAtMs === undefined || !Number.isFinite(turnStartAtMs);
     if (isOpenTurn || turnEndAtMs === undefined) {
@@ -510,6 +506,8 @@ export class SignalDetectorService {
         usage: TokenUsageUtil.zero(),
       };
     }
+    // Why: an upper bound: every message of every thread in the turn, minus messages another signal already counted;
+    // the ones counted here are then marked too.
     const turnMessages = [...index.threadIdToMessages.values()].flat().filter((message) => {
       const sentAtMs = message.sentAtMs ?? 0;
       return !this.countedMessageIds.has(message.id) && sentAtMs > turnStartAtMs && sentAtMs <= turnEndAtMs;
@@ -526,7 +524,6 @@ export class SignalDetectorService {
     };
   }
 
-  // Why: reading a file again is legitimate after it was edited, changed by a command, or compacted out of context.
   private wasChangedBetween(session: SessionFacts, firstRead: ToolCall, laterRead: ToolCall): boolean {
     const fromAtMs = firstRead.calledAtMs ?? 0;
     const toAtMs = laterRead.calledAtMs ?? 0;

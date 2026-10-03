@@ -7,7 +7,6 @@ import { EvidenceCommand } from "@/Shared/Commands/EvidenceCommand.ts";
 const MAKE_FAILURE_SIGNAL = "failed_command:make";
 
 const history = ClaudeCodeFixtureUtil.useHistoryFixture((fixture) => {
-  // Why: tests assert on these sessions: `npm test` fails and `pnpm test` works after a look around, and a script fails before other work.
   for (const sessionId of ["r1", "r2"]) {
     new ClaudeCodeTranscriptBuilder(sessionId, fixture.projectDir, `2026-09-2${sessionId.at(-1)}T10:00:00.000Z`)
       .user("Run the tests and the report")

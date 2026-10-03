@@ -1,5 +1,3 @@
-// Why: shared logic is tested through the real Claude Code provider on purpose.
-
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -287,15 +285,15 @@ describe("AnalyzeCommand.run()", () => {
 
     it("lists the work commands the project runs, with a real example, for a first CLAUDE.md", async () => {
       const analysis = await analyzeWorkflows();
-      const commandByKey = new Map(analysis.commonCommands.map((command) => [command.key, command]));
-      expect(commandByKey.get("npx tsc")).toStrictEqual({
+      const commandKeyToCommand = new Map(analysis.commonCommands.map((command) => [command.key, command]));
+      expect(commandKeyToCommand.get("npx tsc")).toStrictEqual({
         key: "npx tsc",
         runs: 4,
         sessions: 4,
         failures: 0,
         example: "npx tsc --noEmit",
       });
-      expect(commandByKey.has("ls")).toBe(false);
+      expect(commandKeyToCommand.has("ls")).toBe(false);
     });
 
     it("finds a procedure repeated many times inside one long session", async () => {

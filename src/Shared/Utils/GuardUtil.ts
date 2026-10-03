@@ -18,8 +18,8 @@ export class GuardUtil {
     return Array.isArray(value) ? (value as unknown[]) : [];
   }
 
-  // Why: agents rename fields between versions.
   static firstString(record: UnknownRecord | undefined, keys: string[]): string | undefined {
+    // Why: agents rename fields between versions, so each name is tried in order.
     for (const key of keys) {
       const value = GuardUtil.asString(record?.[key]);
       if (value !== undefined) {

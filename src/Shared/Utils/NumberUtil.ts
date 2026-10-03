@@ -7,7 +7,6 @@ export class NumberUtil {
     return Math.round(value * factor) / factor;
   }
 
-  // Why: a rough estimate from text length, good enough to compare sizes.
   static approxTokens(text: string): number {
     return Math.ceil(text.length / CHARS_PER_TOKEN);
   }

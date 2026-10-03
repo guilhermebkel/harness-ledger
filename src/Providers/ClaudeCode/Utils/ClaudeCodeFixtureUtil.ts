@@ -133,13 +133,6 @@ export class ClaudeCodeFixtureUtil {
     return main.result(`task_${sessionId}`, "All tests pass.", { secondsLater: 70, toolUseResult }).say("Done.");
   }
 
-  /**
-   * Why: tests assert on each session of this history. A realistic history:
-   * - s1..s3: the test-runner subagent runs `npm test` (fails), then `pnpm test` (works).
-   * - s2: code-reviewer re-reads a file the main thread had just read.
-   * - s2, s5, s6: "generate the changelog entry from the last PRs" (repeated request).
-   * - s4: a correction, two permission denials and a secret in a command.
-   */
   static writeHistory(fixture: Fixture, firstDay = "2026-09-10"): void {
     const firstDayAtMs = Date.parse(`${firstDay}T10:00:00.000Z`);
     const dayAt = (dayOffset: number): string => new Date(firstDayAtMs + dayOffset * 86_400_000).toISOString();
@@ -226,16 +219,6 @@ export class ClaudeCodeFixtureUtil {
       .write(ClaudeCodeTranscriptBuilder.sessionPath(fixture, sessionId));
   }
 
-  /**
-   * Why: tests assert on each of these cases. Cases seen in real sessions (content is synthetic):
-   * - the person rejects a plan (ExitPlanMode) with feedback;
-   * - the auto-mode classifier blocks reading credentials, twice;
-   * - a Python script fails with a FutureWarning printed before the traceback;
-   * - `git -C <dir> stash pop` fails after a git warning line;
-   * - a correction typed while the agent was busy (queued), next to a background-task notification;
-   * - a model behind a proxy with no known price, and an API error message;
-   * - a line type Claude Code writes for its interface (ignored) and one no version so far has written (a gap).
-   */
   static writeRealCasesSession(fixture: Fixture, sessionId: string, startedAt: string): void {
     new ClaudeCodeTranscriptBuilder(sessionId, fixture.projectDir, startedAt)
       .record("attachment", { attachment: { type: "environment", snapshot: { platform: "darwin", shell: "zsh" } } })
@@ -295,13 +278,6 @@ export class ClaudeCodeFixtureUtil {
       .write(ClaudeCodeTranscriptBuilder.sessionPath(fixture, sessionId));
   }
 
-  /**
-   * Why: tests assert on each of these cases. Data Claude Code computes itself (content is synthetic):
-   * - two runs of the session (resumed), each ending with a `cost-state` total;
-   * - `turn_duration` lines for the main thread's turns;
-   * - a subagent whose type is known only from `attributionAgent` (no meta file), running a skill
-   *   (`attributionSkill`), whose requests fail twice with `model_not_found` before it falls back.
-   */
   static writeProviderReportSession(fixture: Fixture, sessionId: string, startedAt: string): void {
     const agentId = `p${sessionId}`;
     const agentLine = { attributionAgent: "migrations-writer" };
@@ -339,10 +315,6 @@ export class ClaudeCodeFixtureUtil {
       .write(ClaudeCodeTranscriptBuilder.sessionPath(fixture, sessionId));
   }
 
-  /**
-   * Why: tests assert on each of these cases. A session that ships a change by hand (content is synthetic): a look around, then the same five work
-   * commands every time; it auto-compacts near the context limit; and a model leaks text into a tool name.
-   */
   static writeWorkflowSession(fixture: Fixture, sessionId: string, startedAt: string): void {
     const transcript = new ClaudeCodeTranscriptBuilder(sessionId, fixture.projectDir, startedAt)
       .user("Ship the billing fix")

@@ -32,8 +32,7 @@ export class TokenUsageUtil {
     return usages.reduce((total, usage) => TokenUsageUtil.add(total, usage), TokenUsageUtil.zero());
   }
 
-  // Why: includes cache reads and writes.
-  static input(usage: TokenUsage): number {
+  static inputWithCache(usage: TokenUsage): number {
     return usage.input + usage.cacheRead + usage.cacheWrite;
   }
 

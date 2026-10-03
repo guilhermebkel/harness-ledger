@@ -1,5 +1,3 @@
-// Why: a failure the harness already has an instruction for is an enforcement gap, not a missing instruction.
-
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import type { Inventory, PieceKind } from "@/Shared/Protocols/HarnessProtocol.ts";
@@ -25,7 +23,6 @@ export class MentionService {
       }
       const lines = (await readFile(this.absolutePathOf(piece.path), "utf8").catch(() => "")).split(/\r?\n/);
       for (const term of searchTerms) {
-        // Why: whole terms only: "cat" must not match "category".
         const termPattern = RegExpUtil.wholeTerm(term, "i");
         lines.forEach((line, lineIndex) => {
           if (mentions.length < maxMentions && termPattern.test(line)) {

@@ -27,8 +27,6 @@ const ZERO_COST: OccurrenceCost = {
   usd: 0,
 };
 
-// Why: each occurrence belongs to one suggestion, so the costs of one call add up to no more than the signals'
-// costs and the report never shows a cost "included in another suggestion".
 export class SuggestionCostService {
   private readonly idToSignal: Map<string, Signal>;
 
@@ -171,9 +169,9 @@ export class SuggestionCostService {
     };
   }
 
-  // Why: the signal's own cost minus what other suggestions claimed; occurrences past the saved evidence are in
-  // the signal's cost, so they stay with the suggestion that takes the rest.
   private remainderPart(signal: Signal, claimedKeys: Set<string>): CostPart {
+    // Why: the signal's own cost minus what other suggestions claimed; occurrences past the saved evidence are in the
+    // signal's cost, so they stay with the suggestion that takes the rest.
     const claimed = signal.evidence.filter((item) => claimedKeys.has(SuggestionCostService.keyOf(item)));
     const claimedCost = SuggestionCostService.sum(claimed.map((item) => item.cost));
     const signalCost: OccurrenceCost = {

@@ -1,5 +1,3 @@
-// Why: this is the only module that writes to stdout and stderr.
-
 import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { AnalyzeCommand } from "@/Shared/Commands/AnalyzeCommand.ts";
@@ -118,8 +116,9 @@ export class CLIModule {
     });
   }
 
-  // Why: never call `process.exit()`: it cuts stdout short when it is a pipe (how agents run the script) and the JSON is larger than 64 KB.
   run(argv: string[]): void {
+    // Why: set the exit code, never call `process.exit()`: it cuts stdout short when it is a pipe (how agents run the
+    // script) and the JSON is larger than 64 KB.
     this.main(argv).then(
       () => {
         process.exitCode = 0;

@@ -1,4 +1,3 @@
-// Why: each rule is documented in docs/code-standards.md (tests: docs/test-standards.md); change both together.
 import js from "@eslint/js";
 import stylistic from "@stylistic/eslint-plugin";
 import vitest from "@vitest/eslint-plugin";
@@ -142,6 +141,8 @@ export default tseslint.config(
       "sonarjs/no-all-duplicated-branches": "error",
       "sonarjs/no-identical-conditions": "error",
       "local/comment-marker": "error",
+      "local/comment-placement": "error",
+      "local/map-name": "error",
       "local/literal-dispatch": "error",
       "max-classes-per-file": ["error", 1],
       "local/class-matches-file": "error",

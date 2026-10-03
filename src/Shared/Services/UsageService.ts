@@ -1,5 +1,5 @@
 import type { PieceUsage, SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.ts";
-import type { PriceTable } from "@/Shared/Protocols/ConfigProtocol.ts";
+import type { ModelFamilyToPrice } from "@/Shared/Protocols/ConfigProtocol.ts";
 import type { SessionFacts, TokenUsage } from "@/Shared/Protocols/SessionProtocol.ts";
 import { NumberUtil } from "@/Shared/Utils/NumberUtil.ts";
 import { SessionUtil } from "@/Shared/Utils/SessionUtil.ts";
@@ -26,8 +26,8 @@ export class UsageService {
   private readonly costService: CostService;
   private readonly attribution: AttributionService;
 
-  constructor(prices: PriceTable, pieceIds: Set<string>) {
-    this.costService = new CostService(prices);
+  constructor(modelFamilyToPrice: ModelFamilyToPrice, pieceIds: Set<string>) {
+    this.costService = new CostService(modelFamilyToPrice);
     this.attribution = new AttributionService(pieceIds);
   }
 

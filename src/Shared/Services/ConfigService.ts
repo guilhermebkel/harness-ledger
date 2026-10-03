@@ -1,6 +1,4 @@
-// Why: people edit .imh/config.json by hand, so every field is validated and falls back to its default on its own.
-
-import type { Config, ModelPrice, NumericConfigKey, PriceTable, SignalThresholds } from "@/Shared/Protocols/ConfigProtocol.ts";
+import type { Config, ModelPrice, NumericConfigKey, ModelFamilyToPrice, SignalThresholds } from "@/Shared/Protocols/ConfigProtocol.ts";
 import type { UnknownRecord } from "@/Shared/Protocols/UtilProtocol.ts";
 import { GuardUtil } from "@/Shared/Utils/GuardUtil.ts";
 import { CostService } from "@/Shared/Services/CostService.ts";
@@ -19,7 +17,7 @@ const NUMERIC_CONFIG_KEYS: NumericConfigKey[] = [
 export class ConfigService {
   static readonly DEFAULT_CONFIG: Config = {
     idleMinutes: 5,
-    prices: CostService.DEFAULT_PRICES,
+    modelFamilyToPrice: CostService.DEFAULT_MODEL_FAMILY_TO_PRICE,
     minSessionsCompare: 5,
     minRelativeChange: 0.2,
     minSessionsForUnused: 10,
@@ -49,13 +47,14 @@ export class ConfigService {
     const defaults = ConfigService.DEFAULT_CONFIG;
     const config: Config = {
       ...defaults,
-      prices: {
-        ...CostService.DEFAULT_PRICES,
-        ...this.readPrices(GuardUtil.asRecord(userConfig.prices)),
+      modelFamilyToPrice: {
+        ...CostService.DEFAULT_MODEL_FAMILY_TO_PRICE,
+        ...this.readModelFamilyToPrice(GuardUtil.asRecord(userConfig.modelFamilyToPrice)),
       },
       signalThresholds: this.readThresholds(GuardUtil.asRecord(userConfig.signalThresholds)),
     };
     for (const key of NUMERIC_CONFIG_KEYS) {
+      // Why: people edit .imh/config.json by hand, so each field falls back to its default on its own.
       config[key] = this.readNonNegative(userConfig[key]) ?? defaults[key];
     }
     return config;
@@ -69,24 +68,24 @@ export class ConfigService {
     return thresholds;
   }
 
-  private readPrices(userPrices: UnknownRecord | undefined): PriceTable {
-    const prices: PriceTable = {};
+  private readModelFamilyToPrice(userPrices: UnknownRecord | undefined): ModelFamilyToPrice {
+    const modelFamilyToPrice: ModelFamilyToPrice = {};
     for (const [family, value] of Object.entries(userPrices ?? {})) {
       const price = GuardUtil.asRecord(value);
-      const input = this.readNonNegative(price?.input);
-      const output = this.readNonNegative(price?.output);
+      const input = this.readNonNegative(price?.inputUsdPerMillionTokens);
+      const output = this.readNonNegative(price?.outputUsdPerMillionTokens);
       if (input === undefined || output === undefined) {
         continue;
       }
       const modelPrice: ModelPrice = {
-        input,
-        output,
-        cacheRead: this.readNonNegative(price?.cacheRead),
-        cacheWrite: this.readNonNegative(price?.cacheWrite),
+        inputUsdPerMillionTokens: input,
+        outputUsdPerMillionTokens: output,
+        cacheReadUsdPerMillionTokens: this.readNonNegative(price?.cacheReadUsdPerMillionTokens),
+        cacheWriteUsdPerMillionTokens: this.readNonNegative(price?.cacheWriteUsdPerMillionTokens),
       };
-      prices[family] = modelPrice;
+      modelFamilyToPrice[family] = modelPrice;
     }
-    return prices;
+    return modelFamilyToPrice;
   }
 
   private readNonNegative(value: unknown): number | undefined {

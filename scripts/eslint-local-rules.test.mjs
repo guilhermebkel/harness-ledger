@@ -1,4 +1,5 @@
 import { RuleTester } from "eslint";
+import tseslint from "typescript-eslint";
 import { afterAll, describe, it } from "vitest";
 import { localRules } from "./eslint-local-rules.mjs";
 
@@ -6,6 +7,8 @@ RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
+
+const TIME_UTIL_FILE = "src/Shared/Utils/TimeUtil.ts";
 
 const ruleTester = new RuleTester({ languageOptions: { ecmaVersion: 2024, sourceType: "module" } });
 
@@ -113,12 +116,12 @@ ruleTester.run("class-matches-file", localRules.rules["class-matches-file"], {
   valid: [
     {
       name: "one exported class named after its file",
-      filename: "src/Shared/Utils/TimeUtil.ts",
+      filename: TIME_UTIL_FILE,
       code: "export class TimeUtil {}",
     },
     {
       name: "a class expression inside a function is not the file's class",
-      filename: "src/Shared/Utils/TimeUtil.ts",
+      filename: TIME_UTIL_FILE,
       code: "export class TimeUtil { static make() { return class {}; } }",
     },
   ],
@@ -193,6 +196,86 @@ ruleTester.run("describe-target", localRules.rules["describe-target"], {
       filename: TIME_UTIL_TEST,
       code: "it(\"reads days\", () => {});",
       errors: [{ messageId: "outside", data: { className: "TimeUtil" } }],
+    },
+  ],
+});
+
+const tsRuleTester = new RuleTester({ languageOptions: { parser: tseslint.parser, ecmaVersion: 2024, sourceType: "module" } });
+
+tsRuleTester.run("comment-placement", localRules.rules["comment-placement"], {
+  valid: [
+    {
+      name: "a comment next to the line whose rule it explains",
+      filename: TIME_UTIL_FILE,
+      code: "export class TimeUtil {\n  static parse(value: string) {\n    // Why: \"3m\" means months.\n    return value;\n  }\n}",
+    },
+    {
+      name: "a comment on a constant",
+      filename: "src/Shared/Utils/GitUtil.ts",
+      code: "import { x } from \"y\";\n// Why: porcelain prints a status and a space first.\nconst OFFSET = 3;",
+    },
+    {
+      name: "tool directives anywhere, even in a type file",
+      filename: "src/Shared/Protocols/SessionProtocol.ts",
+      code: "// eslint-disable-next-line no-var\nexport interface ThreadRef { id: string }",
+    },
+  ],
+  invalid: [
+    {
+      name: "a file header",
+      filename: "src/Shared/Modules/CLIModule.ts",
+      code: "// Why: the only module that writes to stdout.\n\nimport { x } from \"y\";",
+      errors: [{ messageId: "header" }],
+    },
+    {
+      name: "any comment in a type file",
+      filename: "src/Shared/Protocols/ConfigProtocol.ts",
+      code: "export interface ModelPrice {\n  // Why: USD per million tokens.\n  input: number;\n}",
+      errors: [{ messageId: "protocol" }],
+    },
+    {
+      name: "a comment above a method, once for consecutive lines",
+      filename: "src/Shared/Services/StoreService.ts",
+      code: "export class StoreService {\n  // Why: writes atomically,\n  // so a crash never leaves half a file.\n  async writeJson() {}\n}",
+      errors: [{ messageId: "declaration", line: 2 }],
+    },
+    {
+      name: "a comment above an exported class or a function constant",
+      filename: "src/Shared/Services/GapService.ts",
+      code: "import { x } from \"y\";\n// Why: what the script couldn't map.\nexport class GapService {}\n// Why: numeric order.\nconst compare = () => 0;",
+      errors: [{ messageId: "declaration", line: 2 }, { messageId: "declaration", line: 4 }],
+    },
+  ],
+});
+
+tsRuleTester.run("map-name", localRules.rules["map-name"], {
+  valid: [
+    { name: "a property named after key and value", code: "interface R { suggestionIdToCost: Record<string, number> }" },
+    { name: "a constant map", code: "const STATUS_TO_RECORD: Record<string, () => void> = {};" },
+    { name: "a new Map named after key and value", code: "const pathToDate = new Map<string, number>();" },
+    { name: "a record of unknown values is a plain object", code: "type UnknownRecord = Record<string, unknown>;" },
+    { name: "a list is not a map", code: "interface R { costs: number[] }" },
+  ],
+  invalid: [
+    {
+      name: "a Record property",
+      code: "interface R { costs: Record<string, number> }",
+      errors: [{ messageId: "unnamed" }],
+    },
+    {
+      name: "a type alias of a Record",
+      code: "type PriceTable = Record<string, number>;",
+      errors: [{ messageId: "unnamed" }],
+    },
+    {
+      name: "a Map inside Partial, and a Map parameter",
+      code: "interface R { counters: Partial<Record<string, number>> }\nfunction f(seen: Map<string, number>) {}",
+      errors: [{ messageId: "unnamed" }, { messageId: "unnamed" }],
+    },
+    {
+      name: "a new Map without a type",
+      code: "const seen = new Map();",
+      errors: [{ messageId: "unnamed" }],
     },
   ],
 });

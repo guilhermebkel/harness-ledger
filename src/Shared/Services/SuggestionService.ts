@@ -43,11 +43,11 @@ export class SuggestionService {
 
   constructor(private readonly store: StoreService) {}
 
-  // Why: occurrences join the identity only when listed, so ids of suggestions without them never change.
   static idOf(suggestion: Pick<NewSuggestion, "signals" | "piece" | "occurrences">): string {
     const sortedSignals = suggestion.signals.toSorted(CollectionUtil.compareCodeUnits).join("|");
     const occurrenceKeys = (suggestion.occurrences ?? []).map((occurrence) => `${occurrence.sessionId}:${occurrence.line}`);
     const sortedOccurrences = occurrenceKeys.toSorted(CollectionUtil.compareCodeUnits).join("|");
+    // Why: occurrences join the identity only when listed, so ids of suggestions without them never change.
     const occurrencePart = sortedOccurrences ? `#${sortedOccurrences}` : "";
     const identity = `${sortedSignals}@${suggestion.piece ?? ""}${occurrencePart}`;
     return `sug-${HashUtil.sha(identity, SUGGESTION_ID_HASH_CHARS)}`;
@@ -118,7 +118,6 @@ export class SuggestionService {
     return status ? suggestions.filter((suggestion) => suggestion.status === status) : suggestions;
   }
 
-  // Why: a suggestion whose id already exists is left as is.
   async add(
     newSuggestions: NewSuggestion[],
     costs: (SuggestionCost | undefined)[] = [],
@@ -129,13 +128,13 @@ export class SuggestionService {
       added: [],
       existing: [],
       total: 0,
-      costs: {},
+      suggestionIdToSuggestionCost: {},
     };
     for (const [itemIndex, newSuggestion] of newSuggestions.entries()) {
       const id = SuggestionService.idOf(newSuggestion);
       const cost = costs[itemIndex];
       if (cost) {
-        result.costs[id] = cost;
+        result.suggestionIdToSuggestionCost[id] = cost;
       }
       const existing = suggestions.find((suggestion) => suggestion.id === id);
       if (existing) {

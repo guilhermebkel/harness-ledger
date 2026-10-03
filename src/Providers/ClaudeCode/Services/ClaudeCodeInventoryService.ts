@@ -1,5 +1,3 @@
-// Why: MCP and hook entries keep names and shapes only (ADR 0007); env values, headers and arguments are hashed to detect changes, never stored.
-
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
 import type { HarnessPiece, Inventory, PieceScope } from "@/Shared/Protocols/HarnessProtocol.ts";
@@ -159,11 +157,11 @@ export class ClaudeCodeInventoryService {
 
   private async declaredNameOf(file: string): Promise<string | undefined> {
     const text = await readFile(file, "utf8").catch(() => "");
-    return FrontmatterUtil.asText(FrontmatterUtil.parse(text).data.name);
+    return FrontmatterUtil.asText(FrontmatterUtil.parse(text).keyToValue.name);
   }
 
-  // Why: Claude Code names nested components with `:` (`agents/review/security.md` → `review:security`).
   private nameFromPath(baseDir: string, file: string): string {
+    // Why: Claude Code names nested components with `:` (`agents/review/security.md` → `review:security`).
     return relative(baseDir, file).replace(/\.md$/, "").replace(/[\\/]/g, ":");
   }
 
@@ -205,12 +203,12 @@ export class ClaudeCodeInventoryService {
     return files;
   }
 
-  // Why: settings are read from lowest to highest precedence, so later files win.
   private async addSettings(
     builder: ClaudeCodePieceCollectorService,
     shouldIncludeUser: boolean,
   ): Promise<SettingsSummary> {
     const projectDir = builder.projectDir;
+    // Why: settings are listed from lowest to highest precedence, so later files win.
     const settingsFiles: SettingsFile[] = [];
     if (shouldIncludeUser) {
       settingsFiles.push({
@@ -377,7 +375,6 @@ export class ClaudeCodeInventoryService {
     });
   }
 
-  // Why: plugins are read-only for the user, so findings about them become recommendations, never edits.
   private async addPlugins(
     builder: ClaudeCodePieceCollectorService,
     pluginIdToIsEnabled: Map<string,
@@ -415,7 +412,6 @@ export class ClaudeCodeInventoryService {
     }
   }
 
-  // Why: `installed_plugins.json` has an older and a versioned shape; both are accepted.
   private async readInstalledPlugins(): Promise<Map<string, string>> {
     const pluginIdToInstallPath = new Map<string, string>();
     const installedFile = join(this.homeDir, "plugins", "installed_plugins.json");

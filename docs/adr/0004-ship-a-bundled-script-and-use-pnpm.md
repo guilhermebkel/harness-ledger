@@ -12,9 +12,3 @@ Claude Code runs `npm ci` for plugins that ship `package-lock.json`, which would
 - Never commit `package-lock.json` (it is gitignored): it would make Claude Code run `npm ci` on install.
 - `pnpm-lock.yaml` only changes together with `package.json`.
 - `version` in `.claude-plugin/plugin.json` decides when installed copies update: with the string unchanged, they stay cached. The `Release` workflow (`release.yml`, run by hand) bumps it with `package.json`, points the marketplace `ref` at the new tag and rebuilds `dist/` in one commit, then tags it `vX.Y.Z` and publishes a GitHub Release. A merge reaches no one until then.
-
-## Status
-
-Revised 2026-10-02: originally "no lockfile" with npm; switched to pnpm with a committed lockfile.
-
-Revised 2026-10-03: `dist/` was rebuilt and committed by hand with every change to `src/`, and `pnpm check` failed when it was stale. That put a generated diff in every pull request and conflicts in every rebase, so only the `Release` workflow builds and commits it now, in the same commit as the new `version`, and the marketplace serves that tag instead of `master`.

@@ -25,29 +25,23 @@ export interface AnalyzeOptions extends CommonOptions {
 
 export interface CompareOptions extends CommonOptions {
   piece: string;
-  // Why: defaults to an applied suggestion's date, then the piece's last change.
   changedAt?: string;
   since?: string;
 }
 
 export interface EvidenceOptions extends CommonOptions {
-  // Why: a unique prefix of a signal id is accepted.
   signalId: string;
   maxEvidence?: number;
 }
 
 export interface IssueOptions extends CommonOptions {
   signalId: string;
-  // Why: in the person's own words, why the rule looks wrong for their project.
   note: string;
 }
 
 export interface ListSuggestionsOptions extends CommonOptions { status?: SuggestionStatus }
 
-export interface AddSuggestionsOptions extends CommonOptions {
-  // Why: raw input; validated where it enters the program.
-  items: unknown;
-}
+export interface AddSuggestionsOptions extends CommonOptions { items: unknown }
 
 export interface SetSuggestionStatusOptions extends CommonOptions {
   id: string;
@@ -74,8 +68,8 @@ export interface StatusResult {
   node: string;
   transcripts: AvailableHistory;
   retention: Retention;
-  pieces: Record<string, number>;
-  suggestions: Record<string, number>;
+  pieceKindToCount: Record<string, number>;
+  suggestionStatusToCount: Record<string, number>;
   dataDir: string;
   config: Config;
 }

@@ -18,10 +18,10 @@ export class TimeUtil {
     h: TimeUtil.MS_PER_HOUR,
     d: TimeUtil.MS_PER_DAY,
     w: DAYS_PER_WEEK * TimeUtil.MS_PER_DAY,
+    // Why: "m" is months, not minutes ("3m").
     m: DAYS_PER_MONTH * TimeUtil.MS_PER_DAY,
   };
 
-  // Why: "3m" means months, not minutes.
   static parsePointInTime(value: string | undefined, nowAtMs = Date.now()): number | undefined {
     if (!value) {
       return undefined;
@@ -47,11 +47,11 @@ export class TimeUtil {
     return atMs === undefined ? undefined : new Date(atMs).toISOString();
   }
 
-  // Why: gaps longer than `idleMs` mean the person was away.
   static activeTime(sortedEventsAtMs: number[], idleMs: number): number {
     let activeMs = 0;
     for (let index = 1; index < sortedEventsAtMs.length; index++) {
       const gapMs = (sortedEventsAtMs[index] ?? 0) - (sortedEventsAtMs[index - 1] ?? 0);
+      // Why: a longer gap means the person was away.
       const isWithinActivity = gapMs > 0 && gapMs <= idleMs;
       if (isWithinActivity) {
         activeMs += gapMs;

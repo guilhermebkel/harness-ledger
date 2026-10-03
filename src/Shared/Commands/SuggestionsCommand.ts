@@ -30,11 +30,11 @@ export class SuggestionsCommand {
     return new SuggestionService(context.store).list(options.status);
   }
 
-  // Why: costs are computed (and conflicts refused) before anything is saved, from the last analysis.
   async add(options: AddSuggestionsOptions): Promise<AddSuggestionsResult> {
     const newSuggestions = SuggestionService.parse(options.items);
     const context = await ContextService.create(options);
     const analysis = await context.store.readJson<Analysis>(AnalysisService.LAST_ANALYSIS_FILE);
+    // Why: costs are computed (and conflicts refused) before anything is saved.
     const costs = analysis ? new SuggestionCostService(analysis.signals).costsOf(newSuggestions) : [];
     const result = await new SuggestionService(context.store).add(newSuggestions, costs);
     return costs.length

@@ -3,9 +3,9 @@ import { FrontmatterUtil } from "@/Shared/Utils/FrontmatterUtil.ts";
 
 describe("FrontmatterUtil.parse()", () => {
   it("reads scalars, comma lists and folded text", () => {
-    const { data } = FrontmatterUtil.parse("---\nname: x\ntools: Read, Bash(git *)\ndescription: >\n  multi\n  line\n---\nbody");
-    expect(data.name).toBe("x");
-    expect(data.tools).toBe("Read, Bash(git *)");
-    expect(data.description).toBe("multi line");
+    const { keyToValue } = FrontmatterUtil.parse("---\nname: x\ntools: Read, Bash(git *)\ndescription: >\n  multi\n  line\n---\nbody");
+    expect(keyToValue.name).toBe("x");
+    expect(keyToValue.tools).toBe("Read, Bash(git *)");
+    expect(keyToValue.description).toBe("multi line");
   });
 });

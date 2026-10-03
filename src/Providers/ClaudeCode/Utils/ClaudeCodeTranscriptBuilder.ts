@@ -73,12 +73,12 @@ export class ClaudeCodeTranscriptBuilder {
     return this;
   }
 
-  // Why: Claude Code writes text and tool_use as two lines that share the usage.
   tool(id: string, name: string, input: Record<string, unknown>, stepOptions: ToolStepOptions = {}): this {
     const messageId = `msg_${id}`;
     const model = stepOptions.model ?? DEFAULT_MODEL;
     const outputTokens = stepOptions.outputTokens ?? DEFAULT_TOOL_USAGE.output_tokens;
     const usage = { ...DEFAULT_TOOL_USAGE, output_tokens: outputTokens };
+    // Why: Claude Code writes text and tool_use as two lines that share the usage.
     const message = { id: messageId, role: "assistant", model, usage };
     this.lines.push({
       ...this.lineBase("assistant", stepOptions.secondsLater ?? 3),

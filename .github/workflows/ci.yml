@@ -1,9 +1,5 @@
 name: CI
 
-# Shared checks for every change: types, lint, dead and duplicated code, tests and a build. Provider-specific
-# checks live in their own workflow (claude-code.yml).
-# dist/ is built only by release.yml (ADR 0004).
-
 on:
   push:
     branches: [master]

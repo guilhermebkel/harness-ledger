@@ -14,7 +14,6 @@ export interface ClaudeCodeParseContext {
   threadIdToFirstPromptHash: Map<string, string>;
   threadIdToDeclaredType: Map<string, string>;
   threadIdToLastModel: Map<string, string>;
-  // Why: `cost-state` totals are cumulative per run of Claude Code; a resumed session starts a new run.
   runStartToCostUsd: Map<string, number>;
 }
 
@@ -53,15 +52,12 @@ export interface FilePiece {
   name: string;
   scope: PieceScope;
   plugin?: string;
-  // Why: they count toward the piece's hash, so editing a reference marks the skill as changed.
   extraFiles?: string[];
 }
 
 export interface ComponentOptions {
-  // Why: Claude Code namespaces plugin components as `plugin:name`.
   namePrefix?: string;
   plugin?: string;
-  // Why: a plugin may be a single skill with SKILL.md at its root.
   canBeRootSkill?: boolean;
 }
 

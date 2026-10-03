@@ -39,8 +39,8 @@ export class ClaudeCodeProviderAdapter extends BaseProviderAdapter {
       + "improve-my-harness never changes this setting.";
   }
 
-  // Why: paths are resolved on every call, so an environment change (as in tests) is picked up.
   private sessionService(): ClaudeCodeSessionService {
+    // Why: built on every call, so an environment change (as in tests) is picked up.
     return new ClaudeCodeSessionService(this.paths().homeDir);
   }
 }

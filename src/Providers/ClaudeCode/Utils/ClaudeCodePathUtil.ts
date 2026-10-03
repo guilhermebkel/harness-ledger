@@ -3,8 +3,8 @@ import { join } from "node:path";
 import { EnvUtil } from "@/Shared/Utils/EnvUtil.ts";
 
 export class ClaudeCodePathUtil {
-  // Why: `IMH_CLAUDE_HOME` exists so tests can point at a fixture.
   static homeDir(): string {
+    // Why: `IMH_CLAUDE_HOME` exists so tests can point at a fixture.
     return EnvUtil.read("IMH_CLAUDE_HOME") ?? EnvUtil.read("CLAUDE_CONFIG_DIR") ?? join(homedir(), ".claude");
   }
 
@@ -14,7 +14,6 @@ export class ClaudeCodePathUtil {
     return EnvUtil.read("IMH_CLAUDE_JSON") ?? defaultPath;
   }
 
-  // Why: Claude Code keeps a project's transcripts in `projects/<cwd with every non-alphanumeric character replaced by "-">`.
   static encodeProjectDir(projectDir: string): string {
     return projectDir.replace(/[^a-zA-Z0-9]/g, "-");
   }

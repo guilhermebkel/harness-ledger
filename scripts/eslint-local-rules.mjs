@@ -1,4 +1,3 @@
-// Why: each rule is documented in docs/code-standards.md (describe-target: docs/test-standards.md); change both together.
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import tseslint from "typescript-eslint";
@@ -45,6 +44,74 @@ const commentMarker = {
   },
 };
 
+const PROTOCOL_FOLDER = /[\\/]Protocols[\\/]/;
+const EXPORT_TYPES = new Set(["ExportNamedDeclaration", "ExportDefaultDeclaration"]);
+const DECLARATION_SELECTOR = [
+  "FunctionDeclaration",
+  "ClassDeclaration",
+  "MethodDefinition",
+  "TSAbstractMethodDefinition",
+  "TSDeclareFunction",
+  "TSInterfaceDeclaration",
+  "TSTypeAliasDeclaration",
+  "TSPropertySignature",
+  "PropertyDefinition[value.type=/FunctionExpression$/]",
+  "VariableDeclaration:has(> VariableDeclarator[init.type=/FunctionExpression$/])",
+].join(", ");
+
+function isToolComment(comment) {
+  const { isDirective } = COMMENT_TYPE_TO_TRAITS[comment.type];
+  return isDirective || TOOL_DIRECTIVE.test(firstLineOf(comment));
+}
+
+function declarationAnchor(node) {
+  return EXPORT_TYPES.has(node.parent?.type) ? node.parent : node;
+}
+
+const commentPlacement = {
+  meta: {
+    type: "suggestion",
+    messages: {
+      header: "Delete this file header: a comment sits next to the line whose hidden rule it explains.",
+      protocol: "Delete this comment: a type doesn't apply rules. Put the rule next to the code that applies it, and units or meaning in the name.",
+      declaration: "Move this comment next to the line inside where its rule happens, or delete it if the name and code already say it.",
+    },
+  },
+  create(context) {
+    const { sourceCode } = context;
+    const isProtocol = PROTOCOL_FOLDER.test(context.filename);
+    const firstCodeAt = sourceCode.ast.body[0]?.range[0] ?? Number.POSITIVE_INFINITY;
+    const report = (comments, messageId) => {
+      let previousEndLine = -1;
+      for (const comment of comments.filter((candidate) => !isToolComment(candidate))) {
+        const isContinuation = comment.loc.start.line === previousEndLine + 1;
+        previousEndLine = comment.loc.end.line;
+        if (!isContinuation) {
+          context.report({ loc: comment.loc, messageId });
+        }
+      }
+    };
+    const reportDeclaration = (node) => {
+      if (isProtocol) {
+        return;
+      }
+      const leading = sourceCode.getCommentsBefore(declarationAnchor(node));
+      report(leading.filter((comment) => comment.range[0] >= firstCodeAt), "declaration");
+    };
+    return {
+      "Program"() {
+        const comments = sourceCode.getAllComments();
+        if (isProtocol) {
+          report(comments, "protocol");
+          return;
+        }
+        report(comments.filter((comment) => comment.range[1] <= firstCodeAt), "header");
+      },
+      [DECLARATION_SELECTOR]: reportDeclaration,
+    };
+  },
+};
+
 const NODE_TYPE_TO_IS_FIXED = new Map([
   ["Literal", (node) => typeof node.value === "string" && node.value !== ""],
   ["TemplateLiteral", (node) => node.expressions.length === 0 && node.quasis[0]?.value.cooked !== ""],
@@ -84,9 +151,6 @@ const DECISION_TYPE_TO_IS_BRANCH = new Map([
   ["ConditionalExpression", () => true],
 ]);
 
-// Why: an empty string ("") is an emptiness check and `typeof` a type check, not a choice between values.
-// A comparison that decides which code runs (a non-guard if, a ternary) is a dispatch even alone; one that
-// only becomes a value (returned, passed, stored) or leaves early is not.
 function isBranchCondition(comparison) {
   let condition = comparison;
   while (PASSTHROUGH_TYPES.has(condition.parent?.type)) {
@@ -241,11 +305,67 @@ const describeTarget = {
   },
 };
 
+const MAP_TYPE_NAMES = new Set(["Record", "Map", "ReadonlyMap"]);
+const WRAPPER_TYPE_NAMES = new Set(["Partial", "Readonly", "Required"]);
+const MAP_NAME = /To[A-Z0-9]|_TO_/;
+
+function mapTypeOf(typeNode) {
+  const name = typeNode?.typeName?.name;
+  const typeArguments = typeNode?.typeArguments?.params ?? [];
+  if (WRAPPER_TYPE_NAMES.has(name)) {
+    return mapTypeOf(typeArguments[0]);
+  }
+  return MAP_TYPE_NAMES.has(name) ? typeArguments : undefined;
+}
+
+function isMapOfUnknown(typeArguments) {
+  return typeArguments[1]?.type === "TSUnknownKeyword";
+}
+
+function isMapConstruction(init) {
+  return init?.type === "NewExpression" && MAP_TYPE_NAMES.has(init.callee.name);
+}
+
+const mapName = {
+  meta: {
+    type: "suggestion",
+    messages: {
+      unnamed: "Name this map after its key and value (\"{{example}}\"), so a reader knows what a lookup takes and gives.",
+    },
+  },
+  create(context) {
+    const check = (nameNode, typeNode, init) => {
+      const typeArguments = mapTypeOf(typeNode);
+      const isMap = (typeArguments !== undefined && !isMapOfUnknown(typeArguments)) || isMapConstruction(init);
+      const name = nameNode?.name;
+      if (isMap && name && !MAP_NAME.test(name)) {
+        context.report({ node: nameNode, messageId: "unnamed", data: { example: "suggestionIdToCost" } });
+      }
+    };
+    return {
+      "VariableDeclarator"(node) {
+        check(node.id, node.id.typeAnnotation?.typeAnnotation, node.init);
+      },
+      "PropertyDefinition, TSPropertySignature"(node) {
+        check(node.key, node.typeAnnotation?.typeAnnotation, node.value);
+      },
+      "TSTypeAliasDeclaration"(node) {
+        check(node.id, node.typeAnnotation);
+      },
+      ":function > Identifier.params"(node) {
+        check(node, node.typeAnnotation?.typeAnnotation);
+      },
+    };
+  },
+};
+
 export const localRules = {
   rules: {
     "comment-marker": commentMarker,
     "literal-dispatch": literalDispatch,
     "class-matches-file": classMatchesFile,
     "describe-target": describeTarget,
+    "comment-placement": commentPlacement,
+    "map-name": mapName,
   },
 };

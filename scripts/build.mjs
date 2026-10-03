@@ -1,5 +1,3 @@
-// Why: dist/ is committed so the plugin works right after install, without npm install (ADR 0004). CI builds and
-// commits it on master; locally, `pnpm check` builds to a scratch file (--outfile) so dist/ stays untouched.
 import { build } from "esbuild";
 import { readFileSync } from "node:fs";
 

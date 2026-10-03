@@ -14,7 +14,7 @@ export class OccurrenceCollectorService {
       type,
       title,
       occurrences: [],
-      counters: {},
+      detailToValueToCount: {},
       details: {},
     };
     group.occurrences.push(occurrence);
@@ -22,11 +22,10 @@ export class OccurrenceCollectorService {
     return group;
   }
 
-  // Why: amounts other than 1 weigh a value, e.g. by tokens.
   count(group: OccurrenceGroup, detail: CountedDetail, value: string, amount = 1): void {
-    const valueToCount = group.counters[detail] ?? new Map<string, number>();
+    const valueToCount = group.detailToValueToCount[detail] ?? new Map<string, number>();
     valueToCount.set(value, (valueToCount.get(value) ?? 0) + amount);
-    group.counters[detail] = valueToCount;
+    group.detailToValueToCount[detail] = valueToCount;
   }
 
   groups(): OccurrenceGroup[] {

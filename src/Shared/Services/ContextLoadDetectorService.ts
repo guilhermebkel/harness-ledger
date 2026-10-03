@@ -1,5 +1,3 @@
-// Why: high token use alone is not a finding (big tasks are big); the same material loaded again and again, or one huge output, is.
-
 import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.ts";
 import type { SessionFacts, ToolCall, ToolCategory } from "@/Shared/Protocols/SessionProtocol.ts";
 import type { SignalOptions } from "@/Shared/Protocols/SignalProtocol.ts";
@@ -12,6 +10,8 @@ import type { OccurrenceCollectorService } from "@/Shared/Services/OccurrenceCol
 const keyOf = (call: ToolCall): string => call.key;
 const CATEGORY_TO_SOURCE: Record<ToolCategory, (call: ToolCall) => string> = {
   read: (call) => call.filePath ?? call.key,
+  // Why: a command that only looks around is the material itself (`cat a.ts` and `cat b.ts` differ); any other is its
+  // key (every `git diff` prints a diff).
   shell: (call) => (NormalizeUtil.isExplorationCommand(call.key) ? call.summary : call.key),
   edit: keyOf,
   search: keyOf,
@@ -66,14 +66,14 @@ export class ContextLoadDetectorService {
     }
   }
 
-  // Why: loaded material is re-sent as cached input with every later message of the thread, until a compaction
-  // drops it; that carry, not the first load, is most of what it costs.
   private static laterMessagesOf(
     session: SessionFacts,
     sessionIdToIndex: Map<string, SessionIndex>,
     call: ToolCall,
   ): number {
     const loadedAtMs = call.result?.returnedAtMs ?? call.calledAtMs ?? 0;
+    // Why: loaded material is re-sent as cached input with every later message of the thread, until a compaction
+    // drops it; that carry, not the first load, is most of what it costs.
     const droppedAtMs = session.compactions
       .filter((compaction) => compaction.thread.id === call.thread.id && (compaction.occurredAtMs ?? 0) > loadedAtMs)
       .reduce((earliest, compaction) => Math.min(earliest, compaction.occurredAtMs ?? Infinity), Infinity);
@@ -119,10 +119,6 @@ export class ContextLoadDetectorService {
     });
   }
 
-  /**
-   * Why: The material a call loads: a file for reads; for shell, the exact command when it only looks around
-   * (`cat a.ts` and `cat b.ts` are different material), otherwise its key (every `git diff` prints a diff).
-   */
   private sourceOf(call: ToolCall): string {
     return CATEGORY_TO_SOURCE[call.category](call);
   }

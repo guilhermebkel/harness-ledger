@@ -4,7 +4,6 @@ import type { JsonLineHandlers } from "@/Shared/Protocols/UtilProtocol.ts";
 import { GuardUtil } from "@/Shared/Utils/GuardUtil.ts";
 
 export class JsonlUtil {
-  // Why: streams line by line, so transcripts of any size use bounded memory.
   static async read(file: string, handlers: JsonLineHandlers): Promise<void> {
     const lines = createInterface({
       input: createReadStream(file, { encoding: "utf8" }),

@@ -4,7 +4,6 @@ import { readFileSync } from "node:fs";
 const USAGE = "Usage: node scripts/compare-analyses.mjs <before.json> <after.json>";
 const MAX_SHOWN_CHARS = 160;
 const MAX_DIFFERENCES = 50;
-// Why: process.argv starts with the node binary and this script.
 const FIRST_ARGUMENT_INDEX = 2;
 const USAGE_ERROR_EXIT_CODE = 2;
 // Why: these change on every run (clock, where the data lives), so they are never a difference in the analysis.

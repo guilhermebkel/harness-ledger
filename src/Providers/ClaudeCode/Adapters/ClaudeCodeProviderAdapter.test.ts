@@ -293,9 +293,9 @@ describe("ClaudeCodeProviderAdapter.takeInventory()", () => {
 
   it("lists a skill's other files and the skills an agent preloads", async () => {
     const inventory = await adapter.takeInventory({ projectDir: fixture.projectDir, isProjectOnly: true });
-    const pieceById = new Map(inventory.pieces.map((piece) => [piece.id, piece]));
-    expect(pieceById.get(CHANGELOG_SKILL)?.files).toStrictEqual(["references/format.md"]);
-    expect(pieceById.get("agent:docs-writer")?.preloadedSkills).toStrictEqual(["changelog"]);
+    const pieceIdToPiece = new Map(inventory.pieces.map((piece) => [piece.id, piece]));
+    expect(pieceIdToPiece.get(CHANGELOG_SKILL)?.files).toStrictEqual(["references/format.md"]);
+    expect(pieceIdToPiece.get("agent:docs-writer")?.preloadedSkills).toStrictEqual(["changelog"]);
   });
 
   it("changes a skill's hash when only one of its reference files changes", async () => {

@@ -1,4 +1,4 @@
-import type { PriceTable, SignalThresholds } from "@/Shared/Protocols/ConfigProtocol.ts";
+import type { ModelFamilyToPrice, SignalThresholds } from "@/Shared/Protocols/ConfigProtocol.ts";
 import type { EvidenceRef, SessionFacts, TokenUsage, ToolCall } from "@/Shared/Protocols/SessionProtocol.ts";
 import type { SuggestionStatus } from "@/Shared/Protocols/SuggestionProtocol.ts";
 
@@ -39,7 +39,6 @@ export interface FailureChain {
   recovery?: ToolCall;
   kind: FailureChainKind;
   cost: StepCost;
-  // Why: other signals (corrections) leave these messages out so the same turn is never counted twice.
   messageIds: string[];
 }
 
@@ -59,7 +58,6 @@ export interface SignalDetails {
   files?: CountedValue[];
   tool?: string;
   error?: string;
-  // Why: "source (×loads)" weighted by tokens; findings.md reads this format.
   sources?: CountedValue[];
   steps?: string[];
   maxContextTokens?: number;
@@ -74,13 +72,11 @@ export interface SignalDetails {
 
 export type CountedDetail = "errors" | "recoveredWith" | "files" | "models" | "sources";
 
-// Why: tells the report whether to say "at least" (lower), "at most" (upper) or "about" (estimate).
 export type CostBound = "lower" | "upper" | "estimate";
 
 export interface CostFigures {
   activeMinutes: number;
   tokens: number;
-  // Why: includes cache reads and writes.
   inputTokens: number;
   outputTokens: number;
   usd: number;
@@ -90,11 +86,9 @@ export interface SignalCost extends CostFigures {
   isEstimated: true;
   bound: CostBound;
   method: string;
-  // Why: the part spent rerunning the same command after fixes; totals keep it apart from waste.
   fixLoop?: CostFigures;
 }
 
-// Why: unrounded, so the occurrences a suggestion covers add up without rounding drift; rounded only for display.
 export interface OccurrenceCost {
   activeMs: number;
   tokens: number;
@@ -122,7 +116,6 @@ export interface Signal {
   pieces: string[];
   occurrences: number;
   sessions: number;
-  // Why: few sessions, an unresolved subagent type, or the piece changed since.
   isPartial: boolean;
   partialReasons: string[];
   cost: SignalCost;
@@ -138,7 +131,7 @@ export interface Signal {
 
 export interface SignalOptions {
   idleMs: number;
-  prices: PriceTable;
+  modelFamilyToPrice: ModelFamilyToPrice;
   maxEvidence: number;
   minSessionsForUnused: number;
   largePieceTokens: number;
@@ -160,7 +153,7 @@ export interface OccurrenceGroup {
   type: SignalType;
   title: string;
   occurrences: Occurrence[];
-  counters: Partial<Record<CountedDetail, Map<string, number>>>;
+  detailToValueToCount: Partial<Record<CountedDetail, Map<string, number>>>;
   details: SignalDetails;
 }
 

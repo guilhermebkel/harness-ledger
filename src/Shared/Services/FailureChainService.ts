@@ -98,8 +98,6 @@ export class FailureChainService {
     return result.isError ? "failure" : "recovery";
   }
 
-  // Why: a recovery does the same job another way (`npm test` → `pnpm test`) or reruns it after a fix; looking
-  // around (`ls`, `cat`) or moving on to other work (`git add` after a failed script) is not one.
   private static doesSameJob(first: ToolCall, candidate: ToolCall): boolean {
     if (candidate.category !== first.category) {
       return false;
@@ -110,6 +108,8 @@ export class FailureChainService {
     if (candidate.key === first.key) {
       return true;
     }
+    // Why: a recovery does the same job another way (`npm test` → `pnpm test`) or reruns it after a fix; looking
+    // around (`ls`, `cat`) is not one.
     if (NormalizeUtil.isExplorationCommand(candidate.key)) {
       return false;
     }
@@ -125,8 +125,6 @@ export class FailureChainService {
     return candidate.category === first.category && (first.category !== "shell" || isOtherWork);
   }
 
-  // Why: a fix loop reruns the identical command after changes; the same key with other arguments
-  // (`python3 a.py`, `python3 b.py`) is a different command.
   private static kindOf(first: ToolCall, recovery: ToolCall | undefined): FailureChainKind {
     if (recovery === undefined) {
       return "unrecovered";
@@ -134,12 +132,11 @@ export class FailureChainService {
     if (first.category !== "shell") {
       return "retry";
     }
+    // Why: a fix loop reruns the identical command after changes; the same key with other arguments (`python3 a.py`,
+    // `python3 b.py`) is a different command.
     return recovery.summary === first.summary ? "fix_loop" : "wrong_command";
   }
 
-  // Why: the cost runs from the first failed call until the call that worked was issued, with every message in
-  // between (reasoning, looking around, fixes); the working call's own run is not waste. Unrecovered chains end
-  // at the agent's reaction to the last failure.
   private chainWindow(
     first: ToolCall,
     failures: ToolCall[],
@@ -160,6 +157,9 @@ export class FailureChainService {
       };
     }
     const lastFailure = failures.at(-1) ?? first;
+    // Why: the cost runs from the first failed call until the call that worked was issued, with every message in
+    // between; the working call's own run is not waste. Unrecovered chains end at the agent's reaction to the last
+    // failure.
     const endAtMs = recovery?.calledAtMs ?? FailureChainService.reactionAtMs(lastFailure, messages);
     const windowMessages = messages.filter((message) => {
       const sentAtMs = message.sentAtMs ?? 0;

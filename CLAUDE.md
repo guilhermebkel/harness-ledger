@@ -50,7 +50,7 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 - Don't commit `dist/`, and don't change `version` or the marketplace `ref` (ADR 0004): users install from the tag in `.claude-plugin/marketplace.json`, not from `master`, so these change only in a release commit. If a local `pnpm build` changed `dist/`, discard that (`git checkout dist/`).
 - Use pnpm, never npm: commit `pnpm-lock.yaml`, never `package-lock.json` (ADR 0004).
 - Runtime code uses only Node built-ins (Node 20+). No runtime dependencies (ADR 0004).
-- No comments by default. Write one only for a hidden rule someone could break by changing the code, starting with `Why:` (enforced by lint).
+- No comments by default. Write one only for a hidden rule someone could break by changing the code, starting with `Why:`, right above the line where the rule happens: never as a file header, above a whole function, class or type, or in `Protocols/` (enforced by lint, `local/comment-placement`). Delete a comment the code already says. Name maps and records `keyToValue` (`local/map-name`) and put units in names, not comments.
 - Follow `docs/code-standards.md`. `pnpm lint` enforces most of it; review checks the rest.
 - Cost rules live in `docs/cost-model.md` (ADR 0009): change a cost in code and that file in the same commit, and keep `cost.method` and `cost.bound` in `SignalService` in sync with it.
 - Numbers come only from the script; the skill never estimates them (ADR 0002). New signals must carry evidence (session, line, thread) and an `isPartial` flag with reasons when the evidence is incomplete.

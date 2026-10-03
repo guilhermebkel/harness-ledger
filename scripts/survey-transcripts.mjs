@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// Why: it prints only line types, block types, tool names and keys, never values, so it is safe on real sessions; keep it that way.
 
 import { createReadStream } from "node:fs";
 import { readdir } from "node:fs/promises";
@@ -61,6 +60,7 @@ function recordLine(shape, record) {
   }
   const lineType = nameOf(record.type ?? "(no type)");
   increment(shape.lineTypes, lineType);
+  // Why: only types, tool names and keys are recorded, never values, so the script is safe on real sessions.
   for (const key of Object.keys(record)) {
     increment(shape.lineKeys, `${lineType}.${key}`);
   }

@@ -9,7 +9,6 @@ export interface TranscriptFileStat {
 export interface TranscriptFile extends TranscriptFileStat {
   sessionId: string;
   subagentFiles: TranscriptFileStat[];
-  // Why: as opposed to a prefix match such as `my-app-2` or a subfolder.
   isExactProject: boolean;
 }
 
@@ -28,5 +27,4 @@ export interface InventoryOptions {
   isProjectOnly?: boolean;
 }
 
-// Why: overridable so tests can point at a fixture.
 export interface ProviderPaths { homeDir: string }

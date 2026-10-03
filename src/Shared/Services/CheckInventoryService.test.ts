@@ -9,11 +9,11 @@ import { CheckInventoryService } from "@/Shared/Services/CheckInventoryService.t
 const FAKE_TOKEN = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
 const projectDirs: string[] = [];
 
-function projectWith(files: Record<string, string>): string {
+function projectWith(pathToContent: Record<string, string>): string {
   const tempDir = tmpdir();
   const projectDir = mkdtempSync(join(tempDir, "imh-checks-"));
   projectDirs.push(projectDir);
-  for (const [relativePath, content] of Object.entries(files)) {
+  for (const [relativePath, content] of Object.entries(pathToContent)) {
     const file = join(projectDir, relativePath);
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, content);

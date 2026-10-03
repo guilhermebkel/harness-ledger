@@ -1,5 +1,3 @@
-// Why: exploration (ls, cat, grep) is left out: reading around is not a procedure.
-
 import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.ts";
 import type { SessionFacts, ToolCall } from "@/Shared/Protocols/SessionProtocol.ts";
 import type { Occurrence, SignalOptions, StepCost } from "@/Shared/Protocols/SignalProtocol.ts";
@@ -127,11 +125,9 @@ export class WorkflowDetectorService {
     return [...threadIdToCalls.values()];
   }
 
-  /**
-   * Why: Longest workflows first, so the whole procedure wins over its pieces: a shorter sequence inside a kept
-   * one is dropped when the kept one happens in about as many sessions. Then the most widespread first.
-   */
   private withoutSubsumed(candidates: WorkflowCandidate[]): WorkflowCandidate[] {
+    // Why: longest first, so a whole procedure wins over the shorter sequences inside it when it runs about as often;
+    // then the most widespread.
     const longestFirst = candidates.toSorted((left, right) => {
       const lengthDifference = right.steps.length - left.steps.length;
       return lengthDifference || this.runCountOf(right) - this.runCountOf(left);
@@ -164,8 +160,6 @@ export class WorkflowDetectorService {
     return endedAtMs - (calls[0]?.calledAtMs ?? endedAtMs);
   }
 
-  // Why: a script still runs the commands and still takes one call; what it saves is everything the agent did
-  // around them: the other messages in the window (reasoning, reading logs, rebuilding the next step).
   private workflowCost(calls: ToolCall[], index: SessionIndex): StepCost {
     const first = calls[0];
     const last = calls.at(-1);
@@ -177,6 +171,8 @@ export class WorkflowDetectorService {
         usage: TokenUsageUtil.zero(),
       };
     }
+    // Why: a script still runs the commands and still takes one call; what it saves is everything the agent did
+    // around them: the other messages in the window (reasoning, reading logs, rebuilding the next step).
     const windowMessages = (index.threadIdToMessages.get(first.thread.id) ?? []).filter((message) => {
       const sentAtMs = message.sentAtMs ?? 0;
       return message.id !== first.messageId && sentAtMs >= startAtMs && sentAtMs <= endAtMs;

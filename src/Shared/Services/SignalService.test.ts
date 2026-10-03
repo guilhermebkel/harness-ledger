@@ -6,7 +6,7 @@ import { SignalService } from "@/Shared/Services/SignalService.ts";
 const config = ConfigService.DEFAULT_CONFIG;
 const signalService = new SignalService({
   idleMs: config.idleMinutes * 60_000,
-  prices: config.prices,
+  modelFamilyToPrice: config.modelFamilyToPrice,
   maxEvidence: 5,
   minSessionsForUnused: Infinity,
   largePieceTokens: Infinity,
@@ -18,7 +18,7 @@ const signalService = new SignalService({
 
 const turnService = new SignalService({
   idleMs: config.idleMinutes * 60_000,
-  prices: config.prices,
+  modelFamilyToPrice: config.modelFamilyToPrice,
   maxEvidence: 5,
   minSessionsForUnused: Infinity,
   largePieceTokens: 1000,
@@ -73,7 +73,7 @@ describe("SignalService.extract()", () => {
     it("costs what the agent did around the steps, not the steps' own runs", () => {
       const workflowService = new SignalService({
         idleMs: config.idleMinutes * 60_000,
-        prices: config.prices,
+        modelFamilyToPrice: config.modelFamilyToPrice,
         maxEvidence: 5,
         minSessionsForUnused: Infinity,
         largePieceTokens: Infinity,

@@ -1,6 +1,3 @@
-# Checks for the Claude Code provider: the plugin manifest, the marketplace entry and the skill.
-# Runs only when something Claude Code loads, or the Claude Code adapter, changes.
-# Each provider gets its own workflow like this one (ADR 0008); ci.yml covers shared code.
 name: Claude Code
 
 on:

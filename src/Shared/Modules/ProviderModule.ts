@@ -1,5 +1,3 @@
-// Why: the only Shared module allowed to import from src/Providers/ (ADR 0008); adding a provider means adding one entry here.
-
 import { ClaudeCodeProviderAdapter } from "@/Providers/ClaudeCode/Adapters/ClaudeCodeProviderAdapter.ts";
 import type { BaseProviderAdapter } from "@/Shared/Adapters/BaseProviderAdapter.ts";
 import type { ProviderType } from "@/Shared/Protocols/ProviderProtocol.ts";

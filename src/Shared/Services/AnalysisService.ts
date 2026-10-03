@@ -84,7 +84,7 @@ export class AnalysisService {
       : loaded.sessions;
     const allSignals = new SignalService({
       idleMs: this.context.idleMs,
-      prices: config.prices,
+      modelFamilyToPrice: config.modelFamilyToPrice,
       maxEvidence: SAVED_EVIDENCE_PER_SIGNAL,
       minSessionsForUnused: config.minSessionsForUnused,
       largePieceTokens: config.largePieceTokens,
@@ -97,7 +97,7 @@ export class AnalysisService {
 
     const pieceIds = new Set(inventory.pieces.map((piece) => piece.id));
     const totals = this.totalsOf(sessions, signals);
-    const usage = new UsageService(config.prices, pieceIds).pieceUsage(sessions);
+    const usage = new UsageService(config.modelFamilyToPrice, pieceIds).pieceUsage(sessions);
     const checks = await new CheckInventoryService(this.context.projectDir).inspect(sessions, inventory);
     const versions = GapService.versionsOf(sessions, VersionUtil.VERSION, inventory.provider);
     const gaps = new GapService(versions).gapsOf({
@@ -149,7 +149,7 @@ export class AnalysisService {
       },
       process: this.processProfile(sessions, pieceIds),
       commonCommands: this.commonCommands(sessions),
-      suggestions: CollectionUtil.countBy(suggestions.map((suggestion) => suggestion.status)),
+      suggestionStatusToCount: CollectionUtil.countBy(suggestions.map((suggestion) => suggestion.status)),
       dataDir: store.root,
       totals,
       usage,
@@ -162,8 +162,8 @@ export class AnalysisService {
     return this.compact(analysis, options);
   }
 
-  // Why: an exact id wins over a longer id that merely starts with it.
   static signalById(analysis: Analysis, signalId: string): Signal {
+    // Why: an exact id wins over a longer id that merely starts with it.
     const signal = analysis.signals.find((candidate) => candidate.id === signalId)
       ?? analysis.signals.find((candidate) => candidate.id.startsWith(signalId));
     if (!signal) {
@@ -201,7 +201,6 @@ export class AnalysisService {
     );
   }
 
-  // Why: a signal with a suggestion, in any status, is never suggested again.
   private markHandledSignals(signals: Signal[], suggestions: Suggestion[]): void {
     const signalIdToSuggestion = new Map<string, Suggestion>();
     for (const suggestion of suggestions) {
@@ -320,7 +319,7 @@ export class AnalysisService {
   }
 
   private unpricedModels(sessions: SessionFacts[]): string[] {
-    const costService = new CostService(this.context.config.prices);
+    const costService = new CostService(this.context.config.modelFamilyToPrice);
     const models = sessions
       .flatMap((session) => session.messages.map((message) => message.model))
       .filter((model): model is string => model !== undefined && !costService.isPriced(model));
@@ -328,7 +327,7 @@ export class AnalysisService {
   }
 
   private sessionTotals(sessions: SessionFacts[]): SessionTotals {
-    const costService = new CostService(this.context.config.prices);
+    const costService = new CostService(this.context.config.modelFamilyToPrice);
     let usage = TokenUsageUtil.zero();
     let usd = 0;
     let mainActiveMs = 0;
@@ -347,7 +346,7 @@ export class AnalysisService {
       activeMinutes: TimeUtil.msToMinutes(mainActiveMs),
       subagentActiveMinutes: TimeUtil.msToMinutes(subagentActiveMs),
       tokens: TokenUsageUtil.total(usage),
-      inputTokens: TokenUsageUtil.input(usage),
+      inputTokens: TokenUsageUtil.inputWithCache(usage),
       outputTokens: usage.output,
       usd: NumberUtil.round(usd),
     };

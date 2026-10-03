@@ -47,7 +47,6 @@ const SCORE_WEIGHTS = {
   partialPenalty: 2,
 };
 
-// Why: a group is reported when it reaches either threshold; "always" groups were already filtered by their detector.
 type SignalThreshold = "always" | {
   minOccurrences?: keyof SignalThresholds;
   minSessions?: keyof SignalThresholds;
@@ -140,11 +139,11 @@ export class SignalService {
     large_piece: "always",
   };
 
-  // Why: what a piece adds to the context stays there: instructions in every message, an agent's prompt in its
-  // thread, a skill or command from its first use on.
   private static readonly afterFirstUse: CarrierFinder = (piece, session) =>
     SignalService.messagesAfterFirstUse(piece, session);
 
+  // Why: what a piece adds to the context stays there: instructions in every message, an agent's prompt in its
+  // thread, a skill or command from its first use on.
   private static readonly PIECE_KIND_TO_CARRIERS: Record<PieceKind, CarrierFinder> = {
     instructions: (_piece, session) => session.messages,
     agent: (piece, session) => session.messages.filter((message) => message.thread.agentType === piece.name),
@@ -159,7 +158,7 @@ export class SignalService {
   private readonly costService: CostService;
 
   constructor(private readonly options: SignalOptions) {
-    this.costService = new CostService(options.prices);
+    this.costService = new CostService(options.modelFamilyToPrice);
   }
 
   extract(sessions: SessionFacts[], inventory?: Inventory): Signal[] {
@@ -194,6 +193,8 @@ export class SignalService {
   private isStrongEnough(group: OccurrenceGroup): boolean {
     const sessionCount = new Set(group.occurrences.map((occurrence) => occurrence.session.sessionId)).size;
     const threshold = SignalService.SIGNAL_TYPE_TO_THRESHOLD[group.type];
+    // Why: "always" groups were already filtered by their detector; the others are reported when they reach either
+    // threshold.
     if (threshold === "always") {
       return true;
     }
@@ -260,7 +261,7 @@ export class SignalService {
     return {
       activeMinutes: TimeUtil.msToMinutes(activeMs),
       tokens: TokenUsageUtil.total(usage),
-      inputTokens: TokenUsageUtil.input(usage),
+      inputTokens: TokenUsageUtil.inputWithCache(usage),
       outputTokens: usage.output,
       usd: NumberUtil.round(usd),
     };
@@ -268,7 +269,8 @@ export class SignalService {
 
   private topCountedValues(group: OccurrenceGroup): Pick<SignalDetails, CountedDetail> {
     const countedDetails: Pick<SignalDetails, CountedDetail> = {};
-    for (const [detail, valueToCount] of Object.entries(group.counters) as [CountedDetail, Map<string, number>][]) {
+    const detailEntries = Object.entries(group.detailToValueToCount) as [CountedDetail, Map<string, number>][];
+    for (const [detail, valueToCount] of detailEntries) {
       const countedValues: CountedValue[] = [...valueToCount.entries()]
         .sort((left, right) => right[1] - left[1])
         .slice(0, MAX_COUNTED_VALUES)
@@ -291,7 +293,6 @@ export class SignalService {
     return NumberUtil.round(score);
   }
 
-  // Why: needs enough sessions for absence to mean something.
   private unusedPieceSignals(sessions: SessionFacts[], inventory: Inventory): Signal[] {
     if (sessions.length < this.options.minSessionsForUnused) {
       return [];
@@ -349,7 +350,6 @@ export class SignalService {
     ];
   }
 
-  // Why: instructions are loaded on every turn, so their size costs every time.
   private largePieceSignals(sessions: SessionFacts[], inventory: Inventory): Signal[] {
     return inventory.pieces
       .filter((piece) => piece.isEditable && SIZE_KINDS.has(piece.kind))
@@ -412,7 +412,6 @@ export class SignalService {
     };
   }
 
-  // Why: a piece changed after the newest evidence may already be fixed, so the signal is partial.
   private markPiecesChangedAfterEvidence(signals: Signal[], inventory: Inventory): void {
     const pieceIdToPiece = new Map(inventory.pieces.map((piece) => [piece.id, piece]));
     for (const signal of signals) {
@@ -422,6 +421,7 @@ export class SignalService {
       }
       const changedPieces = signal.pieces.flatMap((pieceId): PieceChange[] => {
         const modifiedAt = pieceIdToPiece.get(pieceId)?.modifiedAt;
+        // Why: a piece changed after the newest evidence may already be fixed, so the signal is partial.
         const wasChangedAfter = modifiedAt !== undefined && Date.parse(modifiedAt) > lastSeenAtMs;
         return wasChangedAfter
           ? [{
@@ -438,7 +438,6 @@ export class SignalService {
     }
   }
 
-  // Why: round-robin across sessions shows the spread instead of the first N.
   private spreadEvidence(sortedOccurrences: Occurrence[]): SignalEvidence[] {
     const maxEvidence = this.options.maxEvidence;
     const sessionIdToOccurrences = new Map<string, Occurrence[]>();
@@ -465,7 +464,7 @@ export class SignalService {
     return {
       activeMs: occurrence.activeMs,
       tokens: TokenUsageUtil.total(occurrence.usage),
-      inputTokens: TokenUsageUtil.input(occurrence.usage),
+      inputTokens: TokenUsageUtil.inputWithCache(occurrence.usage),
       outputTokens: occurrence.usage.output,
       usd: NumberUtil.round(this.costService.costUsd(occurrence.usage, occurrence.model), OCCURRENCE_USD_DIGITS),
     };

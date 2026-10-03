@@ -7,7 +7,7 @@ describe("IssueLinkUtil.linkOf()", () => {
       template: "rule-question",
       title: "[rule] user_correction",
       fingerprint: "abcd1234",
-      fields: {
+      fieldIdToFieldValue: {
         explanation: "word ".repeat(3000),
         versions: "imh 0.1.0 · claude-code 2.1.287 · darwin",
       },

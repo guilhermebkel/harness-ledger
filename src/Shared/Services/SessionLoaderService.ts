@@ -82,22 +82,20 @@ export class SessionLoaderService {
     };
   }
 
-  // Why: also changes when the idle threshold changes, since it is part of the parsed facts.
   private cacheSignature(transcript: TranscriptFile, idleMs: number): string {
     const subagentSignature = transcript.subagentFiles
       .map((subagentFile) => `${subagentFile.file}:${subagentFile.modifiedAtMs}:${subagentFile.bytes}`)
       .join("|");
+    // Why: the idle threshold is part of the parsed facts, so changing it invalidates the cache.
     return `${this.provider.type}:${transcript.modifiedAtMs}:${transcript.bytes}:${idleMs}:${subagentSignature}`;
   }
 
-  /**
-   * Why: A transcript in the project's own folder always belongs to it, even if the project moved since.
-   * One in a prefix-matched folder (`my-app-2`, a subfolder) belongs only when its cwd is inside the project.
-   */
   private belongsToProject(facts: SessionFacts, transcript: TranscriptFile | undefined, options: LoadOptions): boolean {
     if (options.shouldReadAllProjects || transcript?.isExactProject) {
       return true;
     }
+    // Why: a transcript in the project's own folder belongs to it even if the project moved since; one in a
+    // prefix-matched folder (`my-app-2`, a subfolder) only when its cwd is inside the project.
     const sessionDir = facts.projectDir;
     const isInsideProject = sessionDir === options.projectDir || sessionDir?.startsWith(`${options.projectDir}/`) === true;
     return sessionDir !== undefined && isInsideProject;

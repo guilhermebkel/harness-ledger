@@ -1,5 +1,3 @@
-// Why: the transcript format is internal and changes between versions; every field goes through GuardUtil and unknown lines are counted, never fatal.
-
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, relative } from "node:path";
 import type {
@@ -43,7 +41,7 @@ const UNKNOWN_SUBAGENT_TYPE = "subagent";
 const DEFAULT_SUBAGENT_TYPE = "general-purpose";
 const MAX_PROMPT_CHARS = 2000;
 const MAX_SUMMARY_CHARS = 160;
-// Why: recent versions write `attributionAgent` on every subagent line.
+// Why: Claude Code versions name the subagent type with different keys; the first one present wins.
 const SUBAGENT_TYPE_KEYS = ["agentType", "agent_type", "subagentType", "subagent_type", "attributionAgent"];
 const TIMED_LINE_TYPES = new Set(["user", "assistant", "attachment", "system"]);
 const READ_TOOLS = new Set(["Read", "NotebookRead"]);
@@ -63,7 +61,7 @@ const REJECTED_WITHOUT_FEEDBACK = "rejected without feedback";
 const MAX_UNKNOWN_TYPE_CHARS = 60;
 // Why: Claude Code records "HEAD" as the branch of a detached checkout; it names no branch.
 const DETACHED_BRANCH_NAMES = new Set(["HEAD"]);
-const COMPACTION_TRIGGERS: Record<CompactionTrigger, true> = {
+const COMPACTION_TRIGGER_TO_IS_KNOWN: Record<CompactionTrigger, true> = {
   auto: true,
   manual: true,
 };
@@ -110,7 +108,6 @@ const describeSkillCall: ToolDescriber = (input) => {
     skill,
   };
 };
-// Why: a Map because the keys are Claude Code's tool names, spelled as the transcript spells them.
 const TOOL_NAME_TO_DESCRIBER = new Map<string, ToolDescriber>([["Bash", describeShellCall], ["Skill", describeSkillCall]]);
 
 type AttachmentHandler = (
@@ -274,6 +271,7 @@ export class ClaudeCodeSessionService {
     }
 
     facts.messages = [...context.messageIdToMessage.values()];
+    // Why: older transcripts have no environment record; the working directory's shape still tells the platform.
     facts.environment.platform ??= this.platformFromPath(facts.projectDir);
     this.summarizeThreads(context, options.idleMs);
     return facts;
@@ -598,7 +596,6 @@ export class ClaudeCodeSessionService {
     });
   }
 
-  // Why: older transcripts have no environment record; the working directory's shape still tells the platform.
   private platformFromPath(projectDir: string | undefined): string | undefined {
     if (projectDir === undefined) {
       return undefined;
@@ -612,20 +609,19 @@ export class ClaudeCodeSessionService {
     return projectDir.startsWith("/home/") ? "linux" : undefined;
   }
 
-  // Why: Claude Code records the platform and shell in an `environment` attachment; the first one wins.
   private readEnvironment(context: ClaudeCodeParseContext, snapshot: UnknownRecord | undefined): void {
     const environment = context.facts.environment;
     environment.platform ??= GuardUtil.asString(snapshot?.platform);
     environment.shell ??= GuardUtil.asString(snapshot?.shell);
   }
 
-  // Why: `cost-state` is a running total; the last line of each run holds that run's total.
   private handleCostState(context: ClaudeCodeParseContext, line: ClaudeCodeTranscriptLine): void {
     const costUsd = GuardUtil.asNumber(line.record.totalCostUSD);
     if (costUsd === undefined) {
       return;
     }
     const runStart = String(GuardUtil.asNumber(line.record.startTime) ?? "");
+    // Why: `cost-state` is a running total per run, so each run's latest line replaces its earlier ones.
     context.runStartToCostUsd.set(runStart, costUsd);
     const reported = context.facts.reported;
     reported.costUsd = [...context.runStartToCostUsd.values()].reduce((total, runCost) => total + runCost, 0);
@@ -661,7 +657,7 @@ export class ClaudeCodeSessionService {
   private handleCompaction(context: ClaudeCodeParseContext, line: ClaudeCodeTranscriptLine): void {
     const metadata = GuardUtil.asRecord(line.record.compactMetadata);
     const rawTrigger = GuardUtil.asString(metadata?.trigger);
-    const trigger = GuardUtil.isKeyOf(COMPACTION_TRIGGERS, rawTrigger) ? rawTrigger : "auto";
+    const trigger = GuardUtil.isKeyOf(COMPACTION_TRIGGER_TO_IS_KNOWN, rawTrigger) ? rawTrigger : "auto";
     const contextTokens = GuardUtil.asNumber(metadata?.preTokens);
     const tokensText = contextTokens === undefined ? "" : ` at ~${Math.round(contextTokens / TOKENS_PER_THOUSAND)}k tokens`;
     context.facts.compactions.push({
@@ -682,7 +678,6 @@ export class ClaudeCodeSessionService {
       .join("\n");
   }
 
-  // Why: a prompt typed while the agent is busy is written as a `queued_command` attachment, never as a user line; other queued commands (finished background tasks, other sessions) are not the person's words.
   private handleAttachment(context: ClaudeCodeParseContext, line: ClaudeCodeTranscriptLine): void {
     const attachment = GuardUtil.asRecord(line.record.attachment);
     const attachmentType = GuardUtil.asString(attachment?.type);
@@ -698,6 +693,8 @@ export class ClaudeCodeSessionService {
   ): void {
     const prompt = GuardUtil.asString(attachment.prompt);
     const originKind = GuardUtil.asString(GuardUtil.asRecord(attachment.origin)?.kind) ?? HUMAN_ORIGIN;
+    // Why: a prompt typed while the agent is busy is written as a `queued_command` attachment, never as a user line;
+    // other queued commands (finished background tasks, other sessions) are not the person's words.
     const isHumanPrompt = attachment.commandMode === "prompt" && attachment.isMeta !== true && originKind === HUMAN_ORIGIN;
     if (isHumanPrompt && prompt !== undefined) {
       this.handlePrompt(context, line, prompt);

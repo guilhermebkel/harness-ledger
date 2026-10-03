@@ -14,7 +14,6 @@ const COMMIT_MARKER = "__COMMIT__";
 const PORCELAIN_PATH_OFFSET = 3;
 
 export class GitUtil {
-  // Why: one `git log` call for all paths; empty outside a git repository.
   static async readChangeDates(repositoryDir: string, paths: string[]): Promise<GitChangeDates> {
     const changeDates: GitChangeDates = {
       pathToCommittedAt: new Map(),

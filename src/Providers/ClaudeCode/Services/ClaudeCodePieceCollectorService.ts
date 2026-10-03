@@ -11,13 +11,10 @@ import type { FileChange, FilePiece } from "@/Providers/ClaudeCode/Protocols/Cla
 const PROJECT_SCOPES = new Set<PieceScope>(["project", "local"]);
 // Why: only an agent's frontmatter `skills:` preloads skills; elsewhere the key means something else or nothing.
 const KINDS_WITH_SKILLS = new Set<PieceKind>(["agent"]);
-// Why: plugin and managed pieces are rewritten by their owner on update, so a suggestion can't edit them.
 const READ_ONLY_SCOPES = new Set<PieceScope>(["plugin", "managed"]);
 const MAX_DESCRIPTION_CHARS = 300;
-// Why: larger files are listed but not hashed, to keep the inventory fast.
 const MAX_HASHED_FILE_BYTES = 1_000_000;
 
-// Why: files already seen are skipped, because the project can be the home directory.
 export class ClaudeCodePieceCollectorService {
   static readonly MAX_DESCRIPTION_CHARS = MAX_DESCRIPTION_CHARS;
 
@@ -32,6 +29,7 @@ export class ClaudeCodePieceCollectorService {
 
   async markSeen(file: string): Promise<boolean> {
     const realPath = await realpath(file).catch(() => file);
+    // Why: the project can be the home directory, so the same file can come up twice.
     if (this.seenRealPaths.has(realPath)) {
       return false;
     }
@@ -63,15 +61,14 @@ export class ClaudeCodePieceCollectorService {
       : {};
   }
 
-  // Why: path and content both go in, so renaming a reference changes the skill's hash.
   private async fileHash(file: string): Promise<string> {
     const fileStat = await stat(file).catch(() => undefined);
     const isHashable = fileStat !== undefined && fileStat.size <= MAX_HASHED_FILE_BYTES;
     const content = isHashable ? await readFile(file).catch(() => Buffer.alloc(0)) : Buffer.from(`${fileStat?.size ?? 0}`);
+    // Why: the path goes in with the content, so renaming a reference changes the skill's hash.
     return HashUtil.sha(`${relative(this.projectDir, file)}\n${content.toString("base64")}`);
   }
 
-  // Why: the same name can exist in two scopes (a user and a project skill); both are kept, with distinct ids.
   uniqueId(kind: PieceKind, name: string, scope: PieceScope): string {
     const baseId = `${kind}:${name}`;
     const isTaken = this.pieces.some((piece) => piece.id === baseId);
@@ -84,7 +81,7 @@ export class ClaudeCodePieceCollectorService {
     if (text === undefined) {
       return;
     }
-    const { data } = FrontmatterUtil.parse(text);
+    const { keyToValue } = FrontmatterUtil.parse(text);
     const extraFiles = filePiece.extraFiles ?? [];
     const extraHashes = await Promise.all(extraFiles.map(async (extraFile) => this.fileHash(extraFile)));
     const changes = await Promise.all(
@@ -103,12 +100,12 @@ export class ClaudeCodePieceCollectorService {
       hash: extraFiles.length ? HashUtil.sha([text, ...extraHashes].join("\n")) : HashUtil.sha(text),
       bytes: Buffer.byteLength(text),
       approxTokens: NumberUtil.approxTokens(text),
-      description: FrontmatterUtil.asText(data.description)?.slice(0, MAX_DESCRIPTION_CHARS),
-      model: FrontmatterUtil.asText(data.model),
-      tools: FrontmatterUtil.asList(data.tools ?? data["allowed-tools"]),
+      description: FrontmatterUtil.asText(keyToValue.description)?.slice(0, MAX_DESCRIPTION_CHARS),
+      model: FrontmatterUtil.asText(keyToValue.model),
+      tools: FrontmatterUtil.asList(keyToValue.tools ?? keyToValue["allowed-tools"]),
       ...latestChange,
       files: extraFiles.length ? extraFiles.map((extraFile) => relative(pieceFolder, extraFile)) : undefined,
-      preloadedSkills: KINDS_WITH_SKILLS.has(filePiece.kind) ? FrontmatterUtil.asList(data.skills) : undefined,
+      preloadedSkills: KINDS_WITH_SKILLS.has(filePiece.kind) ? FrontmatterUtil.asList(keyToValue.skills) : undefined,
       isEditable: !READ_ONLY_SCOPES.has(filePiece.scope),
       plugin: filePiece.plugin,
     });

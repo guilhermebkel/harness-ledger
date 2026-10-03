@@ -108,8 +108,6 @@ export class CheckInventoryService {
     };
   }
 
-  // Why: a check the catalog doesn't know must not let `missing` claim the category is uncovered, so dependencies
-  // whose names look like checks are listed for the skill to look up.
   private static unmappedToolsOf(files: ProjectFiles): string[] {
     const requirementNames = files.sourceToText["python config"]
       .split("\n")
@@ -117,6 +115,8 @@ export class CheckInventoryService {
       .filter((name) => name !== undefined);
     const knownPackages = CheckCatalogUtil.knownPackages();
     const names = [...CheckInventoryService.dependencyNames(files.packageJson), ...requirementNames];
+    // Why: a check the catalog doesn't know could cover a category reported as missing, so check-like dependencies
+    // are listed for the skill to look up.
     return CollectionUtil.unique(names)
       .filter((name) => CheckCatalogUtil.isCheckLikeName(name) && !knownPackages.has(name))
       .map((name) => RedactUtil.redact(name))
@@ -232,11 +232,11 @@ export class CheckInventoryService {
     ];
   }
 
-  // Why: the agent and CI often run a check through a package.json script (`pnpm lint` running eslint), so a run
-  // counts when it calls the tool directly or a script that does.
   private static scriptRunsOf(definition: CheckToolDefinition, files: ProjectFiles): RegExp[] {
     const commands = definition.commands ?? [];
     const scripts = GuardUtil.asRecord(files.packageJson?.scripts) ?? {};
+    // Why: the agent and CI often run a check through a package.json script (`pnpm lint` running eslint), so a run
+    // counts when it calls the tool directly or a script that does.
     return Object.entries(scripts)
       .filter(([, scriptText]) =>
         commands.some((command) => CheckInventoryService.mentions(String(scriptText), command)))

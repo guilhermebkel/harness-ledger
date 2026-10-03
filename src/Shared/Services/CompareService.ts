@@ -1,5 +1,3 @@
-// Why: observational: sessions before and after also differ in tasks, so it reports deltas and refuses to call a winner when either side has too few sessions.
-
 import type {
   ComparedMetric,
   CompareResult,
@@ -100,10 +98,6 @@ export class CompareService {
     };
   }
 
-  /**
-   * Why: Time counts as much as money: a change that keeps the cost but makes the work faster is an improvement.
-   * Lower is better for every metric.
-   */
   private significantMoves(before: SideMetrics, after: SideMetrics): MetricMove[] {
     const metricToValues: Record<ComparedMetric, [number | undefined, number | undefined]> = {
       errorRate: [before.errorRate, after.errorRate],
@@ -120,6 +114,7 @@ export class CompareService {
         return {
           metric,
           relativeChange: NumberUtil.round(relativeChange, RELATIVE_CHANGE_DIGITS),
+          // Why: lower is better for every metric, and time counts as much as money.
           direction: relativeChange < 0 ? "better" : "worse",
           isInVerdict: !CompareService.TOKEN_METRICS.has(metric),
         };
@@ -145,7 +140,7 @@ export class CompareService {
 
   private sideMetrics(sessions: SessionFacts[], piece: string): SideMetrics {
     // Why: knowing the piece id lets slash commands that run a skill be attributed to "skill:<name>".
-    const usage = new UsageService(this.config.prices, new Set([piece]))
+    const usage = new UsageService(this.config.modelFamilyToPrice, new Set([piece]))
       .pieceUsage(sessions)
       .find((entry) => entry.piece === this.usagePieceOf(piece));
     const attributed = this.attributedToPiece(sessions, piece);
@@ -153,7 +148,7 @@ export class CompareService {
     const invocations = usage?.invocations ?? 0;
     const signalService = new SignalService({
       idleMs: this.idleMs,
-      prices: this.config.prices,
+      modelFamilyToPrice: this.config.modelFamilyToPrice,
       maxEvidence: 0,
       minSessionsForUnused: Infinity,
       largePieceTokens: Infinity,
@@ -182,12 +177,12 @@ export class CompareService {
     };
   }
 
-  // Why: a global piece (instructions, hooks, settings) is behind every turn; any other piece only answers for
-  // the corrections and failures that happened while it ran.
   private attributedToPiece(sessions: SessionFacts[], piece: string): {
     corrections: number; recoveryMs: number;
   } {
     const usagePiece = this.usagePieceOf(piece);
+    // Why: a global piece (instructions, hooks, settings) is behind every turn; any other piece only answers for the
+    // corrections and failures that happened while it ran.
     const isGlobalPiece = usagePiece === AttributionService.MAIN_PIECE && piece !== AttributionService.MAIN_PIECE;
     const attribution = new AttributionService(new Set([piece]));
     const chains = new FailureChainService(this.idleMs);

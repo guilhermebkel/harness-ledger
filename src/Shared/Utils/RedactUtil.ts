@@ -1,5 +1,3 @@
-// Why: everything leaves the parser redacted (ADR 0007): reports, cached facts and stdout.
-
 import { homedir } from "node:os";
 import { RegExpUtil } from "@/Shared/Utils/RegExpUtil.ts";
 

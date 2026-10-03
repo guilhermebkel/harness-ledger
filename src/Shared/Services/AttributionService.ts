@@ -1,5 +1,3 @@
-// Why: subagent steps belong to the subagent; main-thread steps after a skill or slash command, until the next prompt, belong to that skill or command.
-
 import type { AttributedKind, SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.ts";
 import type { AssistantMessage, SessionFacts, ToolCall, UserPrompt } from "@/Shared/Protocols/SessionProtocol.ts";
 import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
@@ -13,7 +11,6 @@ interface MainThreadEvent {
   call?: ToolCall;
 }
 
-// Why: `last` is what the next prompt inherits; it includes an agent the turn started.
 interface TurnPieces {
   current: string[];
   last: string[];
@@ -74,7 +71,6 @@ export class AttributionService {
     return isBuiltInAgent ? `${pieceId}${AttributionService.BUILT_IN_SUFFIX}` : pieceId;
   }
 
-  // Why: a slash command runs either a skill or a command file; the skill wins when both exist.
   commandPieceId(name: string): string {
     return this.pieceIds.has(`skill:${name}`) ? `skill:${name}` : `command:${name}`;
   }
@@ -94,7 +90,6 @@ export class AttributionService {
     }
   }
 
-  // Why: a skill a call loads joins the turn's pieces; an agent it starts is only inherited by the next prompt.
   private attributeCall(call: ToolCall, turn: TurnPieces, index: SessionIndex): void {
     // Why: the skill the provider says was running wins over the one inferred from the turn.
     const skillName = call.skillInUse ?? call.skill;
@@ -102,6 +97,7 @@ export class AttributionService {
       turn.current = CollectionUtil.unique([...turn.current, this.pieceIdFor("skill", skillName)]);
       turn.last = turn.current;
     }
+    // Why: an agent a call starts is inherited by the next prompt, not by the rest of this turn.
     if (call.subagentType) {
       turn.last = CollectionUtil.unique([...turn.current, this.pieceIdFor("agent", call.subagentType)]);
     }

@@ -8,7 +8,7 @@ Every signal carries `cost.method` (one sentence from this table) and `cost.boun
 
 - **Active time.** Time between consecutive events (messages, calls, results), skipping gaps longer than `idleMinutes` (default 5): the person was away. Events from every thread in the window count, so a subagent working while the main thread waits is time spent.
 - **Tokens.** Each assistant message's usage, counted once even when the provider repeats it on several lines. Input tokens include cache reads and writes.
-- **Money.** Tokens times the price table (`CostService.DEFAULT_PRICES`, overridable in `.imh/config.json`). Cache reads and writes use their own prices. Models outside the table are unpriced: their tokens count and their cost is 0 (`totals.unpricedModels`).
+- **Money.** Tokens times the price table (`CostService.DEFAULT_MODEL_FAMILY_TO_PRICE`, overridable in `.imh/config.json`). Cache reads and writes use their own prices. Models outside the table are unpriced: their tokens count and their cost is 0 (`totals.unpricedModels`).
 - **Nothing twice.** Failure chains run first; a corrected turn leaves out the messages a chain or a rejected plan already counted.
 
 ## Per signal

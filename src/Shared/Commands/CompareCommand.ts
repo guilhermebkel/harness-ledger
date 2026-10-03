@@ -20,7 +20,6 @@ export class CompareCommand {
     );
   }
 
-  // Why: `--at` first, then the last applied suggestion for the piece, then the piece's last change.
   private async findChangePoint(context: ContextService, options: CompareOptions): Promise<ChangePoint | undefined> {
     const explicitAtMs = TimeUtil.parsePointInTime(options.changedAt);
     if (explicitAtMs !== undefined) {

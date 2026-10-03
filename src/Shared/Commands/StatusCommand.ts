@@ -16,8 +16,8 @@ export class StatusCommand {
       node: process.version,
       transcripts: loaded.available,
       retention: inventory.retention,
-      pieces: CollectionUtil.countBy(inventory.pieces.map((piece) => piece.kind)),
-      suggestions: CollectionUtil.countBy(suggestions.map((suggestion) => suggestion.status)),
+      pieceKindToCount: CollectionUtil.countBy(inventory.pieces.map((piece) => piece.kind)),
+      suggestionStatusToCount: CollectionUtil.countBy(suggestions.map((suggestion) => suggestion.status)),
       dataDir: context.store.root,
       config: context.config,
     };

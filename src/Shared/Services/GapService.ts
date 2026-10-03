@@ -31,8 +31,6 @@ interface LineShapeCount {
   sessionIds: Set<string>;
 }
 
-// Why: what the script met but couldn't map, turned into a prefilled issue the person reviews and sends; only
-// shapes, names and counts go in, so nothing from the sessions' content leaves the machine.
 export class GapService {
   private readonly kindToDrafts: Record<GapKind, (input: GapInput) => GapDraft[]> = {
     unknown_line: (input) => GapService.unknownLineDrafts(input.sessions),
@@ -67,9 +65,9 @@ export class GapService {
 
   constructor(private readonly versions: IssueVersions) {}
 
-  // Why: a scoped package often names the company (`@acme/lint-config`); the scope never goes in a link.
   static publicName(packageName: string): string {
     const shortName = RedactUtil.excerpt(packageName, MAX_NAME_CHARS);
+    // Why: a scoped package often names the company (`@acme/lint-config`); the scope never goes in a link.
     return shortName.startsWith("@") ? `${PRIVATE_SCOPE}/${shortName.split("/").slice(1).join("/")}` : shortName;
   }
 
@@ -86,7 +84,6 @@ export class GapService {
     };
   }
 
-  // Why: numeric, so 2.1.99 comes before 2.1.100 and the range in a link is oldest to newest.
   private static readonly compareVersions = (left: string, right: string): number =>
     left.localeCompare(right, "en", { numeric: true });
 
@@ -102,7 +99,7 @@ export class GapService {
       fingerprint,
       template: "mapping-gap",
       title: `[gap] ${draft.title}`,
-      fields: {
+      fieldIdToFieldValue: {
         kind,
         details: details.join("\n"),
         versions: IssueLinkUtil.versionsText(this.versions),

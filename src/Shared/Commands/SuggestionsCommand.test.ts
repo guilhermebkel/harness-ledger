@@ -49,7 +49,7 @@ describe("SuggestionsCommand.add()", () => {
         },
       ],
     });
-    const [onlyFirst, theRest] = result.added.map((id) => result.costs[id]);
+    const [onlyFirst, theRest] = result.added.map((id) => result.suggestionIdToSuggestionCost[id]);
     expect(onlyFirst?.occurrences).toBe(1);
     expect(theRest?.occurrences).toBe(2);
     expect((onlyFirst?.tokens ?? 0) + (theRest?.tokens ?? 0)).toBe(npmTest?.cost.tokens);
