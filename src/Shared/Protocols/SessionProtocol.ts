@@ -124,6 +124,13 @@ export interface SessionEnvironment {
   shell?: string;
 }
 
+// Why: a line the provider's parser doesn't know, by shape only (its type and top-level keys), never its values.
+export interface UnknownLineShape {
+  type: string;
+  keys: string[];
+  count: number;
+}
+
 export interface SessionFacts {
   provider: string;
   sessionId: string;
@@ -145,4 +152,7 @@ export interface SessionFacts {
   files: string[];
   // Why: a sign of format drift.
   unparsedLines: number;
+  // Why: optional because sessions cached by older versions don't have them.
+  unknownLines?: UnknownLineShape[];
+  agentVersion?: string;
 }

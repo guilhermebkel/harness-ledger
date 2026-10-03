@@ -98,7 +98,7 @@ Not every failure needs more instructions. Each finding falls into one class, an
 ## Privacy
 
 - Everything runs locally. Transcripts are read in place and never copied or sent anywhere; only findings (with references) are stored, in `.imh/`.
-- No telemetry.
+- No telemetry. When the analysis meets something it can't map (a new transcript format, a model with no price), the report offers a link to a prefilled GitHub issue holding only names and counts. You read it and decide whether to send it; nothing is sent on its own.
 - Some agents delete old transcripts automatically (Claude Code keeps 30 days by default). `improve-my-harness` tells you how much history is available, but never changes your retention settings.
 
 ## How it compares

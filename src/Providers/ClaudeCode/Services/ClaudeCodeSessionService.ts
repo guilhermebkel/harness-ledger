@@ -18,6 +18,7 @@ import type {
   ToolResultKind,
 } from "@/Shared/Protocols/SessionProtocol.js";
 import type { UnknownRecord } from "@/Shared/Protocols/UtilProtocol.js";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
 import { GuardUtil } from "@/Shared/Utils/GuardUtil.js";
 import { HashUtil } from "@/Shared/Utils/HashUtil.js";
 import { JsonlUtil } from "@/Shared/Utils/JsonlUtil.js";
@@ -58,6 +59,28 @@ const TOKENS_PER_THOUSAND = 1000;
 const VALID_TOOL_NAME = /^[\w.:-]{1,100}$/;
 const MALFORMED_TOOL_NAME = "(malformed tool name)";
 const REJECTED_WITHOUT_FEEDBACK = "rejected without feedback";
+const MAX_UNKNOWN_TYPE_CHARS = 60;
+const MAX_UNKNOWN_KEYS = 40;
+// Why: Claude Code writes these for its own interface (titles, modes, links, file history); none carries what a
+// signal reads. A type missing here and from the handlers is reported as a gap, so add new ones after checking.
+const IGNORED_LINE_TYPES = new Set([
+  "summary",
+  "last-prompt",
+  "permission-mode",
+  "mode",
+  "ai-title",
+  "custom-title",
+  "queue-operation",
+  "atis-latch",
+  "agent-name",
+  "pr-link",
+  "frame-link",
+  "file-history-snapshot",
+  "file-history-delta",
+  "artifact-autoreact-ledger",
+  "artifact-comment-monitor",
+  "progress",
+]);
 
 type ToolDescriber = (input: UnknownRecord) => ClaudeCodeToolDescription | undefined;
 
@@ -380,9 +403,33 @@ export class ClaudeCodeSessionService {
       eventsAtMs.push(line.occurredAtMs);
       context.threadIdToEventsAtMs.set(line.thread.id, eventsAtMs);
     }
+    facts.agentVersion = GuardUtil.asString(record.version) ?? facts.agentVersion;
     if (GuardUtil.isKeyOf(this.lineTypeToHandler, lineType)) {
       this.lineTypeToHandler[lineType](context, line, isMainFile);
+      return;
     }
+    if (!IGNORED_LINE_TYPES.has(lineType ?? "")) {
+      this.recordUnknownLine(facts, record, lineType);
+    }
+  }
+
+  private recordUnknownLine(facts: SessionFacts, record: UnknownRecord, lineType: string | undefined): void {
+    const type = RedactUtil.excerpt(lineType ?? "(no type)", MAX_UNKNOWN_TYPE_CHARS);
+    const keys = Object.keys(record).sort(CollectionUtil.compareCodeUnits).slice(0, MAX_UNKNOWN_KEYS)
+      .map((key) => RedactUtil.excerpt(key, MAX_UNKNOWN_TYPE_CHARS));
+    const shapes = facts.unknownLines ?? [];
+    const signature = keys.join(",");
+    const known = shapes.find((shape) => shape.type === type && shape.keys.join(",") === signature);
+    if (known) {
+      known.count++;
+    } else {
+      shapes.push({
+        type,
+        keys,
+        count: 1,
+      });
+    }
+    facts.unknownLines = shapes;
   }
 
   private withMessage(

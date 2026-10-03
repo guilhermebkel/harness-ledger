@@ -33,6 +33,7 @@ Always pass `--exclude-session ${CLAUDE_SESSION_ID}` to `analyze`, `compare` and
 | `inventory` | The active harness with piece ids (`agent:code-reviewer`, `skill:changelog`, `instructions:project`, `hook:...`, `mcp:...`). |
 | `compare --piece ID [--at DATE]` | Before/after metrics for one piece. |
 | `suggestions list [--status S]` · `suggestions add --file F` · `suggestions set ID STATUS [--note T]` | Suggestion state, so nothing is suggested twice. |
+| `issue <signal-id> --note T` | A prefilled GitHub issue questioning the rule behind a signal, in the person's words. Nothing is sent. |
 | `status` | Transcripts available, retention, config. |
 
 Options shared by all commands: `--project-only` (ignore user-level and plugin pieces), `--all-projects`, `--no-cache`.
@@ -88,6 +89,7 @@ If `.imh/` is not in `.gitignore` and the project is a git repo, ask once whethe
 
 - List: `suggestions list` (optionally `--status pending`). Show id, title, class, piece, status.
 - Accept or reject: `suggestions set <id> accepted|rejected --note "<reason>"`. A rejected suggestion is never suggested again; keep the user's reason in the note.
+- When the reason says the rule itself is wrong for this project ("plans are rejected on purpose here", "that command is supposed to fail"), offer once to report it: `issue <signal-id> --note "<their reason, in their words>"` returns a link to a prefilled GitHub issue (`issueUrl`) and a search for an existing one (`searchUrl`). Show both; the person opens the link, reads it and decides whether to send it. Never put session excerpts, file paths or commands in the note.
 - Apply: see below.
 
 ## Applying a suggestion

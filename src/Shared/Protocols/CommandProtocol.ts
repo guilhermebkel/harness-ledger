@@ -36,6 +36,12 @@ export interface EvidenceOptions extends CommonOptions {
   maxEvidence?: number;
 }
 
+export interface IssueOptions extends CommonOptions {
+  signalId: string;
+  // Why: in the person's own words, why the rule looks wrong for their project.
+  note: string;
+}
+
 export interface ListSuggestionsOptions extends CommonOptions { status?: SuggestionStatus }
 
 export interface AddSuggestionsOptions extends CommonOptions {

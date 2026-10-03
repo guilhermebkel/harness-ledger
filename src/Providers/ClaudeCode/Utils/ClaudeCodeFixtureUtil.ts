@@ -445,11 +445,14 @@ export class ClaudeCodeFixtureUtil {
    * - a Python script fails with a FutureWarning printed before the traceback;
    * - `git -C <dir> stash pop` fails after a git warning line;
    * - a correction typed while the agent was busy (queued), next to a background-task notification;
-   * - a model behind a proxy with no known price, and an API error message.
+   * - a model behind a proxy with no known price, and an API error message;
+   * - a line type Claude Code writes for its interface (ignored) and one no version so far has written (a gap).
    */
   static writeRealCasesSession(fixture: Fixture, sessionId: string, startedAt: string): void {
     new ClaudeCodeTranscriptBuilder(sessionId, fixture.projectDir, startedAt)
       .record("attachment", { attachment: { type: "environment", snapshot: { platform: "darwin", shell: "zsh" } } })
+      .record("ai-title", { aiTitle: "Billing retry" })
+      .record("workspace-sync", { syncId: "ws-1", files: 3 })
       .user("Add a retry to the billing job")
       .tool(`plan_${sessionId}`, "ExitPlanMode", { plan: "1. Add a new queue\n2. Retry there" })
       .result(

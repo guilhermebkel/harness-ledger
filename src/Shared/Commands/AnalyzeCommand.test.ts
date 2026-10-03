@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ClaudeCodeFixtureUtil, ClaudeCodeTranscriptBuilder, type Fixture } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.js";
 import type { Signal } from "@/Shared/Protocols/SignalProtocol.js";
 import { AnalyzeCommand } from "./AnalyzeCommand.js";
+import { IssueCommand } from "./IssueCommand.js";
 
 const { FAKE_SECRETS } = ClaudeCodeFixtureUtil;
 const command = new AnalyzeCommand();
@@ -165,6 +166,35 @@ describe("AnalyzeCommand on cases seen in real sessions", () => {
     expect(analysis.totals.unpricedModels).toStrictEqual(["glm-5.2"]);
     const usageWithGlm = analysis.usage.find((usage) => usage.models.includes("glm-5.2"));
     expect(usageWithGlm).toMatchObject({ piece: "main" });
+  });
+
+  it("lists what it couldn't map as gaps, each with a prefilled issue", async () => {
+    const analysis = await analyzeReal();
+    expect(analysis.gaps.map((gap) => [gap.kind, gap.details[0]])).toStrictEqual([
+      ["unknown_line", "type: workspace-sync"],
+      ["unpriced_model", "model: glm-5.2"],
+    ]);
+    expect(analysis.versions).toStrictEqual({
+      imh: "dev",
+      provider: "claude-code",
+      agentVersions: ["2.1.287"],
+      platforms: ["darwin"],
+    });
+  });
+
+  it("builds a rule question from a signal and the person's words, redacted", async () => {
+    await analyzeReal();
+    const link = await new IssueCommand().run({
+      projectDir: realFixture.projectDir,
+      dataDir: realFixture.dataDir,
+      signalId: "user_correction",
+      note: `Plans are rejected on purpose here; token ${FAKE_SECRETS.anthropicKey}`,
+    });
+    const params = new URL(link.issueUrl).searchParams;
+    expect(params.get("template")).toBe("rule-question.yml");
+    expect(params.get("explanation")).toBe("Plans are rejected on purpose here; token [REDACTED]");
+    expect(params.get("signal")).toMatch(/^user_correction: user_correction:/);
+    expect(link.issueUrl).not.toContain("sk-ant");
   });
 });
 

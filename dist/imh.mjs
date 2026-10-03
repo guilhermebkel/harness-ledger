@@ -2996,6 +2996,171 @@ var CheckInventoryService = class _CheckInventoryService {
   }
 };
 
+// src/Shared/Utils/IssueLinkUtil.ts
+var REPOSITORY_URL = "https://github.com/guilhermebkel/improve-my-harness";
+var FINGERPRINT_CHARS = 8;
+var MAX_FIELD_CHARS = 1500;
+var MAX_URL_CHARS = 6e3;
+var TRUNCATED = "\n(cut to fit the link)";
+var MAX_LISTED_VERSIONS = 3;
+var IssueLinkUtil = class _IssueLinkUtil {
+  static fingerprintOf(...parts) {
+    return HashUtil.sha(parts.join("\0"), FINGERPRINT_CHARS);
+  }
+  static versionsText(versions) {
+    const agentVersions = _IssueLinkUtil.versionRange(versions.agentVersions);
+    const platforms = versions.platforms.length ? versions.platforms.join(", ") : "unknown";
+    return `imh ${versions.imh} \xB7 ${versions.provider} ${agentVersions} \xB7 ${platforms}`;
+  }
+  // Why: sessions span many agent versions; the oldest and newest are what a format change is dated by.
+  static versionRange(sortedVersions) {
+    const oldest = sortedVersions[0];
+    const newest = sortedVersions.at(-1);
+    if (oldest === void 0 || newest === void 0) {
+      return "unknown";
+    }
+    return sortedVersions.length > MAX_LISTED_VERSIONS ? `${oldest} to ${newest} (${sortedVersions.length} versions)` : sortedVersions.join(", ");
+  }
+  static linkOf(request) {
+    const title = RedactUtil.redact(`${request.title} \xB7 ${request.fingerprint}`);
+    const params = new URLSearchParams({
+      title,
+      template: `${request.template}.yml`
+    });
+    for (const [field, value] of Object.entries(request.fields)) {
+      const redacted = RedactUtil.redact(value);
+      params.set(field, _IssueLinkUtil.fit(redacted, MAX_FIELD_CHARS));
+    }
+    const search = new URLSearchParams({ q: `is:issue ${request.fingerprint}` });
+    return {
+      title,
+      issueUrl: _IssueLinkUtil.withinLimit(params),
+      searchUrl: `${REPOSITORY_URL}/issues?${search.toString()}`
+    };
+  }
+  static fit(text, maxChars) {
+    return text.length > maxChars ? `${text.slice(0, maxChars - TRUNCATED.length)}${TRUNCATED}` : text;
+  }
+  // Why: the longest field is cut first, so a short field like the versions always survives.
+  static withinLimit(params) {
+    const base = `${REPOSITORY_URL}/issues/new?`;
+    let url = `${base}${params.toString()}`;
+    while (url.length > MAX_URL_CHARS) {
+      const [longestField, longestValue] = [...params.entries()].reduce((longest, entry) => entry[1].length > longest[1].length ? entry : longest);
+      if (longestValue.length <= TRUNCATED.length) {
+        break;
+      }
+      const keptChars = Math.max(TRUNCATED.length, longestValue.length - (url.length - MAX_URL_CHARS));
+      const shortened = _IssueLinkUtil.fit(longestValue, keptChars);
+      params.set(longestField, shortened);
+      url = `${base}${params.toString()}`;
+    }
+    return url;
+  }
+};
+
+// src/Shared/Services/GapService.ts
+var MAX_NAME_CHARS = 80;
+var MAX_DETAIL_CHARS = 200;
+var PRIVATE_SCOPE = "@<private>";
+var GapService = class _GapService {
+  constructor(versions) {
+    this.versions = versions;
+  }
+  kindToDrafts = {
+    unknown_line: (input) => _GapService.unknownLineDrafts(input.sessions),
+    unmapped_extension: (input) => input.checks.languages.filter((language) => language.extension !== void 0).map((language) => ({
+      key: language.extension ?? "",
+      title: `file extension with no language "${language.extension ?? ""}"`,
+      details: [`extension: ${language.extension ?? ""}`, `edits: ${language.edits}`]
+    })),
+    unmapped_check_tool: (input) => input.checks.unmappedTools.map((name) => {
+      const shownName = _GapService.publicName(name);
+      return {
+        key: shownName,
+        title: `check tool not in the catalog "${shownName}"`,
+        details: [`package: ${shownName}`]
+      };
+    }),
+    unpriced_model: (input) => input.unpricedModels.map((model) => ({
+      key: model,
+      title: `model with no price "${model}"`,
+      details: [`model: ${model}`]
+    })),
+    unresolved_subagent: (input) => input.usage.filter((usage) => usage.piece === AttributionService.UNRESOLVED_SUBAGENT_PIECE).map((usage) => ({
+      key: usage.piece,
+      title: "subagent type not resolved",
+      details: [`invocations: ${usage.invocations}`, `sessions: ${usage.sessions}`]
+    }))
+  };
+  // Why: a scoped package often names the company (`@acme/lint-config`); the scope never goes in a link.
+  static publicName(packageName) {
+    const shortName = RedactUtil.excerpt(packageName, MAX_NAME_CHARS);
+    return shortName.startsWith("@") ? `${PRIVATE_SCOPE}/${shortName.split("/").slice(1).join("/")}` : shortName;
+  }
+  static versionsOf(sessions, imhVersion, provider) {
+    const agentVersions = sessions.map((session) => session.agentVersion).filter((version) => version !== void 0);
+    const platforms = sessions.map((session) => session.environment.platform).filter((platform) => platform !== void 0);
+    return {
+      provider,
+      imh: imhVersion,
+      agentVersions: CollectionUtil.unique(agentVersions).sort(_GapService.compareVersions),
+      platforms: CollectionUtil.unique(platforms).sort(CollectionUtil.compareCodeUnits)
+    };
+  }
+  // Why: numeric, so 2.1.99 comes before 2.1.100 and the range in a link is oldest to newest.
+  static compareVersions = (left, right) => left.localeCompare(right, "en", { numeric: true });
+  gapsOf(input) {
+    return Object.keys(this.kindToDrafts).flatMap((kind) => this.kindToDrafts[kind](input).map((draft) => this.gapOf(kind, draft)));
+  }
+  gapOf(kind, draft) {
+    const fingerprint = IssueLinkUtil.fingerprintOf(kind, draft.key);
+    const details = draft.details.map((detail) => RedactUtil.excerpt(detail, MAX_DETAIL_CHARS));
+    const link = IssueLinkUtil.linkOf({
+      fingerprint,
+      template: "mapping-gap",
+      title: `[gap] ${draft.title}`,
+      fields: {
+        kind,
+        details: details.join("\n"),
+        versions: IssueLinkUtil.versionsText(this.versions)
+      }
+    });
+    return {
+      kind,
+      fingerprint,
+      details,
+      ...link
+    };
+  }
+  static unknownLineDrafts(sessions) {
+    const signatureToCount = /* @__PURE__ */ new Map();
+    for (const session of sessions) {
+      for (const shape of session.unknownLines ?? []) {
+        const signature = `${shape.type}|${shape.keys.join(",")}`;
+        const count = signatureToCount.get(signature) ?? {
+          type: shape.type,
+          keys: shape.keys,
+          lines: 0,
+          sessionIds: /* @__PURE__ */ new Set()
+        };
+        count.lines += shape.count;
+        count.sessionIds.add(session.sessionId);
+        signatureToCount.set(signature, count);
+      }
+    }
+    return [...signatureToCount.values()].map((count) => ({
+      key: `${count.type}|${count.keys.join(",")}`,
+      title: `unknown transcript line "${count.type}"`,
+      details: [
+        `type: ${count.type}`,
+        `keys: ${count.keys.join(", ")}`,
+        `lines: ${count.lines} in ${count.sessionIds.size} sessions`
+      ]
+    }));
+  }
+};
+
 // src/Shared/Services/AnalysisService.ts
 var DEFAULT_MAX_SIGNALS = 25;
 var MIN_COMMON_COMMAND_RUNS = 2;
@@ -3046,6 +3211,16 @@ var AnalysisService = class _AnalysisService {
     this.markHandledSignals(signals, suggestions);
     await this.addInstructionMentions(signals, inventory);
     const pieceIds = new Set(inventory.pieces.map((piece) => piece.id));
+    const totals = this.totalsOf(sessions, signals);
+    const usage = new UsageService(config.prices, pieceIds).pieceUsage(sessions);
+    const checks = await new CheckInventoryService(this.context.projectDir).inspect(sessions, inventory);
+    const versions = GapService.versionsOf(sessions, VersionUtil.VERSION, inventory.provider);
+    const gaps = new GapService(versions).gapsOf({
+      sessions,
+      checks,
+      usage,
+      unpricedModels: totals.unpricedModels
+    });
     const analysis = {
       tool: {
         name: "improve-my-harness",
@@ -3074,7 +3249,6 @@ var AnalysisService = class _AnalysisService {
         fromCache: loaded.cachedCount,
         unparsedLines: loaded.unparsedLines
       },
-      totals: this.totalsOf(sessions, signals),
       inventory: {
         fingerprint: inventory.fingerprint,
         hasChangedSinceLastRun: hasChanged,
@@ -3082,20 +3256,38 @@ var AnalysisService = class _AnalysisService {
         pieces: inventory.pieces.map((piece) => InventoryService.compactPiece(piece)),
         notes: inventory.notes
       },
-      usage: new UsageService(config.prices, pieceIds).pieceUsage(sessions),
       environment: {
         platforms: this.countedBySession(sessions, (session) => session.environment.platform),
         shells: this.countedBySession(sessions, (session) => session.environment.shell)
       },
       process: this.processProfile(sessions, pieceIds),
       commonCommands: this.commonCommands(sessions),
-      checks: await new CheckInventoryService(this.context.projectDir).inspect(sessions, inventory),
       suggestions: CollectionUtil.countBy(suggestions.map((suggestion) => suggestion.status)),
       dataDir: store.root,
+      totals,
+      usage,
+      checks,
+      gaps,
+      versions,
       signals
     };
     await store.writeJson(_AnalysisService.LAST_ANALYSIS_FILE, analysis);
     return this.compact(analysis, options);
+  }
+  // Why: an exact id wins over a longer id that merely starts with it.
+  static signalById(analysis, signalId) {
+    const signal = analysis.signals.find((candidate) => candidate.id === signalId) ?? analysis.signals.find((candidate) => candidate.id.startsWith(signalId));
+    if (!signal) {
+      throw new Error(`Signal not found: ${signalId}`);
+    }
+    return signal;
+  }
+  static async lastAnalysis(store) {
+    const analysis = await store.readJson(_AnalysisService.LAST_ANALYSIS_FILE);
+    if (!analysis) {
+      throw new Error("No analysis yet. Run `imh analyze` first.");
+    }
+    return analysis;
   }
   compact(analysis, options) {
     const maxSignals = options.maxSignals ?? DEFAULT_MAX_SIGNALS;
@@ -4043,6 +4235,26 @@ var TOKENS_PER_THOUSAND2 = 1e3;
 var VALID_TOOL_NAME = /^[\w.:-]{1,100}$/;
 var MALFORMED_TOOL_NAME = "(malformed tool name)";
 var REJECTED_WITHOUT_FEEDBACK = "rejected without feedback";
+var MAX_UNKNOWN_TYPE_CHARS = 60;
+var MAX_UNKNOWN_KEYS = 40;
+var IGNORED_LINE_TYPES = /* @__PURE__ */ new Set([
+  "summary",
+  "last-prompt",
+  "permission-mode",
+  "mode",
+  "ai-title",
+  "custom-title",
+  "queue-operation",
+  "atis-latch",
+  "agent-name",
+  "pr-link",
+  "frame-link",
+  "file-history-snapshot",
+  "file-history-delta",
+  "artifact-autoreact-ledger",
+  "artifact-comment-monitor",
+  "progress"
+]);
 var describeShellCall = (input) => {
   const command = GuardUtil.asString(input.command);
   return command === void 0 ? void 0 : {
@@ -4321,9 +4533,31 @@ var ClaudeCodeSessionService = class {
       eventsAtMs.push(line.occurredAtMs);
       context.threadIdToEventsAtMs.set(line.thread.id, eventsAtMs);
     }
+    facts.agentVersion = GuardUtil.asString(record.version) ?? facts.agentVersion;
     if (GuardUtil.isKeyOf(this.lineTypeToHandler, lineType)) {
       this.lineTypeToHandler[lineType](context, line, isMainFile);
+      return;
     }
+    if (!IGNORED_LINE_TYPES.has(lineType ?? "")) {
+      this.recordUnknownLine(facts, record, lineType);
+    }
+  }
+  recordUnknownLine(facts, record, lineType) {
+    const type = RedactUtil.excerpt(lineType ?? "(no type)", MAX_UNKNOWN_TYPE_CHARS);
+    const keys = Object.keys(record).sort(CollectionUtil.compareCodeUnits).slice(0, MAX_UNKNOWN_KEYS).map((key) => RedactUtil.excerpt(key, MAX_UNKNOWN_TYPE_CHARS));
+    const shapes = facts.unknownLines ?? [];
+    const signature = keys.join(",");
+    const known = shapes.find((shape) => shape.type === type && shape.keys.join(",") === signature);
+    if (known) {
+      known.count++;
+    } else {
+      shapes.push({
+        type,
+        keys,
+        count: 1
+      });
+    }
+    facts.unknownLines = shapes;
   }
   withMessage(line, handle) {
     const message = GuardUtil.asRecord(line.record.message);
@@ -5083,14 +5317,8 @@ var DEFAULT_MAX_EVIDENCE2 = 50;
 var EvidenceCommand = class {
   async run(options) {
     const context = await ContextService.create(options);
-    const analysis = await context.store.readJson(AnalysisService.LAST_ANALYSIS_FILE);
-    if (!analysis) {
-      throw new Error("No analysis yet. Run `imh analyze` first.");
-    }
-    const signal = analysis.signals.find((candidate) => candidate.id === options.signalId) ?? analysis.signals.find((candidate) => candidate.id.startsWith(options.signalId));
-    if (!signal) {
-      throw new Error(`Signal not found: ${options.signalId}`);
-    }
+    const analysis = await AnalysisService.lastAnalysis(context.store);
+    const signal = AnalysisService.signalById(analysis, options.signalId);
     return {
       generatedAt: analysis.generatedAt,
       ...signal,
@@ -5114,6 +5342,27 @@ var InventoryCommand = class {
       pieces: inventory.pieces.map((piece) => InventoryService.compactPiece(piece)),
       notes: inventory.notes
     };
+  }
+};
+
+// src/Shared/Commands/IssueCommand.ts
+var MAX_SIGNAL_ID_CHARS = 120;
+var IssueCommand = class {
+  async run(options) {
+    const context = await ContextService.create(options);
+    const analysis = await AnalysisService.lastAnalysis(context.store);
+    const signal = AnalysisService.signalById(analysis, options.signalId);
+    return IssueLinkUtil.linkOf({
+      template: "rule-question",
+      title: `[rule] ${signal.type}`,
+      fingerprint: IssueLinkUtil.fingerprintOf("rule_question", signal.type),
+      fields: {
+        signal: `${signal.type}: ${RedactUtil.excerpt(signal.id, MAX_SIGNAL_ID_CHARS)}`,
+        rule: `${signal.cost.method} (${signal.cost.bound})`,
+        explanation: options.note,
+        versions: IssueLinkUtil.versionsText(analysis.versions)
+      }
+    });
   }
 };
 
@@ -5544,7 +5793,18 @@ var CLIModule = class _CLIModule {
       });
     },
     status: async ({ common }) => new StatusCommand().run(common),
-    suggestions: async (invocation) => this.runSuggestions(invocation)
+    suggestions: async (invocation) => this.runSuggestions(invocation),
+    issue: async ({ values, rest, common }) => {
+      const [signalId] = rest;
+      if (!signalId || !values.note) {
+        throw new Error('Usage: imh issue <signal-id> --note "why the rule looks wrong"');
+      }
+      return new IssueCommand().run({
+        ...common,
+        signalId,
+        note: values.note
+      });
+    }
   };
   static parseArguments(argv) {
     return parseArgs({
@@ -5580,6 +5840,8 @@ Commands
   suggestions add         Add suggestions from --file <json> or stdin (array of objects)
   suggestions set <id> <status> [--note text]
   status                  Transcripts available, retention, pieces and config
+  issue <signal-id> --note <text>
+                          A prefilled GitHub issue questioning the rule behind a signal (nothing is sent)
 
 Options
   --project <dir>         Project directory (default: current directory)

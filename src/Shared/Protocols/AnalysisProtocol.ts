@@ -1,3 +1,4 @@
+import type { Gap, IssueVersions } from "./GapProtocol.js";
 import type { CompactPiece, InventoryChange } from "./HarnessProtocol.js";
 import type { AssistantMessage, SessionFacts, UserPrompt } from "./SessionProtocol.js";
 import type { CountedValue, Signal } from "./SignalProtocol.js";
@@ -148,6 +149,9 @@ export interface Analysis {
   commonCommands: CommonCommand[];
   // Why: the project's deterministic checks (linters, dead code, duplication) and what's missing, per language.
   checks: ProjectChecks;
+  // Why: what the script met but couldn't map, each with a prefilled issue link the person may send.
+  gaps: Gap[];
+  versions: IssueVersions;
   signals: Signal[];
   suggestions: Record<string, number>;
   dataDir: string;

@@ -1,0 +1,36 @@
+name: Mapping gap
+description: Something in your sessions the analysis couldn't map (a transcript line, a file extension, a check tool, a model, a subagent). Usually opened from a link in an improve-my-harness report.
+title: "[gap] "
+labels: ["mapping-gap", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The link that opened this form filled it with shapes, names and counts only, never content from your sessions. Read it before submitting and remove anything you'd rather not share. If an issue with the same fingerprint (the code at the end of the title) is already open, a 👍 there helps as much.
+  - type: input
+    id: kind
+    attributes:
+      label: Kind
+      description: unknown_line, unmapped_extension, unmapped_check_tool, unpriced_model or unresolved_subagent.
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: What the analysis met
+      description: Type names, keys, extensions, package or model names and counts.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: improve-my-harness, the agent and its version, the platform.
+      placeholder: imh 0.1.0 · claude-code 2.1.287 · darwin
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: Optional. What the thing is, if you know (for example, "`.ex` is Elixir" or "this package is a linter").

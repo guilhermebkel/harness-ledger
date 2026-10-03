@@ -29,8 +29,10 @@ import { InventoryService } from "./InventoryService.js";
 import { MentionService } from "./MentionService.js";
 import { ProcessProfileService } from "./ProcessProfileService.js";
 import { SignalService } from "./SignalService.js";
+import type { StoreService } from "./StoreService.js";
 import { UsageService } from "./UsageService.js";
 import { CheckInventoryService } from "./CheckInventoryService.js";
+import { GapService } from "./GapService.js";
 
 const DEFAULT_MAX_SIGNALS = 25;
 const MIN_COMMON_COMMAND_RUNS = 2;
@@ -94,6 +96,16 @@ export class AnalysisService {
     await this.addInstructionMentions(signals, inventory);
 
     const pieceIds = new Set(inventory.pieces.map((piece) => piece.id));
+    const totals = this.totalsOf(sessions, signals);
+    const usage = new UsageService(config.prices, pieceIds).pieceUsage(sessions);
+    const checks = await new CheckInventoryService(this.context.projectDir).inspect(sessions, inventory);
+    const versions = GapService.versionsOf(sessions, VersionUtil.VERSION, inventory.provider);
+    const gaps = new GapService(versions).gapsOf({
+      sessions,
+      checks,
+      usage,
+      unpricedModels: totals.unpricedModels,
+    });
     const analysis: Analysis = {
       tool: {
         name: "improve-my-harness",
@@ -124,7 +136,6 @@ export class AnalysisService {
         fromCache: loaded.cachedCount,
         unparsedLines: loaded.unparsedLines,
       },
-      totals: this.totalsOf(sessions, signals),
       inventory: {
         fingerprint: inventory.fingerprint,
         hasChangedSinceLastRun: hasChanged,
@@ -132,20 +143,41 @@ export class AnalysisService {
         pieces: inventory.pieces.map((piece) => InventoryService.compactPiece(piece)),
         notes: inventory.notes,
       },
-      usage: new UsageService(config.prices, pieceIds).pieceUsage(sessions),
       environment: {
         platforms: this.countedBySession(sessions, (session) => session.environment.platform),
         shells: this.countedBySession(sessions, (session) => session.environment.shell),
       },
       process: this.processProfile(sessions, pieceIds),
       commonCommands: this.commonCommands(sessions),
-      checks: await new CheckInventoryService(this.context.projectDir).inspect(sessions, inventory),
       suggestions: CollectionUtil.countBy(suggestions.map((suggestion) => suggestion.status)),
       dataDir: store.root,
+      totals,
+      usage,
+      checks,
+      gaps,
+      versions,
       signals,
     };
     await store.writeJson(AnalysisService.LAST_ANALYSIS_FILE, analysis);
     return this.compact(analysis, options);
+  }
+
+  // Why: an exact id wins over a longer id that merely starts with it.
+  static signalById(analysis: Analysis, signalId: string): Signal {
+    const signal = analysis.signals.find((candidate) => candidate.id === signalId)
+      ?? analysis.signals.find((candidate) => candidate.id.startsWith(signalId));
+    if (!signal) {
+      throw new Error(`Signal not found: ${signalId}`);
+    }
+    return signal;
+  }
+
+  static async lastAnalysis(store: StoreService): Promise<Analysis> {
+    const analysis = await store.readJson<Analysis>(AnalysisService.LAST_ANALYSIS_FILE);
+    if (!analysis) {
+      throw new Error("No analysis yet. Run `imh analyze` first.");
+    }
+    return analysis;
   }
 
   private compact(analysis: Analysis, options: AnalyzeOptions): CompactAnalysis {

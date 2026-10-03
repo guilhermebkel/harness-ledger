@@ -79,6 +79,10 @@ _Avoid_: proof, example, sample
 One time a signal happened, at one evidence line, with its own cost. A suggestion covers some occurrences of a signal, or all that no other suggestion took; each occurrence belongs to one suggestion.
 _Avoid_: instance, hit, case
 
+**Gap**:
+Something the analysis met but couldn't map: a transcript line it doesn't know, a file extension with no language, a check tool outside the catalog, a model with no price, a subagent whose type it couldn't tell. Each comes with a prefilled issue link holding only names and counts.
+_Avoid_: error, bug, unknown
+
 **Finding**:
 One or more signals with the same cause, classified and explained. Produced by the agent from signals, never from nothing.
 _Avoid_: insight, issue, recommendation

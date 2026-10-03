@@ -222,6 +222,15 @@ describe("parseSession on cases seen in real sessions", () => {
     expect(realFacts.prompts.find((prompt) => prompt.text.startsWith("não"))?.isCorrection).toBe(true);
   });
 
+  it("keeps the shape of a line type it doesn't know, and skips the ones Claude Code writes for its interface", () => {
+    expect(realFacts.unknownLines).toStrictEqual([{
+      type: "workspace-sync",
+      keys: ["cwd", "files", "gitBranch", "isSidechain", "sessionId", "syncId", "timestamp", "type", "uuid", "version"],
+      count: 1,
+    }]);
+    expect(realFacts.agentVersion).toBe("2.1.287");
+  });
+
   it("reads the platform and shell the session ran on", () => {
     expect(realFacts.environment).toStrictEqual({ platform: "darwin", shell: "zsh" });
   });

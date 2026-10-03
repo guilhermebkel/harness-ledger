@@ -117,8 +117,13 @@ _Time, tokens and cost add up the whole period (<N> sessions), not one session; 
 
 ## Before/after
 - <file>: <verdict> — <moves, e.g. "same cost, 40% faster">, only for files with an applied suggestion.
+
+## What the tool couldn't handle
+- <what it met, in plain words> · [open an issue](<issueUrl>) · [already reported?](<searchUrl>)
 ```
 
 When `totals.reportedByProvider.costUsd` exists, show it next to the estimate as the agent's own figure ("the agent reports $X"); never add the two. The totals don't overlap, so they can be listed side by side. A signal's `cost.bound` decides the wording: `lower` → "at least", `upper` → "at most", `estimate` → "about". **How we measured** restates `cost.method` in the person's words and language, never in the script's terms (no field names); when a suggestion combines signals, say what each part counts. Failure costs run until the call that worked (`details.chains`: chains, how many recovered, attempts), so "3 attempts, ~4 min until it worked" is the way to put them. Skill rows in `usage` overlap the main and agent rows.
+
+**What the tool couldn't handle** lists `gaps`: up to three, one line each (an unknown transcript line, an extension with no language, a check tool or a model the script doesn't know, a subagent whose type it couldn't tell), then "and N more" with no links. Say in one sentence, once, that each link opens a prefilled GitHub issue they can read and edit before sending, that it holds only names and counts, and that nothing is sent unless they submit it. When you already resolved a gap yourself (you know `.ex` is Elixir, you found what a package checks), say so in the line; the link still helps the next person.
 
 Leave out empty sections.

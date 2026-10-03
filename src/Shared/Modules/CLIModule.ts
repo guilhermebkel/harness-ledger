@@ -6,6 +6,7 @@ import { AnalyzeCommand } from "@/Shared/Commands/AnalyzeCommand.js";
 import { CompareCommand } from "@/Shared/Commands/CompareCommand.js";
 import { EvidenceCommand } from "@/Shared/Commands/EvidenceCommand.js";
 import { InventoryCommand } from "@/Shared/Commands/InventoryCommand.js";
+import { IssueCommand } from "@/Shared/Commands/IssueCommand.js";
 import { StatusCommand } from "@/Shared/Commands/StatusCommand.js";
 import { SuggestionsCommand } from "@/Shared/Commands/SuggestionsCommand.js";
 import type { CommonOptions } from "@/Shared/Protocols/CommandProtocol.js";
@@ -49,7 +50,7 @@ interface Invocation {
   common: CommonOptions;
 }
 
-type CommandName = "analyze" | "inventory" | "evidence" | "compare" | "status" | "suggestions";
+type CommandName = "analyze" | "inventory" | "evidence" | "compare" | "status" | "suggestions" | "issue";
 type SuggestionsSubcommand = "list" | "add" | "set";
 type CommandHandler = (invocation: Invocation) => Promise<unknown>;
 
@@ -96,6 +97,17 @@ export class CLIModule {
     },
     status: async ({ common }) => new StatusCommand().run(common),
     suggestions: async (invocation) => this.runSuggestions(invocation),
+    issue: async ({ values, rest, common }) => {
+      const [signalId] = rest;
+      if (!signalId || !values.note) {
+        throw new Error("Usage: imh issue <signal-id> --note \"why the rule looks wrong\"");
+      }
+      return new IssueCommand().run({
+        ...common,
+        signalId,
+        note: values.note,
+      });
+    },
   };
 
   static parseArguments(argv: string[]) {
@@ -133,6 +145,8 @@ Commands
   suggestions add         Add suggestions from --file <json> or stdin (array of objects)
   suggestions set <id> <status> [--note text]
   status                  Transcripts available, retention, pieces and config
+  issue <signal-id> --note <text>
+                          A prefilled GitHub issue questioning the rule behind a signal (nothing is sent)
 
 Options
   --project <dir>         Project directory (default: current directory)
