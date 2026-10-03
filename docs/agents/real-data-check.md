@@ -1,9 +1,9 @@
 # Checking a change on real sessions
 
-Tests use synthetic fixtures, so they can't show what a change does to real sessions. Run this before committing any change to `src/` that can move a number or a signal: a refactor, a parser change, a new rule or a new cost.
+Optional. The tests cover refactors and known cases; this shows what a change does to real numbers, which synthetic fixtures can't. Use it when you change a signal or cost rule, or add a provider (`docs/adding-a-provider.md`, step 6), and you want to see the effect on sessions you know.
 
-- A **refactor** must give an identical analysis.
-- A **rule or cost change** may give a different one, but every difference needs a cause you can name ("failures +24%: the cost now runs until the command that worked"). Write the main ones in the commit message.
+- Every difference should have a cause you can name ("failures +24%: the cost now runs until the command that worked"); write the main ones in the commit message.
+- A difference you can't explain is a fixture case and a test before it's accepted.
 
 ## Where the sessions come from
 
