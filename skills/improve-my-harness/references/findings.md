@@ -21,7 +21,8 @@ These are starting points, not rules; read the piece and what it loads (skill fi
 | --- | --- |
 | `failed_command` with `recoveredWith` and `mentions` | Rule exists, but is ignored |
 | `failed_command` with `recoveredWith`, no mentions | Missing instruction, or a script/hook if it repeats a lot |
-| `failed_command` with `details.chains.fixLoops` | The agent reruns a check (lint, types, tests, build) until it passes after fixing the code: a deterministic check in a `PostToolUse` hook on the edited file catches it earlier. Time and tokens until it worked are in `cost.fixLoop` |
+| `failed_command` with `details.chains.fixLoops`, on a check command (lint, types, tests, build) | The agent reruns the check until it passes after fixing the code: a deterministic check in a `PostToolUse` hook on the edited file catches it earlier. Time and tokens until it worked are in `cost.fixLoop`. See `references/deterministic-checks.md` |
+| `checks.missing` | Not a finding alone. With corrections about code quality or fix loops as evidence, a deterministic check: read `references/deterministic-checks.md` |
 | `failed_command` / `tool_error` without recovery | Partial instruction, or out of scope if it's a tool/plugin problem |
 | `permission_denied` | Missing instruction (the agent keeps trying something not allowed) or a permission rule the user may want; ask, never widen permissions on your own. `errors` holds the reason, e.g. the auto-mode classifier's category |
 | `api_error` | Structure change: a model name that doesn't exist, expired credentials or a proxy failing. `details.models` names the model; check the `model:` of the attributed agent or the settings |
@@ -58,7 +59,7 @@ When the project has no instruction file, the person has been repeating context 
    - **Conventions** they stated while correcting ("follow the repo's pattern for X").
    - Keep it under 30 lines and cite the evidence for each line. Don't describe the architecture or invent conventions the sessions don't show.
 2. **One piece per stage that needs it**, in stage order (setup, planning, exploration, implementation, validation, delivery), at most one per stage and only where the evidence points to a problem: many steps, failures or rejections, a `repeated_workflow`, `context_compaction`, or repeated corrections about that stage. Skip stages that go smoothly.
-3. **Deterministic first.** Split each stage into what always runs the same way and what needs judgment. The fixed part becomes a script or a hook (validation after edits is a `PostToolUse` hook, a branch setup or a PR is a script); only the judgment part becomes a skill or subagent (planning, review). Rule 7 applies.
+3. **Deterministic first.** Split each stage into what always runs the same way and what needs judgment. The fixed part becomes a script or a hook (validation after edits is a `PostToolUse` hook, a branch setup or a PR is a script); only the judgment part becomes a skill or subagent (planning, review). Rule 7 applies. For the validation stage, `checks` says which linters and scans exist; `references/deterministic-checks.md` says what to add.
 4. **Reuse before writing.** For each piece, check `references/community-extensions.md` for a skill or plugin to adopt or learn from, and say which. Never install one yourself.
 
 Draft new pieces in full, keep the list short (the 7-suggestion limit applies), and order it by stage, then by estimated cost.

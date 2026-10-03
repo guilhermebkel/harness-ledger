@@ -2,7 +2,7 @@
 // improve-my-harness — generated file, edit src/ and run `pnpm build`.
 
 // src/Shared/Modules/CLIModule.ts
-import { readFile as readFile5 } from "node:fs/promises";
+import { readFile as readFile6 } from "node:fs/promises";
 import { parseArgs } from "node:util";
 
 // src/Shared/Utils/CollectionUtil.ts
@@ -48,6 +48,19 @@ var CollectionUtil = class {
 
 // src/Shared/Utils/RedactUtil.ts
 import { homedir } from "node:os";
+
+// src/Shared/Utils/RegExpUtil.ts
+var RegExpUtil = class _RegExpUtil {
+  static escape(text) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+  // Why: whole terms only: "cat" must not match "category", and "lint" must not match "eslint-plugin".
+  static wholeTerm(term, flags = "") {
+    return new RegExp(`(?<![\\w-])${_RegExpUtil.escape(term)}(?![\\w-])`, flags);
+  }
+};
+
+// src/Shared/Utils/RedactUtil.ts
 var MASK = "[REDACTED]";
 var DEFAULT_EXCERPT_CHARS = 200;
 var SECRET_PATTERNS = [
@@ -93,7 +106,7 @@ var RedactUtil = class _RedactUtil {
     if (!isUsableHome) {
       return text;
     }
-    const escapedHome = home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escapedHome = RegExpUtil.escape(home);
     return text.replace(new RegExp(`${escapedHome}(?![\\w.-])`, "g"), "~");
   }
   static excerpt(text, maxChars = DEFAULT_EXCERPT_CHARS) {
@@ -2185,7 +2198,7 @@ var DEFAULT_MAX_MENTIONS = 8;
 var MIN_TERM_CHARS = 3;
 var MAX_MENTION_CHARS = 160;
 var TEXT_KINDS = /* @__PURE__ */ new Set(["instructions", "skill", "agent", "command"]);
-var MentionService = class _MentionService {
+var MentionService = class {
   constructor(inventory) {
     this.inventory = inventory;
   }
@@ -2198,7 +2211,7 @@ var MentionService = class _MentionService {
       }
       const lines = (await readFile(this.absolutePathOf(piece.path), "utf8").catch(() => "")).split(/\r?\n/);
       for (const term of searchTerms) {
-        const termPattern = new RegExp(`(?<![\\w-])${_MentionService.escapeRegExp(term)}(?![\\w-])`, "i");
+        const termPattern = RegExpUtil.wholeTerm(term, "i");
         lines.forEach((line, lineIndex) => {
           if (mentions.length < maxMentions && termPattern.test(line)) {
             mentions.push({
@@ -2213,9 +2226,6 @@ var MentionService = class _MentionService {
       }
     }
     return mentions;
-  }
-  static escapeRegExp(text) {
-    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
   absolutePathOf(piecePath) {
     const expandedPath = PathUtil.untildify(piecePath);
@@ -2298,6 +2308,457 @@ var ProcessProfileService = class _ProcessProfileService {
     return CollectionUtil.unique(
       [...valueToCount.entries()].sort((left, right) => right[1] - left[1]).map(([value]) => value)
     ).slice(0, limit);
+  }
+};
+
+// src/Shared/Services/CheckInventoryService.ts
+import { readdir, readFile as readFile2 } from "node:fs/promises";
+import { join as join2 } from "node:path";
+
+// src/Shared/Utils/CheckCatalogUtil.ts
+import { extname } from "node:path";
+var JS_LANGUAGES = ["javascript", "typescript"];
+var EXTENSION_TO_LANGUAGE = {
+  ".ts": "typescript",
+  ".tsx": "typescript",
+  ".mts": "typescript",
+  ".cts": "typescript",
+  ".js": "javascript",
+  ".jsx": "javascript",
+  ".mjs": "javascript",
+  ".cjs": "javascript",
+  ".vue": "javascript",
+  ".svelte": "javascript",
+  ".py": "python",
+  ".go": "go",
+  ".rb": "ruby",
+  ".java": "java",
+  ".kt": "kotlin",
+  ".rs": "rust",
+  ".php": "php",
+  ".cs": "csharp",
+  ".swift": "swift"
+};
+var CheckCatalogUtil = class {
+  // Why: every language with edits should have these; a missing one is what the skill may suggest.
+  static CORE_CATEGORIES = ["complexity", "deadCode", "duplication"];
+  static TOOLS = [
+    {
+      name: "eslint",
+      languages: JS_LANGUAGES,
+      categories: ["lint"],
+      packages: ["eslint"],
+      commands: ["eslint"],
+      configMarkers: [{ pattern: /["'](complexity|max-depth|max-nested-callbacks)["']/, categories: ["complexity"] }]
+    },
+    {
+      name: "eslint-plugin-sonarjs",
+      languages: JS_LANGUAGES,
+      categories: ["complexity"],
+      packages: ["eslint-plugin-sonarjs"]
+    },
+    {
+      name: "eslint-plugin-boundaries",
+      languages: JS_LANGUAGES,
+      categories: ["boundaries"],
+      packages: ["eslint-plugin-boundaries"]
+    },
+    {
+      name: "biome",
+      languages: JS_LANGUAGES,
+      categories: ["lint"],
+      packages: ["@biomejs/biome"],
+      commands: ["biome"]
+    },
+    {
+      name: "oxlint",
+      languages: JS_LANGUAGES,
+      categories: ["lint"],
+      packages: ["oxlint"],
+      commands: ["oxlint"]
+    },
+    {
+      name: "typescript",
+      languages: ["typescript"],
+      categories: ["types"],
+      packages: ["typescript"],
+      commands: ["tsc"]
+    },
+    {
+      name: "knip",
+      languages: JS_LANGUAGES,
+      categories: ["deadCode"],
+      packages: ["knip"],
+      commands: ["knip"]
+    },
+    {
+      name: "ts-prune",
+      languages: ["typescript"],
+      categories: ["deadCode"],
+      packages: ["ts-prune"],
+      commands: ["ts-prune"]
+    },
+    {
+      name: "jscpd",
+      languages: ["*"],
+      categories: ["duplication"],
+      packages: ["jscpd"],
+      commands: ["jscpd"]
+    },
+    {
+      name: "fallow",
+      languages: JS_LANGUAGES,
+      categories: ["deadCode", "duplication", "complexity", "cycles"],
+      packages: ["fallow"],
+      commands: ["fallow"]
+    },
+    {
+      name: "dpdm",
+      languages: JS_LANGUAGES,
+      categories: ["cycles"],
+      packages: ["dpdm"],
+      commands: ["dpdm"]
+    },
+    {
+      name: "madge",
+      languages: JS_LANGUAGES,
+      categories: ["cycles"],
+      packages: ["madge"],
+      commands: ["madge"]
+    },
+    {
+      name: "dependency-cruiser",
+      languages: JS_LANGUAGES,
+      categories: ["cycles", "boundaries"],
+      packages: ["dependency-cruiser"],
+      commands: ["depcruise"]
+    },
+    {
+      name: "vitest",
+      languages: JS_LANGUAGES,
+      categories: ["tests"],
+      packages: ["vitest"],
+      commands: ["vitest"]
+    },
+    {
+      name: "jest",
+      languages: JS_LANGUAGES,
+      categories: ["tests"],
+      packages: ["jest"],
+      commands: ["jest"]
+    },
+    {
+      name: "sherif",
+      languages: JS_LANGUAGES,
+      categories: ["monorepo"],
+      packages: ["sherif"],
+      commands: ["sherif"]
+    },
+    {
+      name: "syncpack",
+      languages: JS_LANGUAGES,
+      categories: ["monorepo"],
+      packages: ["syncpack"],
+      commands: ["syncpack"]
+    },
+    {
+      name: "publint",
+      languages: JS_LANGUAGES,
+      categories: ["package"],
+      packages: ["publint"],
+      commands: ["publint"]
+    },
+    {
+      name: "arethetypeswrong",
+      languages: ["typescript"],
+      categories: ["package"],
+      packages: ["@arethetypeswrong/cli"],
+      commands: ["attw"]
+    },
+    {
+      name: "ruff",
+      languages: ["python"],
+      categories: ["lint"],
+      packages: ["ruff"],
+      commands: ["ruff"],
+      configMarkers: [{ pattern: /\bC90\d?\b|mccabe/, categories: ["complexity"] }]
+    },
+    {
+      name: "flake8",
+      languages: ["python"],
+      categories: ["lint"],
+      packages: ["flake8"],
+      commands: ["flake8"],
+      configMarkers: [{ pattern: /max-complexity/, categories: ["complexity"] }]
+    },
+    {
+      name: "pylint",
+      languages: ["python"],
+      categories: ["lint"],
+      packages: ["pylint"],
+      commands: ["pylint"]
+    },
+    {
+      name: "mypy",
+      languages: ["python"],
+      categories: ["types"],
+      packages: ["mypy"],
+      commands: ["mypy"]
+    },
+    {
+      name: "pyright",
+      languages: ["python"],
+      categories: ["types"],
+      packages: ["pyright"],
+      commands: ["pyright"]
+    },
+    {
+      name: "radon",
+      languages: ["python"],
+      categories: ["complexity"],
+      packages: ["radon"],
+      commands: ["radon"]
+    },
+    {
+      name: "xenon",
+      languages: ["python"],
+      categories: ["complexity"],
+      packages: ["xenon"],
+      commands: ["xenon"]
+    },
+    {
+      name: "vulture",
+      languages: ["python"],
+      categories: ["deadCode"],
+      packages: ["vulture"],
+      commands: ["vulture"]
+    },
+    {
+      name: "pytest",
+      languages: ["python"],
+      categories: ["tests"],
+      packages: ["pytest"],
+      commands: ["pytest"]
+    },
+    {
+      name: "golangci-lint",
+      languages: ["go"],
+      categories: ["lint"],
+      commands: ["golangci-lint"],
+      configMarkers: [
+        { pattern: /\b(gocognit|gocyclo|cyclop)\b/, categories: ["complexity"] },
+        { pattern: /\b(unused|deadcode)\b/, categories: ["deadCode"] },
+        { pattern: /\bdupl\b/, categories: ["duplication"] }
+      ]
+    },
+    {
+      name: "lizard",
+      languages: ["*"],
+      categories: ["complexity"],
+      packages: ["lizard"],
+      commands: ["lizard"]
+    }
+  ];
+  static languageOf(filePath) {
+    return EXTENSION_TO_LANGUAGE[extname(filePath).toLowerCase()];
+  }
+  static coversLanguage(tool, language) {
+    return tool.languages.includes("*") || tool.languages.includes(language);
+  }
+};
+
+// src/Shared/Utils/GuardUtil.ts
+var GuardUtil = class _GuardUtil {
+  static asRecord(value) {
+    const isPlainObject = typeof value === "object" && value !== null && !Array.isArray(value);
+    return isPlainObject ? value : void 0;
+  }
+  static asString(value) {
+    return typeof value === "string" ? value : void 0;
+  }
+  static asNumber(value) {
+    return typeof value === "number" && Number.isFinite(value) ? value : void 0;
+  }
+  static asArray(value) {
+    return Array.isArray(value) ? value : [];
+  }
+  // Why: agents rename fields between versions.
+  static firstString(record, keys) {
+    for (const key of keys) {
+      const value = _GuardUtil.asString(record?.[key]);
+      if (value !== void 0) {
+        return value;
+      }
+    }
+    return void 0;
+  }
+  static parseJson(text) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return void 0;
+    }
+  }
+};
+
+// src/Shared/Services/CheckInventoryService.ts
+var ESLINT_CONFIG_FILES = [
+  "eslint.config.js",
+  "eslint.config.mjs",
+  "eslint.config.cjs",
+  "eslint.config.ts",
+  ".eslintrc",
+  ".eslintrc.js",
+  ".eslintrc.cjs",
+  ".eslintrc.json",
+  ".eslintrc.yml",
+  ".eslintrc.yaml"
+];
+var PYTHON_CONFIG_FILES = [
+  "pyproject.toml",
+  "setup.cfg",
+  "ruff.toml",
+  ".ruff.toml",
+  ".flake8",
+  "tox.ini",
+  "requirements.txt",
+  "requirements-dev.txt"
+];
+var GOLANGCI_CONFIG_FILES = [".golangci.yml", ".golangci.yaml", ".golangci.toml", ".golangci.json"];
+var MONOREPO_FILES = ["pnpm-workspace.yaml", "lerna.json", "turbo.json", "nx.json"];
+var MIN_LANGUAGE_EDITS = 5;
+var PACKAGE_ENTRY_FIELDS = ["exports", "main", "module", "bin"];
+var CheckInventoryService = class _CheckInventoryService {
+  constructor(projectDir) {
+    this.projectDir = projectDir;
+  }
+  async inspect(sessions, inventory) {
+    const files = await this.readProjectFiles();
+    const languages = _CheckInventoryService.languagesOf(sessions);
+    const tools = CheckCatalogUtil.TOOLS.map((definition) => this.detect(definition, files, sessions)).filter((tool) => tool !== void 0);
+    const packageJson = files.packageJson;
+    return {
+      languages,
+      tools,
+      hooks: inventory.pieces.filter((piece) => piece.kind === "hook").map((piece) => RedactUtil.redact(`${piece.name}: ${piece.description ?? ""}`)),
+      isMonorepo: files.hasMonorepoFile || packageJson?.workspaces !== void 0,
+      isPublishedPackage: _CheckInventoryService.isPublished(packageJson),
+      missing: _CheckInventoryService.missingChecks(languages, tools)
+    };
+  }
+  static languagesOf(sessions) {
+    const languages = sessions.flatMap((session) => session.tools).filter((call) => call.category === "edit" && call.filePath !== void 0).map((call) => CheckCatalogUtil.languageOf(call.filePath ?? "")).filter((language) => language !== void 0);
+    return Object.entries(CollectionUtil.countBy(languages)).map(([language, edits]) => ({
+      language,
+      edits
+    })).sort((left, right) => right.edits - left.edits);
+  }
+  static missingChecks(languages, tools) {
+    const toolDefinitions = tools.map((tool) => ({
+      tool,
+      definition: CheckCatalogUtil.TOOLS.find((definition) => definition.name === tool.name)
+    }));
+    return languages.filter((entry) => entry.edits >= MIN_LANGUAGE_EDITS).flatMap(({ language }) => CheckCatalogUtil.CORE_CATEGORIES.filter((category) => !toolDefinitions.some(({ tool, definition }) => definition !== void 0 && CheckCatalogUtil.coversLanguage(definition, language) && tool.categories.includes(category))).map((category) => ({
+      language,
+      category
+    })));
+  }
+  static isPublished(packageJson) {
+    const hasEntry = PACKAGE_ENTRY_FIELDS.some((field) => packageJson?.[field] !== void 0);
+    return packageJson !== void 0 && packageJson.private !== true && typeof packageJson.name === "string" && hasEntry;
+  }
+  detect(definition, files, sessions) {
+    const configText = this.ownConfigText(definition, files);
+    const scriptRuns = _CheckInventoryService.scriptRunsOf(definition, files);
+    const runsTool = (text) => (definition.commands ?? []).some((command) => _CheckInventoryService.mentions(text, command)) || scriptRuns.some((scriptRun) => scriptRun.test(text));
+    const foundIn = this.sourcesOf(definition, files, runsTool);
+    const sessionCount = sessions.filter((session) => session.tools.some((call) => call.category === "shell" && runsTool(call.summary))).length;
+    if (!foundIn.length && sessionCount === 0) {
+      return void 0;
+    }
+    const markerCategories = (definition.configMarkers ?? []).filter((marker) => marker.pattern.test(configText)).flatMap((marker) => marker.categories);
+    const places = [
+      ...sessionCount > 0 ? ["sessions"] : [],
+      ...foundIn.includes("ci") ? ["ci"] : []
+    ];
+    return {
+      name: definition.name,
+      categories: CollectionUtil.unique([...definition.categories, ...markerCategories]),
+      foundIn: foundIn.filter((source) => source !== "ci"),
+      runsIn: places,
+      sessions: sessionCount
+    };
+  }
+  ownConfigText(definition, files) {
+    if (definition.name === "eslint") {
+      return files.sourceToText["eslint config"];
+    }
+    if (definition.name === "golangci-lint") {
+      return files.sourceToText["golangci config"];
+    }
+    return definition.languages.includes("python") ? files.sourceToText["python config"] : "";
+  }
+  sourcesOf(definition, files, runsTool) {
+    const names = [definition.name, ...definition.packages ?? [], ...definition.commands ?? []];
+    const dependencies = _CheckInventoryService.dependencyNames(files.packageJson);
+    const scripts = Object.values(GuardUtil.asRecord(files.packageJson?.scripts) ?? {}).map(String).join("\n");
+    const isInPackageJson = (definition.packages ?? []).some((name) => dependencies.has(name)) || (definition.commands ?? []).some((command) => _CheckInventoryService.mentions(scripts, command));
+    const sources = isInPackageJson ? ["package.json"] : [];
+    const isEslint = definition.name === "eslint" && files.sourceToText["eslint config"] !== "";
+    const isGolangci = definition.name === "golangci-lint" && files.sourceToText["golangci config"] !== "";
+    const isPython = definition.languages.includes("python") && names.some((name) => _CheckInventoryService.mentions(files.sourceToText["python config"], name));
+    const isInCi = runsTool(files.sourceToText.ci);
+    return [
+      ...sources,
+      ...isEslint ? ["eslint config"] : [],
+      ...isGolangci ? ["golangci config"] : [],
+      ...isPython ? ["python config"] : [],
+      ...isInCi ? ["ci"] : []
+    ];
+  }
+  // Why: the agent and CI often run a check through a package.json script (`pnpm lint` running eslint), so a run
+  // counts when it calls the tool directly or a script that does.
+  static scriptRunsOf(definition, files) {
+    const commands = definition.commands ?? [];
+    const scripts = GuardUtil.asRecord(files.packageJson?.scripts) ?? {};
+    return Object.entries(scripts).filter(([, scriptText]) => commands.some((command) => _CheckInventoryService.mentions(String(scriptText), command))).map(([name]) => new RegExp(`\\b(npm|pnpm|yarn|bun)( run)? ${RegExpUtil.escape(name)}(?![\\w-])`));
+  }
+  static mentions(text, word) {
+    return RegExpUtil.wholeTerm(word).test(text);
+  }
+  static dependencyNames(packageJson) {
+    const dependencyFields = ["dependencies", "devDependencies", "optionalDependencies"];
+    return new Set(dependencyFields.flatMap((field) => Object.keys(GuardUtil.asRecord(packageJson?.[field]) ?? {})));
+  }
+  async readProjectFiles() {
+    const packageText = await this.readText("package.json");
+    const workflowDir = join2(this.projectDir, ".github", "workflows");
+    const workflowFiles = await readdir(workflowDir).catch(() => []);
+    const ciTexts = await Promise.all([
+      ...workflowFiles.filter((file) => /\.ya?ml$/.test(file)).map((file) => {
+        const workflowFile = join2(".github", "workflows", file);
+        return this.readText(workflowFile);
+      }),
+      this.readText(".gitlab-ci.yml")
+    ]);
+    const monorepoTexts = await Promise.all(MONOREPO_FILES.map((file) => this.readText(file)));
+    return {
+      packageJson: GuardUtil.asRecord(GuardUtil.parseJson(packageText)),
+      sourceToText: {
+        "eslint config": await this.readAll(ESLINT_CONFIG_FILES),
+        "python config": await this.readAll(PYTHON_CONFIG_FILES),
+        "golangci config": await this.readAll(GOLANGCI_CONFIG_FILES),
+        "ci": ciTexts.join("\n")
+      },
+      hasMonorepoFile: monorepoTexts.some((text) => text !== "")
+    };
+  }
+  async readAll(relativePaths) {
+    const texts = await Promise.all(relativePaths.map((relativePath) => this.readText(relativePath)));
+    return texts.join("\n").trim();
+  }
+  async readText(relativePath) {
+    return readFile2(join2(this.projectDir, relativePath), "utf8").catch(() => "");
   }
 };
 
@@ -2389,6 +2850,7 @@ var AnalysisService = class _AnalysisService {
       },
       process: this.processProfile(sessions, pieceIds),
       commonCommands: this.commonCommands(sessions),
+      checks: await new CheckInventoryService(this.context.projectDir).inspect(sessions, inventory),
       suggestions: CollectionUtil.countBy(suggestions.map((suggestion) => suggestion.status)),
       dataDir: store.root,
       signals
@@ -2585,8 +3047,8 @@ var BaseProviderAdapter = class {
 };
 
 // src/Providers/ClaudeCode/Services/ClaudeCodeInventoryService.ts
-import { readdir, readFile as readFile2, realpath, stat } from "node:fs/promises";
-import { basename, dirname, join as join2, relative } from "node:path";
+import { readdir as readdir2, readFile as readFile3, realpath, stat } from "node:fs/promises";
+import { basename, dirname, join as join3, relative } from "node:path";
 
 // src/Shared/Utils/FrontmatterUtil.ts
 var BLOCK_TEXT_MARKERS = /* @__PURE__ */ new Set(["|", ">", "|-", ">-"]);
@@ -2734,40 +3196,6 @@ var GitUtil = class {
   }
 };
 
-// src/Shared/Utils/GuardUtil.ts
-var GuardUtil = class _GuardUtil {
-  static asRecord(value) {
-    const isPlainObject = typeof value === "object" && value !== null && !Array.isArray(value);
-    return isPlainObject ? value : void 0;
-  }
-  static asString(value) {
-    return typeof value === "string" ? value : void 0;
-  }
-  static asNumber(value) {
-    return typeof value === "number" && Number.isFinite(value) ? value : void 0;
-  }
-  static asArray(value) {
-    return Array.isArray(value) ? value : [];
-  }
-  // Why: agents rename fields between versions.
-  static firstString(record, keys) {
-    for (const key of keys) {
-      const value = _GuardUtil.asString(record?.[key]);
-      if (value !== void 0) {
-        return value;
-      }
-    }
-    return void 0;
-  }
-  static parseJson(text) {
-    try {
-      return JSON.parse(text);
-    } catch {
-      return void 0;
-    }
-  }
-};
-
 // src/Providers/ClaudeCode/Services/ClaudeCodeInventoryService.ts
 var DEFAULT_RETENTION_DAYS = 30;
 var MAX_DESCRIPTION_CHARS = 300;
@@ -2817,7 +3245,7 @@ var InventoryBuilder = class {
   async fileHash(file) {
     const fileStat = await stat(file).catch(() => void 0);
     const isHashable = fileStat !== void 0 && fileStat.size <= MAX_HASHED_FILE_BYTES;
-    const content = isHashable ? await readFile2(file).catch(() => Buffer.alloc(0)) : Buffer.from(`${fileStat?.size ?? 0}`);
+    const content = isHashable ? await readFile3(file).catch(() => Buffer.alloc(0)) : Buffer.from(`${fileStat?.size ?? 0}`);
     return HashUtil.sha(`${relative(this.projectDir, file)}
 ${content.toString("base64")}`);
   }
@@ -2829,7 +3257,7 @@ ${content.toString("base64")}`);
   }
   async addFile(filePiece) {
     const isNew = await this.markSeen(filePiece.file);
-    const text = isNew ? await readFile2(filePiece.file, "utf8").catch(() => void 0) : void 0;
+    const text = isNew ? await readFile3(filePiece.file, "utf8").catch(() => void 0) : void 0;
     if (text === void 0) {
       return;
     }
@@ -2871,7 +3299,7 @@ var ClaudeCodeInventoryService = class {
     const builder = new InventoryBuilder(projectDir, await GitUtil.readChangeDates(projectDir, HARNESS_PATHS));
     const shouldIncludeUser = !options.isProjectOnly;
     await this.addInstructionFiles(builder, shouldIncludeUser);
-    await this.addComponents(builder, join2(projectDir, ".claude"), "project");
+    await this.addComponents(builder, join3(projectDir, ".claude"), "project");
     if (shouldIncludeUser) {
       await this.addComponents(builder, this.homeDir, "user");
     }
@@ -2896,19 +3324,19 @@ var ClaudeCodeInventoryService = class {
     const projectDir = builder.projectDir;
     const instructionFiles = [
       {
-        file: join2(projectDir, "CLAUDE.md"),
+        file: join3(projectDir, "CLAUDE.md"),
         kind: "instructions",
         name: "project",
         scope: "project"
       },
       {
-        file: join2(projectDir, ".claude", "CLAUDE.md"),
+        file: join3(projectDir, ".claude", "CLAUDE.md"),
         kind: "instructions",
         name: "project-dotclaude",
         scope: "project"
       },
       {
-        file: join2(projectDir, "CLAUDE.local.md"),
+        file: join3(projectDir, "CLAUDE.local.md"),
         kind: "instructions",
         name: "local",
         scope: "local"
@@ -2916,7 +3344,7 @@ var ClaudeCodeInventoryService = class {
     ];
     if (shouldIncludeUser) {
       instructionFiles.push({
-        file: join2(this.homeDir, "CLAUDE.md"),
+        file: join3(this.homeDir, "CLAUDE.md"),
         kind: "instructions",
         name: "user",
         scope: "user"
@@ -2929,9 +3357,9 @@ var ClaudeCodeInventoryService = class {
   async addComponents(builder, baseDir, scope, componentOptions = {}) {
     const prefix = componentOptions.namePrefix ?? "";
     const plugin = componentOptions.plugin;
-    for (const skillDir of await readdir(join2(baseDir, "skills")).catch(() => [])) {
-      const skillFolder = join2(baseDir, "skills", skillDir);
-      const file = join2(skillFolder, "SKILL.md");
+    for (const skillDir of await readdir2(join3(baseDir, "skills")).catch(() => [])) {
+      const skillFolder = join3(baseDir, "skills", skillDir);
+      const file = join3(skillFolder, "SKILL.md");
       const declaredName = await this.declaredNameOf(file);
       const extraFiles = await this.skillFolderFiles(skillFolder);
       await builder.addFile({
@@ -2943,7 +3371,7 @@ var ClaudeCodeInventoryService = class {
         name: `${prefix}${declaredName ?? skillDir}`
       });
     }
-    const rootSkill = join2(baseDir, "SKILL.md");
+    const rootSkill = join3(baseDir, "SKILL.md");
     const rootSkillStat = componentOptions.canBeRootSkill ? await stat(rootSkill).catch(() => void 0) : void 0;
     if (rootSkillStat !== void 0) {
       await builder.addFile({
@@ -2954,7 +3382,7 @@ var ClaudeCodeInventoryService = class {
         plugin
       });
     }
-    const agentsDir = join2(baseDir, "agents");
+    const agentsDir = join3(baseDir, "agents");
     for (const file of await this.listMarkdownFiles(agentsDir)) {
       const declaredName = await this.declaredNameOf(file);
       await builder.addFile({
@@ -2965,7 +3393,7 @@ var ClaudeCodeInventoryService = class {
         name: `${prefix}${declaredName ?? this.nameFromPath(agentsDir, file)}`
       });
     }
-    const commandsDir = join2(baseDir, "commands");
+    const commandsDir = join3(baseDir, "commands");
     for (const file of await this.listMarkdownFiles(commandsDir)) {
       await builder.addFile({
         file,
@@ -2977,7 +3405,7 @@ var ClaudeCodeInventoryService = class {
     }
   }
   async declaredNameOf(file) {
-    const text = await readFile2(file, "utf8").catch(() => "");
+    const text = await readFile3(file, "utf8").catch(() => "");
     return FrontmatterUtil.asText(FrontmatterUtil.parse(text).data.name);
   }
   // Why: Claude Code names nested components with `:` (`agents/review/security.md` → `review:security`).
@@ -2988,10 +3416,10 @@ var ClaudeCodeInventoryService = class {
     if (depth > MAX_SKILL_FOLDER_DEPTH) {
       return [];
     }
-    const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+    const entries = await readdir2(dir, { withFileTypes: true }).catch(() => []);
     const files = [];
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-      const entryPath = join2(dir, entry.name);
+      const entryPath = join3(dir, entry.name);
       const isHidden = entry.name.startsWith(".");
       if (entry.isDirectory() && !isHidden && !SKIPPED_FOLDERS.has(entry.name)) {
         files.push(...await this.skillFolderFiles(entryPath, depth + 1));
@@ -3007,10 +3435,10 @@ var ClaudeCodeInventoryService = class {
     if (depth > MAX_COMPONENT_DEPTH) {
       return [];
     }
-    const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+    const entries = await readdir2(dir, { withFileTypes: true }).catch(() => []);
     const files = [];
     for (const entry of entries) {
-      const entryPath = join2(dir, entry.name);
+      const entryPath = join3(dir, entry.name);
       if (entry.isDirectory()) {
         files.push(...await this.listMarkdownFiles(entryPath, depth + 1));
       }
@@ -3026,17 +3454,17 @@ var ClaudeCodeInventoryService = class {
     const settingsFiles = [];
     if (shouldIncludeUser) {
       settingsFiles.push({
-        file: join2(this.homeDir, "settings.json"),
+        file: join3(this.homeDir, "settings.json"),
         scope: "user"
       });
     }
     settingsFiles.push(
       {
-        file: join2(projectDir, ".claude", "settings.json"),
+        file: join3(projectDir, ".claude", "settings.json"),
         scope: "project"
       },
       {
-        file: join2(projectDir, ".claude", "settings.local.json"),
+        file: join3(projectDir, ".claude", "settings.local.json"),
         scope: "local"
       }
     );
@@ -3125,7 +3553,7 @@ var ClaudeCodeInventoryService = class {
     return pieces;
   }
   async addMcpServers(builder, shouldIncludeUser) {
-    const projectMcpFile = join2(builder.projectDir, ".mcp.json");
+    const projectMcpFile = join3(builder.projectDir, ".mcp.json");
     const projectMcp = await this.readJsonFile(projectMcpFile);
     const projectServers = GuardUtil.asRecord(projectMcp?.mcpServers);
     const projectChange = await builder.changeOf(projectMcpFile, "project");
@@ -3176,7 +3604,7 @@ var ClaudeCodeInventoryService = class {
       if (!pluginIdToIsEnabled.has(pluginId)) {
         builder.notes.push(`Plugin ${pluginId} is installed but not listed in enabledPlugins; assumed enabled.`);
       }
-      const manifestFile = join2(installPath, ".claude-plugin", "plugin.json");
+      const manifestFile = join3(installPath, ".claude-plugin", "plugin.json");
       const manifest = await this.readJsonFile(manifestFile);
       const serialized = JSON.stringify(manifest ?? {});
       builder.pieces.push({
@@ -3203,7 +3631,7 @@ var ClaudeCodeInventoryService = class {
   // Why: `installed_plugins.json` has an older and a versioned shape; both are accepted.
   async readInstalledPlugins() {
     const pluginIdToInstallPath = /* @__PURE__ */ new Map();
-    const installedFile = join2(this.homeDir, "plugins", "installed_plugins.json");
+    const installedFile = join3(this.homeDir, "plugins", "installed_plugins.json");
     const installed = await this.readJsonFile(installedFile);
     const plugins = GuardUtil.asRecord(installed?.plugins) ?? installed ?? {};
     for (const [pluginId, value] of Object.entries(plugins)) {
@@ -3216,14 +3644,14 @@ var ClaudeCodeInventoryService = class {
     return pluginIdToInstallPath;
   }
   async readJsonFile(file) {
-    const text = await readFile2(file, "utf8").catch(() => void 0);
+    const text = await readFile3(file, "utf8").catch(() => void 0);
     return text === void 0 ? void 0 : GuardUtil.asRecord(GuardUtil.parseJson(text));
   }
 };
 
 // src/Providers/ClaudeCode/Services/ClaudeCodeSessionService.ts
-import { readdir as readdir2, readFile as readFile3, stat as stat2 } from "node:fs/promises";
-import { basename as basename2, isAbsolute as isAbsolute2, join as join4, relative as relative2 } from "node:path";
+import { readdir as readdir3, readFile as readFile4, stat as stat2 } from "node:fs/promises";
+import { basename as basename2, isAbsolute as isAbsolute2, join as join5, relative as relative2 } from "node:path";
 
 // src/Shared/Utils/JsonlUtil.ts
 import { createReadStream } from "node:fs";
@@ -3259,7 +3687,7 @@ var JsonlUtil = class _JsonlUtil {
 
 // src/Providers/ClaudeCode/Utils/ClaudeCodePathUtil.ts
 import { homedir as homedir3 } from "node:os";
-import { join as join3 } from "node:path";
+import { join as join4 } from "node:path";
 
 // src/Shared/Utils/EnvUtil.ts
 var EnvUtil = class {
@@ -3274,11 +3702,11 @@ var EnvUtil = class {
 var ClaudeCodePathUtil = class {
   // Why: `IMH_CLAUDE_HOME` exists so tests can point at a fixture.
   static homeDir() {
-    return EnvUtil.read("IMH_CLAUDE_HOME") ?? EnvUtil.read("CLAUDE_CONFIG_DIR") ?? join3(homedir3(), ".claude");
+    return EnvUtil.read("IMH_CLAUDE_HOME") ?? EnvUtil.read("CLAUDE_CONFIG_DIR") ?? join4(homedir3(), ".claude");
   }
   static claudeJsonPath() {
     const configDir = EnvUtil.read("CLAUDE_CONFIG_DIR");
-    const defaultPath = configDir ? join3(configDir, ".claude.json") : join3(homedir3(), ".claude.json");
+    const defaultPath = configDir ? join4(configDir, ".claude.json") : join4(homedir3(), ".claude.json");
     return EnvUtil.read("IMH_CLAUDE_JSON") ?? defaultPath;
   }
   // Why: Claude Code keeps a project's transcripts in `projects/<cwd with every non-alphanumeric character replaced by "-">`.
@@ -3377,22 +3805,22 @@ var ClaudeCodeSessionService = class {
     this.homeDir = homeDir;
   }
   async discoverTranscripts(options) {
-    const projectsDir = join4(this.homeDir, "projects");
-    const projectFolders = await readdir2(projectsDir).catch(() => []);
+    const projectsDir = join5(this.homeDir, "projects");
+    const projectFolders = await readdir3(projectsDir).catch(() => []);
     const encodedProject = ClaudeCodePathUtil.encodeProjectDir(options.projectDir);
     const isCandidateFolder = (folder) => folder === encodedProject || folder.startsWith(`${encodedProject}-`);
     const selectedFolders = options.shouldReadAllProjects ? projectFolders : projectFolders.filter(isCandidateFolder);
     const transcripts = [];
     for (const folder of selectedFolders) {
-      const folderPath = join4(projectsDir, folder);
-      const entries = await readdir2(folderPath).catch(() => []);
+      const folderPath = join5(projectsDir, folder);
+      const entries = await readdir3(folderPath).catch(() => []);
       for (const entry of entries.filter((name) => name.endsWith(TRANSCRIPT_EXTENSION))) {
-        const fileStat = await this.statFile(join4(folderPath, entry));
+        const fileStat = await this.statFile(join5(folderPath, entry));
         if (!fileStat) {
           continue;
         }
         const sessionId = entry.slice(0, -TRANSCRIPT_EXTENSION.length);
-        const subagentFolder = join4(folderPath, sessionId, "subagents");
+        const subagentFolder = join5(folderPath, sessionId, "subagents");
         const subagentFiles = await this.listSubagentFiles(subagentFolder);
         transcripts.push({
           ...fileStat,
@@ -3465,9 +3893,9 @@ var ClaudeCodeSessionService = class {
     return facts;
   }
   async listSubagentFiles(subagentsDir) {
-    const entries = await readdir2(subagentsDir).catch(() => []);
+    const entries = await readdir3(subagentsDir).catch(() => []);
     const stats = await Promise.all(
-      entries.filter((name) => name.endsWith(TRANSCRIPT_EXTENSION)).map(async (name) => this.statFile(join4(subagentsDir, name)))
+      entries.filter((name) => name.endsWith(TRANSCRIPT_EXTENSION)).map(async (name) => this.statFile(join5(subagentsDir, name)))
     );
     return stats.filter((fileStat) => fileStat !== void 0);
   }
@@ -3546,7 +3974,7 @@ var ClaudeCodeSessionService = class {
   }
   async readSubagentMetaType(subagentFile) {
     const metaFile = subagentFile.replace(/\.jsonl$/, ".meta.json");
-    const metaText = await readFile3(metaFile, "utf8").catch(() => void 0);
+    const metaText = await readFile4(metaFile, "utf8").catch(() => void 0);
     if (metaText === void 0) {
       return void 0;
     }
@@ -4113,8 +4541,8 @@ var ConfigService = class _ConfigService {
 import { cpus } from "node:os";
 
 // src/Shared/Services/StoreService.ts
-import { mkdir, readFile as readFile4, rename, writeFile } from "node:fs/promises";
-import { dirname as dirname2, join as join5 } from "node:path";
+import { mkdir, readFile as readFile5, rename, writeFile } from "node:fs/promises";
+import { dirname as dirname2, join as join6 } from "node:path";
 var DATA_DIR_NAME = ".imh";
 var JSON_INDENT = 2;
 var FACTS_CACHE_FILE = "cache/facts.json";
@@ -4127,19 +4555,19 @@ var StoreService = class _StoreService {
   // Why: bump when the parser's output shape changes, so cached facts are re-parsed.
   static FACTS_VERSION = 5;
   static forProject(projectDir, dataDir) {
-    return new _StoreService(dataDir ?? join5(projectDir, DATA_DIR_NAME));
+    return new _StoreService(dataDir ?? join6(projectDir, DATA_DIR_NAME));
   }
   /**
    * Why: Reads a file this tool wrote. Its shape is trusted because only this tool writes it;
    * files people may edit by hand (config.json) are validated by their reader.
    */
   async readJson(relativePath) {
-    const text = await readFile4(join5(this.root, relativePath), "utf8").catch(() => void 0);
+    const text = await readFile5(join6(this.root, relativePath), "utf8").catch(() => void 0);
     return text === void 0 ? void 0 : GuardUtil.parseJson(text);
   }
   // Why: writes atomically (temp file + rename), so a crash never leaves a half-written file.
   async writeJson(relativePath, value, shouldIndent = true) {
-    const file = join5(this.root, relativePath);
+    const file = join6(this.root, relativePath);
     await mkdir(dirname2(file), { recursive: true });
     const temporaryFile = `${file}.${process.pid}.tmp`;
     const serialized = JSON.stringify(value, null, shouldIndent ? JSON_INDENT : 0);
@@ -4733,7 +5161,7 @@ Output is JSON on stdout. Nothing leaves your machine.`;
       });
     }
     if (subcommand === "add") {
-      const rawJson = values.file ? await readFile5(values.file, "utf8") : await this.readStdin();
+      const rawJson = values.file ? await readFile6(values.file, "utf8") : await this.readStdin();
       const items = GuardUtil.parseJson(rawJson);
       if (items === void 0) {
         throw new Error("Suggestions must be valid JSON.");

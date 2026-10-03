@@ -6,6 +6,7 @@ import type { Inventory, PieceKind } from "@/Shared/Protocols/HarnessProtocol.js
 import type { Mention } from "@/Shared/Protocols/SignalProtocol.js";
 import { PathUtil } from "@/Shared/Utils/PathUtil.js";
 import { RedactUtil } from "@/Shared/Utils/RedactUtil.js";
+import { RegExpUtil } from "@/Shared/Utils/RegExpUtil.js";
 
 const DEFAULT_MAX_MENTIONS = 8;
 const MIN_TERM_CHARS = 3;
@@ -25,7 +26,7 @@ export class MentionService {
       const lines = (await readFile(this.absolutePathOf(piece.path), "utf8").catch(() => "")).split(/\r?\n/);
       for (const term of searchTerms) {
         // Why: whole terms only: "cat" must not match "category".
-        const termPattern = new RegExp(`(?<![\\w-])${MentionService.escapeRegExp(term)}(?![\\w-])`, "i");
+        const termPattern = RegExpUtil.wholeTerm(term, "i");
         lines.forEach((line, lineIndex) => {
           if (mentions.length < maxMentions && termPattern.test(line)) {
             mentions.push({
@@ -40,10 +41,6 @@ export class MentionService {
       }
     }
     return mentions;
-  }
-
-  private static escapeRegExp(text: string): string {
-    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 
   private absolutePathOf(piecePath: string): string {

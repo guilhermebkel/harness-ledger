@@ -30,6 +30,7 @@ import { MentionService } from "./MentionService.js";
 import { ProcessProfileService } from "./ProcessProfileService.js";
 import { SignalService } from "./SignalService.js";
 import { UsageService } from "./UsageService.js";
+import { CheckInventoryService } from "./CheckInventoryService.js";
 
 const DEFAULT_MAX_SIGNALS = 25;
 const MIN_COMMON_COMMAND_RUNS = 2;
@@ -131,6 +132,7 @@ export class AnalysisService {
       },
       process: this.processProfile(sessions, pieceIds),
       commonCommands: this.commonCommands(sessions),
+      checks: await new CheckInventoryService(this.context.projectDir).inspect(sessions, inventory),
       suggestions: CollectionUtil.countBy(suggestions.map((suggestion) => suggestion.status)),
       dataDir: store.root,
       signals,

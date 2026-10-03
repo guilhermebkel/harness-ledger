@@ -1,6 +1,7 @@
 // Why: everything leaves the parser redacted (ADR 0007): reports, cached facts and stdout.
 
 import { homedir } from "node:os";
+import { RegExpUtil } from "./RegExpUtil.js";
 
 const MASK = "[REDACTED]";
 const DEFAULT_EXCERPT_CHARS = 200;
@@ -52,7 +53,7 @@ export class RedactUtil {
       return text;
     }
     // Why: a longer folder that starts with the same name (/home/ana2 for /home/ana) is someone else's.
-    const escapedHome = home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escapedHome = RegExpUtil.escape(home);
     return text.replace(new RegExp(`${escapedHome}(?![\\w.-])`, "g"), "~");
   }
 
