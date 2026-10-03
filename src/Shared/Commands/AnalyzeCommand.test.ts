@@ -11,24 +11,7 @@ import { AnalyzeCommand } from "./AnalyzeCommand.js";
 const { FAKE_SECRETS } = ClaudeCodeFixtureUtil;
 const command = new AnalyzeCommand();
 
-let fixture: Fixture;
-let restoreEnv: () => void;
-
-beforeAll(() => {
-  fixture = ClaudeCodeFixtureUtil.makeFixture();
-  ClaudeCodeFixtureUtil.writeHarness(fixture);
-  ClaudeCodeFixtureUtil.writeHistory(fixture);
-  restoreEnv = ClaudeCodeFixtureUtil.useFixtureEnv(fixture);
-});
-
-afterAll(() => {
-  restoreEnv();
-  rmSync(fixture.root, { recursive: true, force: true });
-});
-
-function commonOptions() {
-  return { projectDir: fixture.projectDir, dataDir: fixture.dataDir };
-}
+const history = ClaudeCodeFixtureUtil.useHistoryFixture();
 
 function signalById(signals: Signal[], id: string): Signal {
   const signal = signals.find((candidate) => candidate.id === id);
@@ -40,7 +23,7 @@ function signalById(signals: Signal[], id: string): Signal {
 
 describe("AnalyzeCommand", () => {
   it("finds the enforcement gap, the command that worked and the instruction that already covers it", async () => {
-    const analysis = await command.run(commonOptions());
+    const analysis = await command.run(history.commonOptions());
     const npmTest = signalById(analysis.signals, "failed_command:npm test");
     expect(npmTest).toMatchObject({ occurrences: 3, sessions: 3, pieces: ["agent:test-runner"] });
     expect(npmTest.details.recoveredWith).toEqual([{ value: "pnpm test", count: 3 }]);
@@ -57,7 +40,7 @@ describe("AnalyzeCommand", () => {
   });
 
   it("finds subagent re-reads, repeated reads, permission denials and repeated requests", async () => {
-    const analysis = await command.run(commonOptions());
+    const analysis = await command.run(history.commonOptions());
     const signalIds = analysis.signals.map((signal) => signal.id);
     expect(signalIds).toEqual(
       expect.arrayContaining([
@@ -74,7 +57,7 @@ describe("AnalyzeCommand", () => {
   });
 
   it("reports the provider, history, totals and per-piece usage", async () => {
-    const analysis = await command.run(commonOptions());
+    const analysis = await command.run(history.commonOptions());
     expect(analysis.provider).toBe("claude-code");
     expect(analysis.analyzed.sessions).toBe(6);
     expect(analysis.history).toMatchObject({ transcriptsAvailable: 6, retentionDays: 60 });
@@ -89,28 +72,28 @@ describe("AnalyzeCommand", () => {
   });
 
   it("never prints secret values", async () => {
-    const serialized = JSON.stringify(await command.run(commonOptions()));
+    const serialized = JSON.stringify(await command.run(history.commonOptions()));
     for (const secret of Object.values(FAKE_SECRETS)) {
       expect(serialized).not.toContain(secret);
     }
   });
 
   it("reuses the cache on the next run and can focus on one piece", async () => {
-    await command.run(commonOptions());
-    const secondRun = await command.run(commonOptions());
+    await command.run(history.commonOptions());
+    const secondRun = await command.run(history.commonOptions());
     expect(secondRun.analyzed).toMatchObject({ parsedNow: 0, fromCache: 6 });
-    const focused = await command.run({ ...commonOptions(), focusPieces: ["agent:code-reviewer"] });
+    const focused = await command.run({ ...history.commonOptions(), focusPieces: ["agent:code-reviewer"] });
     expect(focused.analyzed.sessions).toBe(1);
     expect(focused.signals.every((signal) => signal.pieces.includes("agent:code-reviewer"))).toBe(true);
   });
 
   it("leaves out excluded sessions", async () => {
-    const analysis = await command.run({ ...commonOptions(), excludedSessionIds: ["s5"] });
+    const analysis = await command.run({ ...history.commonOptions(), excludedSessionIds: ["s5"] });
     expect(analysis.analyzed.sessions).toBe(5);
   });
 
   it("filters by period", async () => {
-    const analysis = await command.run({ ...commonOptions(), since: "2026-09-13" });
+    const analysis = await command.run({ ...history.commonOptions(), since: "2026-09-13" });
     expect(analysis.analyzed.sessions).toBe(3);
   });
 });
@@ -120,7 +103,6 @@ describe("AnalyzeCommand on cases seen in real sessions", () => {
   let restoreRealEnv: () => void;
 
   beforeAll(() => {
-    restoreEnv();
     realFixture = ClaudeCodeFixtureUtil.makeFixture();
     ClaudeCodeFixtureUtil.writeHarness(realFixture);
     ClaudeCodeFixtureUtil.writeRealCasesSession(realFixture, "real1", "2026-09-20T10:00:00.000Z");
@@ -130,7 +112,6 @@ describe("AnalyzeCommand on cases seen in real sessions", () => {
 
   afterAll(() => {
     restoreRealEnv();
-    restoreEnv = ClaudeCodeFixtureUtil.useFixtureEnv(fixture);
     rmSync(realFixture.root, { recursive: true, force: true });
   });
 
@@ -192,7 +173,6 @@ describe("AnalyzeCommand on data Claude Code computes itself", () => {
   let restoreReportEnv: () => void;
 
   beforeAll(() => {
-    restoreEnv();
     reportFixture = ClaudeCodeFixtureUtil.makeFixture();
     const agentFile = join(reportFixture.projectDir, ".claude", "agents", "migrations-writer.md");
     writeFileSync(agentFile, "---\nname: migrations-writer\ndescription: Writes migrations\nmodel: glm-5.3\n---\nWrite it.\n");
@@ -203,7 +183,6 @@ describe("AnalyzeCommand on data Claude Code computes itself", () => {
 
   afterAll(() => {
     restoreReportEnv();
-    restoreEnv = ClaudeCodeFixtureUtil.useFixtureEnv(fixture);
     rmSync(reportFixture.root, { recursive: true, force: true });
   });
 
@@ -243,7 +222,6 @@ describe("AnalyzeCommand on work that could be a skill, a script or a subagent",
   let restoreWorkflowEnv: () => void;
 
   beforeAll(() => {
-    restoreEnv();
     workflowFixture = ClaudeCodeFixtureUtil.makeFixture();
     for (let sessionIndex = 0; sessionIndex < 4; sessionIndex++) {
       ClaudeCodeFixtureUtil.writeWorkflowSession(workflowFixture, `wf${sessionIndex}`, `2026-09-2${sessionIndex}T10:00:00.000Z`);
@@ -253,7 +231,6 @@ describe("AnalyzeCommand on work that could be a skill, a script or a subagent",
 
   afterAll(() => {
     restoreWorkflowEnv();
-    restoreEnv = ClaudeCodeFixtureUtil.useFixtureEnv(fixture);
     rmSync(workflowFixture.root, { recursive: true, force: true });
   });
 
@@ -325,9 +302,8 @@ describe("AnalyzeCommand on pieces that keep filling their context", () => {
   let restoreContextEnv: () => void;
 
   beforeAll(() => {
-    restoreEnv();
     contextFixture = ClaudeCodeFixtureUtil.makeFixture();
-    // Low thresholds so a small fixture shows the pattern: 1 token is about 4 characters.
+    // Low thresholds so a small history.fixture shows the pattern: 1 token is about 4 characters.
     mkdirSync(contextFixture.dataDir, { recursive: true });
     writeFileSync(join(contextFixture.dataDir, "config.json"), JSON.stringify({
       signalThresholds: { minHeavySourceTokens: 5000, minHeavySourceLoads: 3, minHugeResultTokens: 4000 },
@@ -346,7 +322,7 @@ describe("AnalyzeCommand on pieces that keep filling their context", () => {
         .tool(`a_${sessionId}`, "Bash", { command: "cat src/a.ts" }).result(`a_${sessionId}`, "a".repeat(12000))
         .tool(`b_${sessionId}`, "Bash", { command: "cat src/b.ts" }).result(`b_${sessionId}`, "b".repeat(12000))
         .tool(`l_${sessionId}`, "Bash", { command: "npm run build" }).result(`l_${sessionId}`, "log ".repeat(4500))
-        .write(ClaudeCodeFixtureUtil.subagentPath(contextFixture, sessionId, agentId));
+        .writeTo(contextFixture);
       new ClaudeCodeTranscriptBuilder(sessionId, contextFixture.projectDir, `2026-09-2${sessionId.at(-1)}T10:00:00.000Z`)
         .user("Review the change")
         .tool(`t_${sessionId}`, "Task", { subagent_type: "reviewer", prompt: `Review ${sessionId}` })
@@ -358,7 +334,6 @@ describe("AnalyzeCommand on pieces that keep filling their context", () => {
 
   afterAll(() => {
     restoreContextEnv();
-    restoreEnv = ClaudeCodeFixtureUtil.useFixtureEnv(fixture);
     rmSync(contextFixture.root, { recursive: true, force: true });
   });
 

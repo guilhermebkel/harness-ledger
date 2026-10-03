@@ -2,9 +2,10 @@
 // one JSON object per line, tool_use/tool_result blocks, the message usage repeated on every
 // content-block line, and subagent transcripts in <session>/subagents/.
 
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { afterAll, beforeAll } from "vitest";
 import { ClaudeCodePathUtil } from "./ClaudeCodePathUtil.js";
 
 export interface Fixture {
@@ -13,6 +14,14 @@ export interface Fixture {
   projectDir: string;
   claudeJson: string;
   dataDir: string;
+}
+
+export interface HistoryFixture {
+  readonly fixture: Fixture;
+  commonOptions: () => {
+    projectDir: string;
+    dataDir: string;
+  };
 }
 
 const FAKE_SECRETS = {
@@ -55,6 +64,11 @@ export interface TestRunOptions {
   commandSeconds?: number;
   model?: string;
   outputTokens?: number;
+}
+
+export interface TestRun extends TestRunOptions {
+  command: string;
+  isFailing?: boolean;
 }
 
 export interface ResultOptions {
@@ -197,6 +211,14 @@ export class ClaudeCodeTranscriptBuilder {
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, `${this.lines.map((line) => JSON.stringify(line)).join("\n")}\n`);
   }
+
+  writeTo(fixture: Fixture): void {
+    const agentId = this.options.agentId;
+    const file = agentId === undefined
+      ? ClaudeCodeFixtureUtil.sessionPath(fixture, this.sessionId)
+      : ClaudeCodeFixtureUtil.subagentPath(fixture, this.sessionId, agentId);
+    this.write(file);
+  }
 }
 
 type SubagentTypeSource = "meta" | "result" | "prompt";
@@ -206,12 +228,16 @@ export class ClaudeCodeFixtureUtil {
   static readonly FAKE_SECRETS = FAKE_SECRETS;
 
   static makeFixture(): Fixture {
-    const root = mkdtempSync(join(tmpdir(), "imh-test-"));
+    const tempDir = tmpdir();
+    const root = mkdtempSync(join(tempDir, "imh-test-"));
     const claudeHome = join(root, "claude-home");
     const projectDir = join(root, "work", "my-app");
-    mkdirSync(join(claudeHome, "projects", ClaudeCodePathUtil.encodeProjectDir(projectDir)), { recursive: true });
-    mkdirSync(join(projectDir, ".claude", "agents"), { recursive: true });
-    mkdirSync(join(projectDir, ".claude", "skills", "changelog"), { recursive: true });
+    const projectsDir = join(claudeHome, "projects", ClaudeCodePathUtil.encodeProjectDir(projectDir));
+    mkdirSync(projectsDir, { recursive: true });
+    const agentsDir = join(projectDir, ".claude", "agents");
+    mkdirSync(agentsDir, { recursive: true });
+    const changelogSkillDir = join(projectDir, ".claude", "skills", "changelog");
+    mkdirSync(changelogSkillDir, { recursive: true });
     const claudeJson = join(root, "claude.json");
     const userMcpServers = {
       github: {
@@ -231,31 +257,35 @@ export class ClaudeCodeFixtureUtil {
 
   static writeHarness(fixture: Fixture): void {
     const { projectDir } = fixture;
+    const agentsDir = join(projectDir, ".claude", "agents");
+    const changelogSkillDir = join(projectDir, ".claude", "skills", "changelog");
+    const changelogReferencesDir = join(changelogSkillDir, "references");
     writeFileSync(join(projectDir, "CLAUDE.md"), "# My app\n\n- Run tests with `pnpm test`, never npm.\n- Keep PRs small.\n");
     writeFileSync(
-      join(projectDir, ".claude", "agents", "test-runner.md"),
+      join(agentsDir, "test-runner.md"),
       "---\nname: test-runner\ndescription: Runs the test suite and reports failures\ntools: Bash, Read\nmodel: haiku\n---\nRun the tests.\n",
     );
     writeFileSync(
-      join(projectDir, ".claude", "agents", "code-reviewer.md"),
+      join(agentsDir, "code-reviewer.md"),
       "---\nname: code-reviewer\ndescription: Reviews diffs\n---\nReview the change.\n",
     );
     writeFileSync(
-      join(projectDir, ".claude", "agents", "docs-writer.md"),
+      join(agentsDir, "docs-writer.md"),
       "---\nname: docs-writer\ndescription: Writes docs\nskills: changelog\n---\nWrite docs.\n",
     );
     writeFileSync(
-      join(projectDir, ".claude", "skills", "changelog", "SKILL.md"),
+      join(changelogSkillDir, "SKILL.md"),
       "---\nname: changelog\ndescription: Generates changelog entries\n---\nSteps...\n",
     );
-    mkdirSync(join(projectDir, ".claude", "skills", "changelog", "references"), { recursive: true });
-    writeFileSync(join(projectDir, ".claude", "skills", "changelog", "references", "format.md"), "# Entry format\n");
+    mkdirSync(changelogReferencesDir, { recursive: true });
+    writeFileSync(join(changelogReferencesDir, "format.md"), "# Entry format\n");
     const guardHook = {
       matcher: "Bash",
       hooks: [{ type: "command", command: `./scripts/guard.sh --token ${FAKE_SECRETS.anthropicKey}` }],
     };
+    const settingsFile = join(projectDir, ".claude", "settings.json");
     writeFileSync(
-      join(projectDir, ".claude", "settings.json"),
+      settingsFile,
       JSON.stringify({
         cleanupPeriodDays: 60,
         hooks: { PreToolUse: [guardHook] },
@@ -298,7 +328,7 @@ export class ClaudeCodeFixtureUtil {
       .tool(`b2_${sessionId}`, "Bash", { command: "pnpm test" }, { secondsLater: 6, model: "claude-haiku-4-5" })
       .result(`b2_${sessionId}`, "Tests: 42 passed", { secondsLater: 30 })
       .say("All tests pass.")
-      .write(ClaudeCodeFixtureUtil.subagentPath(fixture, sessionId, agentId));
+      .writeTo(fixture);
     if (typeSource === "meta") {
       const metaFile = ClaudeCodeFixtureUtil.subagentPath(fixture, sessionId, agentId).replace(/\.jsonl$/, ".meta.json");
       writeFileSync(metaFile, JSON.stringify({ agentType: "test-runner" }));
@@ -337,7 +367,7 @@ export class ClaudeCodeFixtureUtil {
     for (let readIndex = 0; readIndex < 4; readIndex++) {
       reviewer.tool(`rr${readIndex}`, "Read", { file_path: authFile }).result(`rr${readIndex}`, authContent);
     }
-    reviewer.say("Looks good.").write(ClaudeCodeFixtureUtil.subagentPath(fixture, "s2", "rev1"));
+    reviewer.say("Looks good.").writeTo(fixture);
     s2Main.result("task_rev", "Looks good.", { secondsLater: 60 }).say("Reviewed.").write(ClaudeCodeFixtureUtil.sessionPath(fixture, "s2"));
 
     ClaudeCodeFixtureUtil.testRunSession(fixture, "s3", dayAt(2), "prompt", "Fix the failing login test").write(ClaudeCodeFixtureUtil.sessionPath(fixture, "s3"));
@@ -367,9 +397,10 @@ export class ClaudeCodeFixtureUtil {
     }
 
     // A transcript from another project must be ignored.
+    const otherProjectFile = join(fixture.claudeHome, "projects", "-somewhere-else", "other.jsonl");
     new ClaudeCodeTranscriptBuilder("other", "/somewhere/else", dayAt(0))
       .user("hello")
-      .write(join(fixture.claudeHome, "projects", "-somewhere-else", "other.jsonl"));
+      .write(otherProjectFile);
   }
 
   /**
@@ -380,25 +411,23 @@ export class ClaudeCodeFixtureUtil {
     fixture: Fixture,
     sessionId: string,
     startedAt: string,
-    command: string,
-    isFailing: boolean,
-    runOptions: TestRunOptions = {},
+    run: TestRun,
   ): void {
     const agentId = `x${sessionId}`;
     const delegationPrompt = `run tests for ${sessionId}`;
     const subagentOptions = { isSidechain: true, agentId };
     const subagent = new ClaudeCodeTranscriptBuilder(sessionId, fixture.projectDir, startedAt, subagentOptions)
       .user(delegationPrompt)
-      .tool(`b_${sessionId}`, "Bash", { command }, { model: runOptions.model, outputTokens: runOptions.outputTokens });
-    if (isFailing) {
+      .tool(`b_${sessionId}`, "Bash", { command: run.command }, { model: run.model, outputTokens: run.outputTokens });
+    if (run.isFailing === true) {
       subagent
         .result(`b_${sessionId}`, "Exit code 1\nnpm ERR! Missing script", { isError: true })
         .tool(`c_${sessionId}`, "Bash", { command: "pnpm test" })
         .result(`c_${sessionId}`, "ok");
     } else {
-      subagent.result(`b_${sessionId}`, "ok", { secondsLater: runOptions.commandSeconds });
+      subagent.result(`b_${sessionId}`, "ok", { secondsLater: run.commandSeconds });
     }
-    subagent.write(ClaudeCodeFixtureUtil.subagentPath(fixture, sessionId, agentId));
+    subagent.writeTo(fixture);
     new ClaudeCodeTranscriptBuilder(sessionId, fixture.projectDir, startedAt)
       .user("run the tests")
       .tool(`task_${sessionId}`, "Task", { subagent_type: "test-runner", prompt: delegationPrompt })
@@ -494,7 +523,7 @@ export class ClaudeCodeFixtureUtil {
         secondsLater: 30, lineFields: { ...agentLine, attributionSkill: "db-migrations" },
       })
       .result(`m_${sessionId}`, "File created")
-      .write(ClaudeCodeFixtureUtil.subagentPath(fixture, sessionId, agentId));
+      .writeTo(fixture);
     const runStartAtMs = Date.parse(startedAt);
     new ClaudeCodeTranscriptBuilder(sessionId, fixture.projectDir, startedAt)
       .user("Add a migration for the invoices table")
@@ -535,6 +564,40 @@ export class ClaudeCodeFixtureUtil {
   }
 
   /** Points the reader at the fixture's Claude Code home. Returns a function that restores the environment. */
+  /** Registers `beforeAll`/`afterAll` hooks that build the harness and history fixture and point the env at it. */
+  static useHistoryFixture(setUpMore?: (fixture: Fixture) => void): HistoryFixture {
+    let current: Fixture | undefined;
+    let restoreEnv: (() => void) | undefined;
+    beforeAll(() => {
+      current = ClaudeCodeFixtureUtil.makeFixture();
+      ClaudeCodeFixtureUtil.writeHarness(current);
+      ClaudeCodeFixtureUtil.writeHistory(current);
+      setUpMore?.(current);
+      restoreEnv = ClaudeCodeFixtureUtil.useFixtureEnv(current);
+    });
+    afterAll(() => {
+      restoreEnv?.();
+      if (current) {
+        rmSync(current.root, { recursive: true, force: true });
+      }
+    });
+    const fixtureOrThrow = (): Fixture => {
+      if (!current) {
+        throw new Error("The history fixture is only available inside tests.");
+      }
+      return current;
+    };
+    return {
+      get fixture() {
+        return fixtureOrThrow();
+      },
+      commonOptions: () => ({
+        projectDir: fixtureOrThrow().projectDir,
+        dataDir: fixtureOrThrow().dataDir,
+      }),
+    };
+  }
+
   static useFixtureEnv(fixture: Fixture): () => void {
     const previousHome = process.env.IMH_CLAUDE_HOME;
     const previousJson = process.env.IMH_CLAUDE_JSON;

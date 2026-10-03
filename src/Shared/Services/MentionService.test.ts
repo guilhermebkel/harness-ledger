@@ -5,8 +5,10 @@ import { afterAll, describe, expect, it } from "vitest";
 import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.js";
 import { MentionService } from "./MentionService.js";
 
-const projectDir = mkdtempSync(join(tmpdir(), "imh-mentions-"));
-writeFileSync(join(projectDir, "CLAUDE.md"), "# App\n\n- Pick a category before you cat the logs.\n- Run `pnpm test`.\n");
+const tempDir = tmpdir();
+const projectDir = mkdtempSync(join(tempDir, "imh-mentions-"));
+const instructionsFile = join(projectDir, "CLAUDE.md");
+writeFileSync(instructionsFile, "# App\n\n- Pick a category before you cat the logs.\n- Run `pnpm test`.\n");
 const inventory: Inventory = {
   provider: "test",
   projectDir,

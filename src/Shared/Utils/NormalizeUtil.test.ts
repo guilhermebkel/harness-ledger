@@ -43,7 +43,8 @@ describe("request similarity", () => {
     const request = NormalizeUtil.wordSet("Generate the changelog entry from the last PRs please");
     const reworded = NormalizeUtil.wordSet("generate the changelog entry from the last PRs");
     expect(NormalizeUtil.jaccard(request, reworded)).toBeGreaterThanOrEqual(0.5);
-    expect(NormalizeUtil.jaccard(request, NormalizeUtil.wordSet("Fix the failing login test"))).toBeLessThan(0.2);
+    const unrelated = NormalizeUtil.wordSet("Fix the failing login test");
+    expect(NormalizeUtil.jaccard(request, unrelated)).toBeLessThan(0.2);
   });
 });
 

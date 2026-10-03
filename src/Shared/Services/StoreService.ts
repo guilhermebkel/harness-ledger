@@ -39,7 +39,8 @@ export class StoreService {
     const file = join(this.root, relativePath);
     await mkdir(dirname(file), { recursive: true });
     const temporaryFile = `${file}.${process.pid}.tmp`;
-    await writeFile(temporaryFile, JSON.stringify(value, null, shouldIndent ? JSON_INDENT : 0));
+    const serialized = JSON.stringify(value, null, shouldIndent ? JSON_INDENT : 0);
+    await writeFile(temporaryFile, serialized);
     await rename(temporaryFile, file);
   }
 

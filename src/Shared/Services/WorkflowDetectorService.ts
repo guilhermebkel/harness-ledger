@@ -175,8 +175,9 @@ export class WorkflowDetectorService {
     const messageIds = new Set(calls.map((call) => call.messageId));
     const stepMessages = (index.threadIdToMessages.get(calls[0]?.thread.id ?? "") ?? [])
       .filter((message) => messageIds.has(message.id));
+    const spanMs = Math.max(0, this.spanOf(calls));
     return {
-      activeMs: Math.min(this.options.idleMs * calls.length, Math.max(0, this.spanOf(calls))),
+      activeMs: Math.min(this.options.idleMs * calls.length, spanMs),
       usage: stepMessages.reduce((total, message) => TokenUsageUtil.add(total, message.usage), TokenUsageUtil.zero()),
       model: stepMessages[0]?.model,
     };

@@ -207,15 +207,17 @@ export class ClaudeCodeInventoryService {
     const prefix = componentOptions.namePrefix ?? "";
     const plugin = componentOptions.plugin;
     for (const skillDir of await readdir(join(baseDir, "skills")).catch(() => [] as string[])) {
-      const file = join(baseDir, "skills", skillDir, "SKILL.md");
+      const skillFolder = join(baseDir, "skills", skillDir);
+      const file = join(skillFolder, "SKILL.md");
       const declaredName = await this.declaredNameOf(file);
+      const extraFiles = await this.skillFolderFiles(skillFolder);
       await builder.addFile({
         file,
         kind: "skill",
         name: `${prefix}${declaredName ?? skillDir}`,
         scope,
         plugin,
-        extraFiles: await this.skillFolderFiles(join(baseDir, "skills", skillDir)),
+        extraFiles,
       });
     }
     const rootSkill = join(baseDir, "SKILL.md");
@@ -333,10 +335,13 @@ export class ClaudeCodeInventoryService {
       }
       const change = await builder.changeOf(file, scope);
       const path = builder.displayPath(file, scope);
-      builder.pieces.push(...this.hookPieces(GuardUtil.asRecord(settings.hooks), path, scope, change));
+      const hooks = GuardUtil.asRecord(settings.hooks);
+      const hookPieces = this.hookPieces(hooks, path, scope, change);
+      builder.pieces.push(...hookPieces);
       const permissions = GuardUtil.asRecord(settings.permissions);
       if (permissions) {
-        builder.pieces.push(this.permissionsPiece(permissions, path, scope, change));
+        const permissionsPiece = this.permissionsPiece(permissions, path, scope, change);
+        builder.pieces.push(permissionsPiece);
       }
       for (const [pluginId, isEnabled] of Object.entries(GuardUtil.asRecord(settings.enabledPlugins) ?? {})) {
         summary.pluginIdToIsEnabled.set(pluginId, isEnabled === true);
@@ -417,14 +422,10 @@ export class ClaudeCodeInventoryService {
   private async addMcpServers(builder: InventoryBuilder, shouldIncludeUser: boolean): Promise<void> {
     const projectMcpFile = join(builder.projectDir, ".mcp.json");
     const projectMcp = await this.readJsonFile(projectMcpFile);
-    builder.pieces.push(
-      ...this.mcpPieces(
-        GuardUtil.asRecord(projectMcp?.mcpServers),
-        ".mcp.json",
-        "project",
-        await builder.changeOf(projectMcpFile, "project"),
-      ),
-    );
+    const projectServers = GuardUtil.asRecord(projectMcp?.mcpServers);
+    const projectChange = await builder.changeOf(projectMcpFile, "project");
+    const projectPieces = this.mcpPieces(projectServers, ".mcp.json", "project", projectChange);
+    builder.pieces.push(...projectPieces);
     if (!shouldIncludeUser) {
       return;
     }
@@ -434,10 +435,11 @@ export class ClaudeCodeInventoryService {
     }
     const displayPath = PathUtil.tildify(this.claudeJsonPath);
     const projectEntry = GuardUtil.asRecord(GuardUtil.asRecord(userConfig.projects)?.[builder.projectDir]);
-    builder.pieces.push(
-      ...this.mcpPieces(GuardUtil.asRecord(userConfig.mcpServers), displayPath, "user", {}),
-      ...this.mcpPieces(GuardUtil.asRecord(projectEntry?.mcpServers), displayPath, "local", {}),
-    );
+    const userServers = GuardUtil.asRecord(userConfig.mcpServers);
+    const localServers = GuardUtil.asRecord(projectEntry?.mcpServers);
+    const userPieces = this.mcpPieces(userServers, displayPath, "user", {});
+    const localPieces = this.mcpPieces(localServers, displayPath, "local", {});
+    builder.pieces.push(...userPieces, ...localPieces);
   }
 
   private mcpPieces(
@@ -477,7 +479,8 @@ export class ClaudeCodeInventoryService {
       if (!pluginIdToIsEnabled.has(pluginId)) {
         builder.notes.push(`Plugin ${pluginId} is installed but not listed in enabledPlugins; assumed enabled.`);
       }
-      const manifest = await this.readJsonFile(join(installPath, ".claude-plugin", "plugin.json"));
+      const manifestFile = join(installPath, ".claude-plugin", "plugin.json");
+      const manifest = await this.readJsonFile(manifestFile);
       const serialized = JSON.stringify(manifest ?? {});
       builder.pieces.push({
         id: `plugin:${pluginId}`,
@@ -504,7 +507,8 @@ export class ClaudeCodeInventoryService {
   /** Plugin id → install path, from `installed_plugins.json` (accepts both the older and the versioned shape). */
   private async readInstalledPlugins(): Promise<Map<string, string>> {
     const pluginIdToInstallPath = new Map<string, string>();
-    const installed = await this.readJsonFile(join(this.homeDir, "plugins", "installed_plugins.json"));
+    const installedFile = join(this.homeDir, "plugins", "installed_plugins.json");
+    const installed = await this.readJsonFile(installedFile);
     const plugins = GuardUtil.asRecord(installed?.plugins) ?? installed ?? {};
     for (const [pluginId, value] of Object.entries(plugins)) {
       const installs = Array.isArray(value) ? value : [value];

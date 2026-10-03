@@ -7,28 +7,11 @@ import { CompareCommand } from "./CompareCommand.js";
 
 const command = new CompareCommand();
 
-let fixture: Fixture;
-let restoreEnv: () => void;
-
-beforeAll(() => {
-  fixture = ClaudeCodeFixtureUtil.makeFixture();
-  ClaudeCodeFixtureUtil.writeHarness(fixture);
-  ClaudeCodeFixtureUtil.writeHistory(fixture);
-  restoreEnv = ClaudeCodeFixtureUtil.useFixtureEnv(fixture);
-});
-
-afterAll(() => {
-  restoreEnv();
-  rmSync(fixture.root, { recursive: true, force: true });
-});
-
-function commonOptions() {
-  return { projectDir: fixture.projectDir, dataDir: fixture.dataDir };
-}
+const history = ClaudeCodeFixtureUtil.useHistoryFixture();
 
 describe("CompareCommand", () => {
   it("refuses to call a winner with too few sessions", async () => {
-    const result = await command.run({ ...commonOptions(), piece: "agent:test-runner", changedAt: "2026-09-12" });
+    const result = await command.run({ ...history.commonOptions(), piece: "agent:test-runner", changedAt: "2026-09-12" });
     expect(result.verdict).toBe("insufficient_data");
     expect(result.before.sessions).toBe(2);
     expect(result.after.sessions).toBe(1);
@@ -37,12 +20,12 @@ describe("CompareCommand", () => {
   it("shows an improvement when failures stop after the change", async () => {
     for (let sessionIndex = 0; sessionIndex < 5; sessionIndex++) {
       const startedAt = `2026-09-2${sessionIndex}T10:00:00.000Z`;
-      ClaudeCodeFixtureUtil.writeTestRunnerSession(fixture, `n${sessionIndex}`, startedAt, "pnpm test", false);
+      ClaudeCodeFixtureUtil.writeTestRunnerSession(history.fixture, `n${sessionIndex}`, startedAt, { command: "pnpm test" });
     }
-    ClaudeCodeFixtureUtil.writeTestRunnerSession(fixture, "o1", "2026-09-05T10:00:00.000Z", "npm test", true);
-    ClaudeCodeFixtureUtil.writeTestRunnerSession(fixture, "o2", "2026-09-06T10:00:00.000Z", "npm test", true);
+    ClaudeCodeFixtureUtil.writeTestRunnerSession(history.fixture, "o1", "2026-09-05T10:00:00.000Z", { command: "npm test", isFailing: true });
+    ClaudeCodeFixtureUtil.writeTestRunnerSession(history.fixture, "o2", "2026-09-06T10:00:00.000Z", { command: "npm test", isFailing: true });
 
-    const result = await command.run({ ...commonOptions(), piece: "agent:test-runner", changedAt: "2026-09-15" });
+    const result = await command.run({ ...history.commonOptions(), piece: "agent:test-runner", changedAt: "2026-09-15" });
     expect(result.before.sessions).toBe(5);
     expect(result.after.sessions).toBe(5);
     expect(result.before.errorRate).toBeGreaterThan(0);
@@ -51,7 +34,7 @@ describe("CompareCommand", () => {
   });
 
   it("explains when it can't tell when the piece changed", async () => {
-    await expect(command.run({ ...commonOptions(), piece: "agent:missing" })).rejects.toThrow(/--at/);
+    await expect(command.run({ ...history.commonOptions(), piece: "agent:missing" })).rejects.toThrow(/--at/);
   });
 });
 
@@ -60,7 +43,6 @@ describe("CompareCommand counts time as much as cost", () => {
   let restoreTimeEnv: () => void;
 
   beforeAll(() => {
-    restoreEnv();
     timeFixture = ClaudeCodeFixtureUtil.makeFixture();
     ClaudeCodeFixtureUtil.writeHarness(timeFixture);
     restoreTimeEnv = ClaudeCodeFixtureUtil.useFixtureEnv(timeFixture);
@@ -68,16 +50,16 @@ describe("CompareCommand counts time as much as cost", () => {
 
   afterAll(() => {
     restoreTimeEnv();
-    restoreEnv = ClaudeCodeFixtureUtil.useFixtureEnv(fixture);
     rmSync(timeFixture.root, { recursive: true, force: true });
   });
 
   function writeSide(prefix: string, firstDay: number, runOptions: TestRunOptions): void {
     for (let sessionIndex = 0; sessionIndex < 5; sessionIndex++) {
       const startedAt = `2026-09-${String(firstDay + sessionIndex).padStart(2, "0")}T10:00:00.000Z`;
-      ClaudeCodeFixtureUtil.writeTestRunnerSession(
-        timeFixture, `${prefix}${sessionIndex}`, startedAt, "pnpm test", false, runOptions,
-      );
+      ClaudeCodeFixtureUtil.writeTestRunnerSession(timeFixture, `${prefix}${sessionIndex}`, startedAt, {
+        command: "pnpm test",
+        ...runOptions,
+      });
     }
   }
 
@@ -129,15 +111,16 @@ describe("CompareCommand with fewer output tokens", () => {
   let restoreTokenEnv: () => void;
 
   beforeAll(() => {
-    restoreEnv();
     tokenFixture = ClaudeCodeFixtureUtil.makeFixture();
     ClaudeCodeFixtureUtil.writeHarness(tokenFixture);
     for (let sessionIndex = 0; sessionIndex < 5; sessionIndex++) {
       const day = (offset: number): string => `2026-09-${String(offset + sessionIndex).padStart(2, "0")}T10:00:00.000Z`;
-      ClaudeCodeFixtureUtil.writeTestRunnerSession(tokenFixture, `v${sessionIndex}`, day(1), "pnpm test", false, {
+      ClaudeCodeFixtureUtil.writeTestRunnerSession(tokenFixture, `v${sessionIndex}`, day(1), {
+        command: "pnpm test",
         outputTokens: 400,
       });
-      ClaudeCodeFixtureUtil.writeTestRunnerSession(tokenFixture, `t${sessionIndex}`, day(10), "pnpm test", false, {
+      ClaudeCodeFixtureUtil.writeTestRunnerSession(tokenFixture, `t${sessionIndex}`, day(10), {
+        command: "pnpm test",
         outputTokens: 100,
       });
     }
@@ -146,7 +129,6 @@ describe("CompareCommand with fewer output tokens", () => {
 
   afterAll(() => {
     restoreTokenEnv();
-    restoreEnv = ClaudeCodeFixtureUtil.useFixtureEnv(fixture);
     rmSync(tokenFixture.root, { recursive: true, force: true });
   });
 

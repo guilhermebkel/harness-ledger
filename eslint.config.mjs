@@ -95,6 +95,13 @@ export default tseslint.config(
       "sonarjs/no-duplicated-branches": "error",
       "sonarjs/no-all-duplicated-branches": "error",
       "sonarjs/no-identical-conditions": "error",
+      "no-restricted-syntax": ["error", {
+        selector: [
+          "CallExpression > CallExpression.arguments:matches([arguments.length>=3], :has(> CallExpression.arguments))",
+          "CallExpression > SpreadElement > CallExpression:matches([arguments.length>=3], :has(> CallExpression.arguments))",
+        ].join(", "),
+        message: "Store this call's result in a named variable before passing it to another call.",
+      }],
 
       // Boundaries
       "no-restricted-imports": ["error", { patterns: [NO_PARENT_IMPORTS] }],
@@ -136,8 +143,6 @@ export default tseslint.config(
       "@typescript-eslint/no-magic-numbers": "off",
       "no-restricted-properties": "off",
       "@typescript-eslint/no-non-null-assertion": "off",
-      // Fixture builders take a session's shape as positional arguments.
-      "max-params": "off",
       // Fixtures write external formats (settings.json, env blocks) with their own key spelling.
       "@typescript-eslint/naming-convention": "off",
     },

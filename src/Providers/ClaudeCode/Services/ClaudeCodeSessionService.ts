@@ -82,10 +82,12 @@ export class ClaudeCodeSessionService {
           continue;
         }
         const sessionId = entry.slice(0, -TRANSCRIPT_EXTENSION.length);
+        const subagentFolder = join(folderPath, sessionId, "subagents");
+        const subagentFiles = await this.listSubagentFiles(subagentFolder);
         transcripts.push({
           ...fileStat,
           sessionId,
-          subagentFiles: await this.listSubagentFiles(join(folderPath, sessionId, "subagents")),
+          subagentFiles,
           isExactProject: folder === encodedProject,
         });
       }
@@ -257,9 +259,11 @@ export class ClaudeCodeSessionService {
   private async readSubagentMetaType(subagentFile: string): Promise<string | undefined> {
     const metaFile = subagentFile.replace(/\.jsonl$/, ".meta.json");
     const metaText = await readFile(metaFile, "utf8").catch(() => undefined);
-    return metaText === undefined
-      ? undefined
-      : GuardUtil.firstString(GuardUtil.asRecord(GuardUtil.parseJson(metaText)), SUBAGENT_TYPE_KEYS);
+    if (metaText === undefined) {
+      return undefined;
+    }
+    const meta = GuardUtil.asRecord(GuardUtil.parseJson(metaText));
+    return GuardUtil.firstString(meta, SUBAGENT_TYPE_KEYS);
   }
 
   private handleRecord(context: ClaudeCodeParseContext, value: unknown, lineNumber: number, isMainFile: boolean): void {
@@ -556,7 +560,8 @@ export class ClaudeCodeSessionService {
   private handlePrompt(context: ClaudeCodeParseContext, line: ClaudeCodeTranscriptLine, rawText: string): void {
     const threadId = line.thread.id;
     if (!context.threadIdToFirstPromptHash.has(threadId)) {
-      context.threadIdToFirstPromptHash.set(threadId, HashUtil.sha(rawText.trim()));
+      const promptHash = HashUtil.sha(rawText.trim());
+      context.threadIdToFirstPromptHash.set(threadId, promptHash);
     }
     // Recent versions say where a user line came from; background-task notifications are not the person.
     const originKind = GuardUtil.asString(GuardUtil.asRecord(line.record.origin)?.kind);

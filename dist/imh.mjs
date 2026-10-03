@@ -1136,8 +1136,9 @@ var WorkflowDetectorService = class {
   workflowCost(calls, index) {
     const messageIds = new Set(calls.map((call) => call.messageId));
     const stepMessages = (index.threadIdToMessages.get(calls[0]?.thread.id ?? "") ?? []).filter((message) => messageIds.has(message.id));
+    const spanMs = Math.max(0, this.spanOf(calls));
     return {
-      activeMs: Math.min(this.options.idleMs * calls.length, Math.max(0, this.spanOf(calls))),
+      activeMs: Math.min(this.options.idleMs * calls.length, spanMs),
       usage: stepMessages.reduce((total, message) => TokenUsageUtil.add(total, message.usage), TokenUsageUtil.zero()),
       model: stepMessages[0]?.model
     };
@@ -2544,15 +2545,17 @@ var ClaudeCodeInventoryService = class {
     const prefix = componentOptions.namePrefix ?? "";
     const plugin = componentOptions.plugin;
     for (const skillDir of await readdir(join2(baseDir, "skills")).catch(() => [])) {
-      const file = join2(baseDir, "skills", skillDir, "SKILL.md");
+      const skillFolder = join2(baseDir, "skills", skillDir);
+      const file = join2(skillFolder, "SKILL.md");
       const declaredName = await this.declaredNameOf(file);
+      const extraFiles = await this.skillFolderFiles(skillFolder);
       await builder.addFile({
         file,
         kind: "skill",
         name: `${prefix}${declaredName ?? skillDir}`,
         scope,
         plugin,
-        extraFiles: await this.skillFolderFiles(join2(baseDir, "skills", skillDir))
+        extraFiles
       });
     }
     const rootSkill = join2(baseDir, "SKILL.md");
@@ -2665,10 +2668,13 @@ var ClaudeCodeInventoryService = class {
       }
       const change = await builder.changeOf(file, scope);
       const path = builder.displayPath(file, scope);
-      builder.pieces.push(...this.hookPieces(GuardUtil.asRecord(settings.hooks), path, scope, change));
+      const hooks = GuardUtil.asRecord(settings.hooks);
+      const hookPieces = this.hookPieces(hooks, path, scope, change);
+      builder.pieces.push(...hookPieces);
       const permissions = GuardUtil.asRecord(settings.permissions);
       if (permissions) {
-        builder.pieces.push(this.permissionsPiece(permissions, path, scope, change));
+        const permissionsPiece = this.permissionsPiece(permissions, path, scope, change);
+        builder.pieces.push(permissionsPiece);
       }
       for (const [pluginId, isEnabled] of Object.entries(GuardUtil.asRecord(settings.enabledPlugins) ?? {})) {
         summary.pluginIdToIsEnabled.set(pluginId, isEnabled === true);
@@ -2735,14 +2741,10 @@ var ClaudeCodeInventoryService = class {
   async addMcpServers(builder, shouldIncludeUser) {
     const projectMcpFile = join2(builder.projectDir, ".mcp.json");
     const projectMcp = await this.readJsonFile(projectMcpFile);
-    builder.pieces.push(
-      ...this.mcpPieces(
-        GuardUtil.asRecord(projectMcp?.mcpServers),
-        ".mcp.json",
-        "project",
-        await builder.changeOf(projectMcpFile, "project")
-      )
-    );
+    const projectServers = GuardUtil.asRecord(projectMcp?.mcpServers);
+    const projectChange = await builder.changeOf(projectMcpFile, "project");
+    const projectPieces = this.mcpPieces(projectServers, ".mcp.json", "project", projectChange);
+    builder.pieces.push(...projectPieces);
     if (!shouldIncludeUser) {
       return;
     }
@@ -2752,10 +2754,11 @@ var ClaudeCodeInventoryService = class {
     }
     const displayPath = PathUtil.tildify(this.claudeJsonPath);
     const projectEntry = GuardUtil.asRecord(GuardUtil.asRecord(userConfig.projects)?.[builder.projectDir]);
-    builder.pieces.push(
-      ...this.mcpPieces(GuardUtil.asRecord(userConfig.mcpServers), displayPath, "user", {}),
-      ...this.mcpPieces(GuardUtil.asRecord(projectEntry?.mcpServers), displayPath, "local", {})
-    );
+    const userServers = GuardUtil.asRecord(userConfig.mcpServers);
+    const localServers = GuardUtil.asRecord(projectEntry?.mcpServers);
+    const userPieces = this.mcpPieces(userServers, displayPath, "user", {});
+    const localPieces = this.mcpPieces(localServers, displayPath, "local", {});
+    builder.pieces.push(...userPieces, ...localPieces);
   }
   mcpPieces(servers, path, scope, change) {
     return Object.entries(servers ?? {}).map(([name, config]) => {
@@ -2787,7 +2790,8 @@ var ClaudeCodeInventoryService = class {
       if (!pluginIdToIsEnabled.has(pluginId)) {
         builder.notes.push(`Plugin ${pluginId} is installed but not listed in enabledPlugins; assumed enabled.`);
       }
-      const manifest = await this.readJsonFile(join2(installPath, ".claude-plugin", "plugin.json"));
+      const manifestFile = join2(installPath, ".claude-plugin", "plugin.json");
+      const manifest = await this.readJsonFile(manifestFile);
       const serialized = JSON.stringify(manifest ?? {});
       builder.pieces.push({
         id: `plugin:${pluginId}`,
@@ -2813,7 +2817,8 @@ var ClaudeCodeInventoryService = class {
   /** Plugin id → install path, from `installed_plugins.json` (accepts both the older and the versioned shape). */
   async readInstalledPlugins() {
     const pluginIdToInstallPath = /* @__PURE__ */ new Map();
-    const installed = await this.readJsonFile(join2(this.homeDir, "plugins", "installed_plugins.json"));
+    const installedFile = join2(this.homeDir, "plugins", "installed_plugins.json");
+    const installed = await this.readJsonFile(installedFile);
     const plugins = GuardUtil.asRecord(installed?.plugins) ?? installed ?? {};
     for (const [pluginId, value] of Object.entries(plugins)) {
       const installs = Array.isArray(value) ? value : [value];
@@ -2999,10 +3004,12 @@ var ClaudeCodeSessionService = class {
           continue;
         }
         const sessionId = entry.slice(0, -TRANSCRIPT_EXTENSION.length);
+        const subagentFolder = join4(folderPath, sessionId, "subagents");
+        const subagentFiles = await this.listSubagentFiles(subagentFolder);
         transcripts.push({
           ...fileStat,
           sessionId,
-          subagentFiles: await this.listSubagentFiles(join4(folderPath, sessionId, "subagents")),
+          subagentFiles,
           isExactProject: folder === encodedProject
         });
       }
@@ -3153,7 +3160,11 @@ var ClaudeCodeSessionService = class {
   async readSubagentMetaType(subagentFile) {
     const metaFile = subagentFile.replace(/\.jsonl$/, ".meta.json");
     const metaText = await readFile3(metaFile, "utf8").catch(() => void 0);
-    return metaText === void 0 ? void 0 : GuardUtil.firstString(GuardUtil.asRecord(GuardUtil.parseJson(metaText)), SUBAGENT_TYPE_KEYS);
+    if (metaText === void 0) {
+      return void 0;
+    }
+    const meta = GuardUtil.asRecord(GuardUtil.parseJson(metaText));
+    return GuardUtil.firstString(meta, SUBAGENT_TYPE_KEYS);
   }
   handleRecord(context, value, lineNumber, isMainFile) {
     const record = GuardUtil.asRecord(value);
@@ -3412,7 +3423,8 @@ var ClaudeCodeSessionService = class {
   handlePrompt(context, line, rawText) {
     const threadId = line.thread.id;
     if (!context.threadIdToFirstPromptHash.has(threadId)) {
-      context.threadIdToFirstPromptHash.set(threadId, HashUtil.sha(rawText.trim()));
+      const promptHash = HashUtil.sha(rawText.trim());
+      context.threadIdToFirstPromptHash.set(threadId, promptHash);
     }
     const originKind = GuardUtil.asString(GuardUtil.asRecord(line.record.origin)?.kind);
     const isHarnessGenerated = line.record.isMeta === true || line.record.isCompactSummary === true || line.record.isVisibleInTranscriptOnly === true || originKind !== void 0 && originKind !== HUMAN_ORIGIN;
@@ -3740,7 +3752,8 @@ var StoreService = class _StoreService {
     const file = join5(this.root, relativePath);
     await mkdir(dirname2(file), { recursive: true });
     const temporaryFile = `${file}.${process.pid}.tmp`;
-    await writeFile(temporaryFile, JSON.stringify(value, null, shouldIndent ? JSON_INDENT : 0));
+    const serialized = JSON.stringify(value, null, shouldIndent ? JSON_INDENT : 0);
+    await writeFile(temporaryFile, serialized);
     await rename(temporaryFile, file);
   }
   async loadFactsCache() {

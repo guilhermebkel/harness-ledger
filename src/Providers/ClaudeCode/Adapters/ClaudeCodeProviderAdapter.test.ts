@@ -103,7 +103,8 @@ describe("parseSession", () => {
   });
 
   it("redacts secrets in commands", () => {
-    expect(JSON.stringify(factsOf("s4"))).not.toContain(FAKE_SECRETS.bearerToken);
+    const serializedFacts = JSON.stringify(factsOf("s4"));
+    expect(serializedFacts).not.toContain(FAKE_SECRETS.bearerToken);
   });
 
   it("excludes idle gaps from the session's active time", () => {
