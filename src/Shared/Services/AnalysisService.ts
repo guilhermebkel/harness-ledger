@@ -11,7 +11,7 @@ import type {
 import type { AnalyzeOptions } from "@/Shared/Protocols/CommandProtocol.js";
 import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.js";
 import type { SessionFacts } from "@/Shared/Protocols/SessionProtocol.js";
-import type { CountedValue, Signal, SignalType } from "@/Shared/Protocols/SignalProtocol.js";
+import type { CountedValue, Signal, SignalCost, SignalType } from "@/Shared/Protocols/SignalProtocol.js";
 import type { Suggestion } from "@/Shared/Protocols/SuggestionProtocol.js";
 import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
 import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.js";
@@ -41,20 +41,15 @@ const MAX_USAGE_ENTRIES = 15;
 // Why: searching instruction files for every failing command is slow; the top ones are enough.
 const MAX_FAILED_COMMANDS_TO_SEARCH = 15;
 const FAILED_COMMAND_PREFIX = "failed_command:";
-const WASTE_SIGNAL_TYPES = new Set<SignalType>([
-  "failed_command",
-  "tool_error",
-  "permission_denied",
-  "hook_blocked",
-  "repeated_read",
-  "subagent_reread",
-  "api_error",
-]);
+
+type FixLoopPart = "all" | "withoutFixLoops" | "onlyFixLoops";
+const FAILURE_SIGNAL_TYPES = new Set<SignalType>(["failed_command", "tool_error", "permission_denied", "hook_blocked", "api_error"]);
+const REREAD_SIGNAL_TYPES = new Set<SignalType>(["repeated_read", "subagent_reread", "context_compaction"]);
 const CORRECTION_SIGNAL_TYPES = new Set<SignalType>(["user_correction", "interruption"]);
 const COST_METHOD
-  = "Active time sums gaps between transcript events up to the idle threshold; subagent time is reported per agent "
-    + "and not added to session time. Failure cost = time until the agent reacted + tokens of the reaction turn. "
-    + "Correction cost = the corrected turn (upper bound). Categories can overlap.";
+  = "Active time sums gaps between transcript events up to the idle threshold. Each signal's cost.method says what it "
+    + "counts and cost.bound whether it is a lower bound, an upper bound or an estimate (docs/cost-model.md). The "
+    + "totals don't overlap: failures exclude fix loops, and corrections exclude turns already counted as failures.";
 
 export class AnalysisService {
   static readonly LAST_ANALYSIS_FILE = "last-analysis.json";
@@ -202,7 +197,9 @@ export class AnalysisService {
   private totalsOf(sessions: SessionFacts[], signals: Signal[]): AnalysisTotals {
     return {
       ...this.sessionTotals(sessions),
-      lostToFailures: this.sumSignalCosts(signals, WASTE_SIGNAL_TYPES),
+      lostToFailures: this.sumSignalCosts(signals, FAILURE_SIGNAL_TYPES, "withoutFixLoops"),
+      inFixLoops: this.sumSignalCosts(signals, FAILURE_SIGNAL_TYPES, "onlyFixLoops"),
+      lostToRereads: this.sumSignalCosts(signals, REREAD_SIGNAL_TYPES),
       inCorrectedOrInterruptedTurns: this.sumSignalCosts(signals, CORRECTION_SIGNAL_TYPES),
       reportedByProvider: this.reportedTotals(sessions),
       isEstimated: true,
@@ -315,14 +312,38 @@ export class AnalysisService {
     };
   }
 
-  private sumSignalCosts(allSignals: Signal[], types: Set<SignalType>): CostSummary {
-    const signals = allSignals.filter((signal) => types.has(signal.type));
+  private sumSignalCosts(allSignals: Signal[], types: Set<SignalType>, fixLoops: FixLoopPart = "all"): CostSummary {
+    const figures = allSignals
+      .filter((signal) => types.has(signal.type))
+      .map((signal) => AnalysisService.partOf(signal.cost, fixLoops));
+    const sumOf = (field: keyof CostSummary): number => figures.reduce((total, figure) => total + figure[field], 0);
     return {
-      activeMinutes: NumberUtil.round(signals.reduce((total, signal) => total + signal.cost.activeMinutes, 0), 1),
-      tokens: signals.reduce((total, signal) => total + signal.cost.tokens, 0),
-      inputTokens: signals.reduce((total, signal) => total + signal.cost.inputTokens, 0),
-      outputTokens: signals.reduce((total, signal) => total + signal.cost.outputTokens, 0),
-      usd: NumberUtil.round(signals.reduce((total, signal) => total + signal.cost.usd, 0)),
+      activeMinutes: NumberUtil.round(sumOf("activeMinutes"), 1),
+      tokens: Math.round(sumOf("tokens")),
+      inputTokens: Math.round(sumOf("inputTokens")),
+      outputTokens: Math.round(sumOf("outputTokens")),
+      usd: NumberUtil.round(sumOf("usd")),
+    };
+  }
+
+  private static partOf(cost: SignalCost, fixLoops: FixLoopPart): CostSummary {
+    const fixLoop = cost.fixLoop ?? {
+      activeMinutes: 0,
+      tokens: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      usd: 0,
+    };
+    if (fixLoops === "onlyFixLoops") {
+      return fixLoop;
+    }
+    const sign = fixLoops === "withoutFixLoops" ? -1 : 0;
+    return {
+      activeMinutes: cost.activeMinutes + sign * fixLoop.activeMinutes,
+      tokens: cost.tokens + sign * fixLoop.tokens,
+      inputTokens: cost.inputTokens + sign * fixLoop.inputTokens,
+      outputTokens: cost.outputTokens + sign * fixLoop.outputTokens,
+      usd: cost.usd + sign * fixLoop.usd,
     };
   }
 }

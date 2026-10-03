@@ -1,5 +1,5 @@
 import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
-import type { ApiError, SessionFacts, ToolCall, UserPrompt } from "@/Shared/Protocols/SessionProtocol.js";
+import type { ApiError, ContextCompaction, SessionFacts, ToolCall, UserPrompt } from "@/Shared/Protocols/SessionProtocol.js";
 import type {
   FailureChain,
   Occurrence,
@@ -40,6 +40,7 @@ interface CandidateRequest {
 
 export class SignalDetectorService {
   private readonly failureChains: FailureChainService;
+  private countedMessageIds = new Set<string>();
 
   constructor(
     private readonly options: SignalOptions,
@@ -49,13 +50,16 @@ export class SignalDetectorService {
     this.failureChains = new FailureChainService(options.idleMs);
   }
 
+  // Why: failures run first and corrections last: a turn's messages already in a failure chain or a rejected
+  // plan are left out of the correction that follows, so no turn is counted twice.
   detectInSession(session: SessionFacts, index: SessionIndex): void {
+    this.countedMessageIds = new Set();
     this.detectToolFailures(session, index);
     this.detectRepeatedReads(session, index);
     this.detectSubagentRereads(session, index);
     this.detectCorrectionsAndInterruptions(session, index);
     this.detectApiErrors(session, index);
-    this.detectCompactions(session);
+    this.detectCompactions(session, index);
   }
 
   detectRepeatedRequests(sessions: SessionFacts[]): void {
@@ -105,6 +109,9 @@ export class SignalDetectorService {
       for (const failure of chain.failures) {
         callIdToChain.set(failure.id, chain);
       }
+      for (const messageId of chain.messageIds) {
+        this.countedMessageIds.add(messageId);
+      }
     }
     for (const call of session.tools) {
       const result = call.result;
@@ -120,7 +127,8 @@ export class SignalDetectorService {
           excerpt: `${call.summary} → ${result.ref.excerpt ?? ""}`.slice(0, MAX_FAILURE_EXCERPT_CHARS),
         },
         pieces: index.toolCallIdToPieces.get(call.id) ?? [AttributionService.MAIN_PIECE],
-        ...(chain ? SignalDetectorService.shareOf(chain) : this.reactionCost(call, index)),
+        ...this.failureCost(session, index, call, chain),
+        isFixLoop: chain?.kind === "fix_loop",
       };
       const group = this.addFailure(call, occurrence);
       if (group && chain?.failures[0] === call) {
@@ -165,6 +173,22 @@ export class SignalDetectorService {
     return group;
   }
 
+  private failureCost(session: SessionFacts, index: SessionIndex, call: ToolCall, chain?: FailureChain): StepCost {
+    if (chain) {
+      return SignalDetectorService.shareOf(chain);
+    }
+    // Why: a rejected plan costs the work that built it: from the turn's prompt (or the previous rejection)
+    // until the rejection.
+    const rejectedAtMs = call.result?.returnedAtMs ?? call.calledAtMs;
+    const turnStartAtMs = [
+      ...session.prompts.map((prompt) => prompt.sentAtMs),
+      ...session.tools.filter((other) => other.result?.kind === "user_rejected").map((other) => other.result?.returnedAtMs),
+    ]
+      .filter((atMs): atMs is number => atMs !== undefined && rejectedAtMs !== undefined && atMs < rejectedAtMs)
+      .reduce((latest, atMs) => Math.max(latest, atMs), Number.NEGATIVE_INFINITY);
+    return this.turnCost(index, turnStartAtMs, rejectedAtMs);
+  }
+
   // Why: a chain's cost is shared equally by its failures, so the totals add up to the chain once.
   private static shareOf(chain: FailureChain): StepCost {
     const share = 1 / chain.failures.length;
@@ -192,7 +216,7 @@ export class SignalDetectorService {
     }
   }
 
-  private detectCompactions(session: SessionFacts): void {
+  private detectCompactions(session: SessionFacts, index: SessionIndex): void {
     for (const compaction of session.compactions) {
       const isSubagent = !SessionUtil.isMainThread(compaction.thread);
       const piece = isSubagent
@@ -211,12 +235,39 @@ export class SignalDetectorService {
           excerpt: turnsBefore ? `${compaction.ref.excerpt ?? ""} after ${turnsBefore} turns` : compaction.ref.excerpt,
         },
         pieces: [piece],
-        activeMs: 0,
-        usage: TokenUsageUtil.zero(),
+        ...this.compactionCost(session, index, compaction),
       });
       const contextTokens = compaction.contextTokens ?? 0;
       group.details.maxContextTokens = Math.max(group.details.maxContextTokens ?? 0, contextTokens) || undefined;
     }
+  }
+
+  // Why: what a compaction costs is reading again, after it, the files the thread had read before it.
+  private compactionCost(session: SessionFacts, index: SessionIndex, compaction: ContextCompaction): StepCost {
+    const compactedAtMs = compaction.occurredAtMs ?? 0;
+    const nextCompactionAtMs = session.compactions
+      .filter((other) => other.thread.id === compaction.thread.id && (other.occurredAtMs ?? 0) > compactedAtMs)
+      .reduce((earliest, other) => Math.min(earliest, other.occurredAtMs ?? Infinity), Infinity);
+    const threadReads = session.tools
+      .filter((call) => call.thread.id === compaction.thread.id && this.isSuccessfulRead(call));
+    const filesReadBefore = new Set(threadReads
+      .filter((call) => (call.calledAtMs ?? 0) < compactedAtMs)
+      .map((call) => call.filePath));
+    const seenFiles = new Set<string | undefined>();
+    const rereads = threadReads.filter((call) => {
+      const calledAtMs = call.calledAtMs ?? 0;
+      const isAfterCompaction = calledAtMs > compactedAtMs && calledAtMs < nextCompactionAtMs;
+      const isReread = isAfterCompaction && filesReadBefore.has(call.filePath);
+      const isFirstReread = isReread && !seenFiles.has(call.filePath);
+      seenFiles.add(isReread ? call.filePath : undefined);
+      return isFirstReread;
+    });
+    const rereadCosts = rereads.map((read) => this.readCost(read, index));
+    return {
+      activeMs: rereadCosts.reduce((total, cost) => total + cost.activeMs, 0),
+      usage: TokenUsageUtil.sum(rereadCosts.map((cost) => cost.usage)),
+      model: rereadCosts[0]?.model,
+    };
   }
 
   private detectApiErrors(session: SessionFacts, index: SessionIndex): void {
@@ -316,7 +367,7 @@ export class SignalDetectorService {
           excerpt: conversationExcerpt,
         },
         pieces,
-        ...this.correctedTurnCost(index, previousPrompt?.sentAtMs, prompt.sentAtMs),
+        ...this.turnCost(index, previousPrompt?.sentAtMs, prompt.sentAtMs),
       });
     });
   }
@@ -347,22 +398,6 @@ export class SignalDetectorService {
     return call.category === "read" && call.filePath !== undefined && call.result?.isError !== true;
   }
 
-  // Why: cost of a failed step: time until the agent reacted, and the tokens of the turn spent reacting.
-  private reactionCost(call: ToolCall, index: SessionIndex): StepCost {
-    const threadMessages = index.threadIdToMessages.get(call.thread.id) ?? [];
-    const resultAtMs = call.result?.returnedAtMs ?? call.calledAtMs ?? 0;
-    const reaction = threadMessages.find(
-      (message) => (message.sentAtMs ?? 0) >= resultAtMs && message.id !== call.messageId,
-    );
-    const reactedAtMs = reaction?.sentAtMs ?? resultAtMs;
-    const elapsedMs = call.calledAtMs === undefined ? 0 : Math.max(0, reactedAtMs - call.calledAtMs);
-    return {
-      activeMs: Math.min(this.options.idleMs, elapsedMs),
-      usage: reaction?.usage ?? TokenUsageUtil.zero(),
-      model: reaction?.model,
-    };
-  }
-
   // Why: cost of a failed request: the wait until the thread got a real answer (retries and fallbacks).
   private apiErrorCost(apiError: ApiError, index: SessionIndex): StepCost {
     const failedAtMs = apiError.occurredAtMs ?? 0;
@@ -390,29 +425,33 @@ export class SignalDetectorService {
     };
   }
 
-  // Why: cost of a corrected or interrupted turn is an upper bound: all main-thread time and tokens in it.
-  private correctedTurnCost(index: SessionIndex, turnStartAtMs?: number, turnEndAtMs?: number): StepCost {
-    if (turnStartAtMs === undefined || turnEndAtMs === undefined) {
+  // Why: a turn's cost is an upper bound: every message of every thread in it, minus messages another signal
+  // already counted. The messages it counts are then marked counted too.
+  private turnCost(index: SessionIndex, turnStartAtMs?: number, turnEndAtMs?: number): StepCost {
+    const isOpenTurn = turnStartAtMs === undefined || !Number.isFinite(turnStartAtMs);
+    if (isOpenTurn || turnEndAtMs === undefined) {
       return {
         activeMs: 0,
         usage: TokenUsageUtil.zero(),
       };
     }
-    const mainMessages = index.threadIdToMessages.get(SessionUtil.MAIN_THREAD_ID) ?? [];
-    const turnMessages = mainMessages.filter((message) => {
+    const turnMessages = [...index.threadIdToMessages.values()].flat().filter((message) => {
       const sentAtMs = message.sentAtMs ?? 0;
-      return sentAtMs > turnStartAtMs && sentAtMs <= turnEndAtMs;
+      return !this.countedMessageIds.has(message.id) && sentAtMs > turnStartAtMs && sentAtMs <= turnEndAtMs;
     });
+    for (const message of turnMessages) {
+      this.countedMessageIds.add(message.id);
+    }
     const eventsAtMs = [turnStartAtMs, ...turnMessages.map((message) => message.sentAtMs ?? turnStartAtMs)]
       .sort((left, right) => left - right);
     return {
       activeMs: TimeUtil.activeTime(eventsAtMs, this.options.idleMs),
-      usage: turnMessages.reduce((total, message) => TokenUsageUtil.add(total, message.usage), TokenUsageUtil.zero()),
+      usage: TokenUsageUtil.sum(turnMessages.map((message) => message.usage)),
       model: turnMessages[0]?.model,
     };
   }
 
-  // Why: reading a file again is legitimate after it was edited or changed by a command in between.
+  // Why: reading a file again is legitimate after it was edited, changed by a command, or compacted out of context.
   private wasChangedBetween(session: SessionFacts, firstRead: ToolCall, laterRead: ToolCall): boolean {
     const fromAtMs = firstRead.calledAtMs ?? 0;
     const toAtMs = laterRead.calledAtMs ?? 0;
@@ -423,6 +462,9 @@ export class SignalDetectorService {
       const isFileChangingCommand = call.category === "shell" && FILE_CHANGING_COMMAND.test(call.summary);
       const isBetween = calledAtMs >= fromAtMs && calledAtMs <= toAtMs;
       return isSameThread && isBetween && (isEditOfFile || isFileChangingCommand);
+    }) || session.compactions.some((compaction) => {
+      const compactedAtMs = compaction.occurredAtMs ?? 0;
+      return compaction.thread.id === firstRead.thread.id && compactedAtMs >= fromAtMs && compactedAtMs <= toAtMs;
     });
   }
 }

@@ -50,6 +50,7 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 - Runtime code uses only Node built-ins (Node 20+). No runtime dependencies (ADR 0004).
 - No comments by default. Write one only for a hidden rule someone could break by changing the code, starting with `Why:` (enforced by lint).
 - Follow `docs/code-standards.md`. `pnpm lint` enforces most of it; review checks the rest.
+- Cost rules live in `docs/cost-model.md` (ADR 0009): change a cost in code and that file in the same commit, and keep `cost.method` and `cost.bound` in `SignalService` in sync with it.
 - Numbers come only from the script; the skill never estimates them (ADR 0002). New signals must carry evidence (session, line, thread) and an `isPartial` flag with reasons when the evidence is incomplete.
 - Every string that can reach output passes through `RedactUtil.redact()` / `RedactUtil.excerpt()`. Hook and MCP entries keep names and shapes only (ADR 0007). Add a test with a fake secret for any new output path.
 - Transcript formats are internal: parse defensively, count unknown lines, never throw on a bad line. Add new format cases to the provider's fixture (`ClaudeCodeFixtureUtil`).

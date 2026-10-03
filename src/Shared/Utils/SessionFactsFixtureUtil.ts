@@ -112,6 +112,17 @@ export class SessionFactsBuilder {
     return this;
   }
 
+  compact(): this {
+    this.facts.compactions.push({
+      trigger: "auto",
+      thread: this.thread,
+      ref: this.ref(),
+      occurredAtMs: this.atMs,
+    });
+    this.atMs += MS_PER_SECOND;
+    return this;
+  }
+
   build(): SessionFacts {
     this.facts.endedAtMs = this.atMs;
     return this.facts;

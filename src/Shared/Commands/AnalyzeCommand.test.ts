@@ -336,7 +336,7 @@ describe("AnalyzeCommand on pieces that keep filling their context", () => {
     rmSync(contextFixture.root, { recursive: true, force: true });
   });
 
-  it("names the files loaded again and again and the huge outputs, per piece, with their tokens", async () => {
+  it("names the files loaded again and again and the huge outputs, per piece, with their tokens and their carry", async () => {
     const analysis = await command.run({ projectDir: contextFixture.projectDir, dataDir: contextFixture.dataDir });
     const heavy = signalById(analysis.signals, "context_heavy:agent:reviewer (built-in)");
     expect(heavy).toMatchObject({ sessions: 2, pieces: ["agent:reviewer (built-in)"] });
@@ -344,7 +344,7 @@ describe("AnalyzeCommand on pieces that keep filling their context", () => {
       { value: "npm run build (×2)", count: 9000 },
       { value: "docs/guide.md (×4)", count: 8000 },
     ]);
-    expect(heavy.cost).toMatchObject({ tokens: 17000, inputTokens: 17000, outputTokens: 0 });
+    expect(heavy.cost).toMatchObject({ tokens: 17000 + 28000, inputTokens: 17000 + 28000, outputTokens: 0 });
   });
 
   it("doesn't take different files read with the same command as the same material", async () => {

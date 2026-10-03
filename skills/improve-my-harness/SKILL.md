@@ -74,11 +74,11 @@ If `.imh/` is not in `.gitignore` and the project is a git repo, ask once whethe
 
 1. Find the piece id (`inventory` if needed) and when it changed: an applied suggestion, the date the user gives (`--at`), or the piece's last change (git commit, else file mtime). The script picks this automatically; say which source it used.
 2. Run `compare --piece <id>`.
-3. Report before vs. after: sessions, error rate, corrections per session, time, input and output tokens, and cost per use, and the signals on each side. Use the script's `verdict`:
+3. Report before vs. after: sessions, error rate, corrections per session, time, time until failures recovered, input and output tokens, and cost per use, and the signals on each side. Use the script's `verdict`:
    - `insufficient_data`: say how many sessions each side has and that it needs `minSessions` per side. Don't conclude anything.
    - `improved` / `worse` / `mixed` / `no_clear_change`: say it, and always add that this is an observational comparison of different tasks, not a controlled test.
    - Describe the verdict with `moves`, the metrics that changed: time per use counts as much as cost, so "same cost, 40% faster" is an improvement. For `mixed`, name the trade-off ("40% faster, 30% more expensive") and let the user weigh it.
-   - Moves with `isInVerdict: false` are input and output tokens per use. Report them ("30% fewer output tokens"), but they don't decide the verdict: their cost is already in `usdPerInvocation`.
+   - Moves with `isInVerdict: false` are input and output tokens per use and time until failures recovered. Report them ("30% fewer output tokens", "half the time stuck on failures"), but they don't decide the verdict: they are already in `usdPerInvocation` and in active time.
 
 ## Flow 4: manage suggestions
 
@@ -99,7 +99,7 @@ Only when the user explicitly asks for a specific suggestion. Then:
 ## Hard rules
 
 - Every finding cites its evidence: session id (first 8 characters), transcript line and thread. No evidence, no finding.
-- Numbers come only from the script. Time and cost are always labeled as estimates. If `totals.unpricedModels` is not empty, say that those models' cost is not included. `totals.reportedByProvider` holds the agent's own cost and turn time; show it beside the estimate, never summed with it. Never sum categories the script marks as overlapping.
+- Numbers come only from the script. Time and cost are always labeled as estimates. If `totals.unpricedModels` is not empty, say that those models' cost is not included. `totals.reportedByProvider` holds the agent's own cost and turn time; show it beside the estimate, never summed with it. Each signal's `cost.bound` says whether to write "at least", "at most" or "about".
 - Never show secret values. The script redacts excerpts; if you read a transcript line yourself, don't copy credentials, tokens, keys or personal data into the report, suggestions or commits. If you notice an exposed secret, tell the user privately in one line and don't turn it into a suggestion.
 - Stay in scope: unrelated bugs or code issues you notice in transcripts are not harness findings. Mention them in one line at most, outside the suggestion list.
 - Don't apply anything without explicit confirmation for that specific suggestion.

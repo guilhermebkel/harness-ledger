@@ -85,8 +85,12 @@ export interface ReportedTotals {
   turns: number;
 }
 
+// Why: the categories don't overlap: a turn already in a failure chain or a rejected plan is left out of the
+// correction after it, and fix loops are kept apart from failures (fixing the code is work, not waste).
 export interface AnalysisTotals extends SessionTotals {
   lostToFailures: CostSummary;
+  inFixLoops: CostSummary;
+  lostToRereads: CostSummary;
   inCorrectedOrInterruptedTurns: CostSummary;
   isEstimated: true;
   reportedByProvider: ReportedTotals;
@@ -187,6 +191,8 @@ export interface SideMetrics {
   perInvocation?: PerInvocation;
   corrections: number;
   correctionsPerSession: number;
+  // Why: time from a failure until it worked, per invocation; part of the active time, so it doesn't vote.
+  recoveryMinutesPerInvocation?: number;
   signals: SideSignal[];
 }
 
@@ -199,7 +205,8 @@ export type ComparedMetric
     | "activeMinutesPerInvocation"
     | "usdPerInvocation"
     | "inputTokensPerInvocation"
-    | "outputTokensPerInvocation";
+    | "outputTokensPerInvocation"
+    | "recoveryMinutesPerInvocation";
 
 // Why: lower is better for every compared metric.
 export interface MetricMove {
@@ -212,6 +219,7 @@ export interface MetricMove {
 
 export interface CompareDeltas {
   errorRate: number | null;
+  recoveryMinutesPerInvocation: number | null;
   correctionsPerSession: number | null;
   activeMinutesPerInvocation: number | null;
   tokensPerInvocation: number | null;

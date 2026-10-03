@@ -54,6 +54,19 @@ _Avoid_: duration, wall time
 A number the provider computed itself (its cost for a session, how long a turn took), kept next to the script's estimates and never added to them.
 _Avoid_: actual cost, real time
 
+**Failure chain**:
+A thread's failed attempts at one job, from the first failure until a call doing the same job worked (or the agent moved on). A failure costs its chain, shared with the other failures in it.
+_Avoid_: retry loop
+
+**Fix loop**:
+A failure chain that ends when the identical command passes after the agent changed the code. Kept apart from waste in the totals.
+
+**Carry**:
+What loaded material costs after it is loaded: its tokens, as cached input, on every later message of the thread until a compaction drops it.
+
+**Cost bound**:
+Whether a signal's cost is a lower bound (`lower`), an upper bound (`upper`) or an estimate. See `docs/cost-model.md`.
+
 **Signal**:
 A pattern extracted deterministically from sessions, such as a failing command or a file read several times, with counts, cost and evidence. Signals are facts, not judgments.
 _Avoid_: issue, problem, insight

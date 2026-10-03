@@ -5,6 +5,7 @@ import type { SessionFacts, ToolCall, ToolCategory } from "@/Shared/Protocols/Se
 import type { SignalOptions } from "@/Shared/Protocols/SignalProtocol.js";
 import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.js";
 import { NumberUtil } from "@/Shared/Utils/NumberUtil.js";
+import { TokenUsageUtil } from "@/Shared/Utils/TokenUsageUtil.js";
 import { AttributionService } from "./AttributionService.js";
 import type { OccurrenceCollectorService } from "./OccurrenceCollectorService.js";
 
@@ -41,18 +42,34 @@ export class ContextLoadDetectorService {
           },
           pieces: [loads.piece],
           activeMs: 0,
-          // Why: counted once as input; in practice it is re-read on every later turn of the thread.
           usage: {
+            ...TokenUsageUtil.zero(),
             input: tokens,
-            output: 0,
-            cacheRead: 0,
-            cacheWrite: 0,
+            cacheRead: tokens * ContextLoadDetectorService.laterMessagesOf(session, sessionIdToIndex, call),
           },
           model: undefined,
         });
         this.collector.count(group, "sources", `${loads.source} (×${loads.calls.length})`, tokens);
       }
     }
+  }
+
+  // Why: loaded material is re-sent as cached input with every later message of the thread, until a compaction
+  // drops it; that carry, not the first load, is most of what it costs.
+  private static laterMessagesOf(
+    session: SessionFacts,
+    sessionIdToIndex: Map<string, SessionIndex>,
+    call: ToolCall,
+  ): number {
+    const loadedAtMs = call.result?.returnedAtMs ?? call.calledAtMs ?? 0;
+    const droppedAtMs = session.compactions
+      .filter((compaction) => compaction.thread.id === call.thread.id && (compaction.occurredAtMs ?? 0) > loadedAtMs)
+      .reduce((earliest, compaction) => Math.min(earliest, compaction.occurredAtMs ?? Infinity), Infinity);
+    const threadMessages = sessionIdToIndex.get(session.sessionId)?.threadIdToMessages.get(call.thread.id) ?? [];
+    return threadMessages.filter((message) => {
+      const sentAtMs = message.sentAtMs ?? 0;
+      return sentAtMs > loadedAtMs && sentAtMs < droppedAtMs;
+    }).length;
   }
 
   private heavySources(sessions: SessionFacts[], sessionIdToIndex: Map<string, SessionIndex>): SourceLoads[] {

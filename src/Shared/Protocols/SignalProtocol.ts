@@ -39,6 +39,8 @@ export interface FailureChain {
   recovery?: ToolCall;
   kind: FailureChainKind;
   cost: StepCost;
+  // Why: other signals (corrections) leave these messages out so the same turn is never counted twice.
+  messageIds: string[];
 }
 
 export interface ChainSummary {
@@ -72,14 +74,24 @@ export interface SignalDetails {
 
 export type CountedDetail = "errors" | "recoveredWith" | "files" | "models" | "sources";
 
-export interface SignalCost {
+// Why: tells the report whether to say "at least" (lower), "at most" (upper) or "about" (estimate).
+export type CostBound = "lower" | "upper" | "estimate";
+
+export interface CostFigures {
   activeMinutes: number;
   tokens: number;
   // Why: includes cache reads and writes.
   inputTokens: number;
   outputTokens: number;
   usd: number;
+}
+
+export interface SignalCost extends CostFigures {
   isEstimated: true;
+  bound: CostBound;
+  method: string;
+  // Why: the part spent rerunning the same command after fixes; totals keep it apart from waste.
+  fixLoop?: CostFigures;
 }
 
 export interface PieceChange {
@@ -129,6 +141,7 @@ export interface Occurrence {
   activeMs: number;
   usage: TokenUsage;
   model?: string;
+  isFixLoop?: boolean;
 }
 
 export interface OccurrenceGroup {

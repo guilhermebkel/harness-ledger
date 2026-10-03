@@ -15,6 +15,7 @@ import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
 import { AttributionService } from "./AttributionService.js";
 import { SignalService } from "./SignalService.js";
 import { UsageService } from "./UsageService.js";
+import { FailureChainService } from "./FailureChainService.js";
 
 const MAX_SIDE_SIGNALS = 10;
 const DELTA_DIGITS = 3;
@@ -79,6 +80,10 @@ export class CompareService {
       verdict: hasEnoughData ? this.verdictOf(moves) : "insufficient_data",
       deltas: {
         errorRate: this.difference(before.errorRate, after.errorRate),
+        recoveryMinutesPerInvocation: this.difference(
+          before.recoveryMinutesPerInvocation,
+          after.recoveryMinutesPerInvocation,
+        ),
         correctionsPerSession: this.difference(before.correctionsPerSession, after.correctionsPerSession),
         activeMinutesPerInvocation: this.difference(
           before.perInvocation?.activeMinutes,
@@ -107,6 +112,7 @@ export class CompareService {
       usdPerInvocation: [before.perInvocation?.usd, after.perInvocation?.usd],
       inputTokensPerInvocation: [before.perInvocation?.inputTokens, after.perInvocation?.inputTokens],
       outputTokensPerInvocation: [before.perInvocation?.outputTokens, after.perInvocation?.outputTokens],
+      recoveryMinutesPerInvocation: [before.recoveryMinutesPerInvocation, after.recoveryMinutesPerInvocation],
     };
     return (Object.entries(metricToValues) as [ComparedMetric, [number | undefined, number | undefined]][])
       .map(([metric, [beforeValue, afterValue]]): MetricMove => {
@@ -142,9 +148,9 @@ export class CompareService {
     const usage = new UsageService(this.config.prices, new Set([piece]))
       .pieceUsage(sessions)
       .find((entry) => entry.piece === this.usagePieceOf(piece));
-    const corrections = sessions
-      .flatMap((session) => session.prompts)
-      .filter((prompt) => prompt.isCorrection || prompt.isInterruption).length;
+    const attributed = this.attributedToPiece(sessions, piece);
+    const corrections = attributed.corrections;
+    const invocations = usage?.invocations ?? 0;
     const signalService = new SignalService({
       idleMs: this.idleMs,
       prices: this.config.prices,
@@ -164,12 +170,44 @@ export class CompareService {
     return {
       corrections,
       signals,
+      invocations,
       sessions: sessions.length,
-      invocations: usage?.invocations ?? 0,
       toolCalls: usage?.toolCalls ?? 0,
       errorRate: usage?.errorRate ?? 0,
       perInvocation: usage?.perInvocation,
       correctionsPerSession: sessions.length ? NumberUtil.round(corrections / sessions.length) : 0,
+      recoveryMinutesPerInvocation: invocations
+        ? NumberUtil.round(TimeUtil.msToMinutes(attributed.recoveryMs) / invocations)
+        : undefined,
+    };
+  }
+
+  // Why: a global piece (instructions, hooks, settings) is behind every turn; any other piece only answers for
+  // the corrections and failures that happened while it ran.
+  private attributedToPiece(sessions: SessionFacts[], piece: string): {
+    corrections: number; recoveryMs: number;
+  } {
+    const usagePiece = this.usagePieceOf(piece);
+    const isGlobalPiece = usagePiece === AttributionService.MAIN_PIECE && piece !== AttributionService.MAIN_PIECE;
+    const attribution = new AttributionService(new Set([piece]));
+    const chains = new FailureChainService(this.idleMs);
+    const isPieceAmong = (pieces: string[] | undefined): boolean =>
+      isGlobalPiece || (pieces ?? [AttributionService.MAIN_PIECE]).some((candidate) =>
+        AttributionService.isSamePiece(candidate, usagePiece));
+    let corrections = 0;
+    let recoveryMs = 0;
+    for (const session of sessions) {
+      const index = attribution.buildSessionIndex(session);
+      corrections += session.prompts
+        .filter((prompt) => prompt.isCorrection || prompt.isInterruption)
+        .filter((prompt) => isPieceAmong(index.promptToPreviousTurnPieces.get(prompt))).length;
+      recoveryMs += chains.chainsOf(session, index)
+        .filter((chain) => isPieceAmong(index.toolCallIdToPieces.get(chain.failures[0]?.id ?? "")))
+        .reduce((total, chain) => total + chain.cost.activeMs, 0);
+    }
+    return {
+      corrections,
+      recoveryMs,
     };
   }
 

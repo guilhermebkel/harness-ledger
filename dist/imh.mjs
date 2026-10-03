@@ -736,11 +736,13 @@ var FailureChainService = class _FailureChainService {
       }
       return step === "stop" || step === "recovery" || failures.length >= MAX_CHAIN_ATTEMPTS;
     });
+    const window = this.chainWindow(first, failures, recovery, index);
     return {
       failures,
       recovery,
       kind: _FailureChainService.kindOf(first, recovery),
-      cost: this.chainCost(first, failures, recovery, index)
+      cost: window.cost,
+      messageIds: window.messages.map((message) => message.id)
     };
   }
   stepOf(first, candidate) {
@@ -795,13 +797,16 @@ var FailureChainService = class _FailureChainService {
   // Why: the cost runs from the first failed call until the call that worked was issued, with every message in
   // between (reasoning, looking around, fixes); the working call's own run is not waste. Unrecovered chains end
   // at the agent's reaction to the last failure.
-  chainCost(first, failures, recovery, index) {
+  chainWindow(first, failures, recovery, index) {
     const startAtMs = first.calledAtMs;
     const messages = index.threadIdToMessages.get(first.thread.id) ?? [];
     if (startAtMs === void 0) {
       return {
-        activeMs: 0,
-        usage: TokenUsageUtil.zero()
+        cost: {
+          activeMs: 0,
+          usage: TokenUsageUtil.zero()
+        },
+        messages: []
       };
     }
     const lastFailure = failures.at(-1) ?? first;
@@ -812,9 +817,12 @@ var FailureChainService = class _FailureChainService {
     });
     const eventsAtMs = [startAtMs, ...windowMessages.map((message) => message.sentAtMs ?? startAtMs), endAtMs].sort((left, right) => left - right);
     return {
-      activeMs: TimeUtil.activeTime(eventsAtMs, this.idleMs),
-      usage: TokenUsageUtil.sum(windowMessages.map((message) => message.usage)),
-      model: windowMessages[0]?.model
+      cost: {
+        activeMs: TimeUtil.activeTime(eventsAtMs, this.idleMs),
+        usage: TokenUsageUtil.sum(windowMessages.map((message) => message.usage)),
+        model: windowMessages[0]?.model
+      },
+      messages: windowMessages
     };
   }
   static reactionAtMs(call, messages) {
@@ -843,13 +851,17 @@ var SignalDetectorService = class _SignalDetectorService {
     this.failureChains = new FailureChainService(options.idleMs);
   }
   failureChains;
+  countedMessageIds = /* @__PURE__ */ new Set();
+  // Why: failures run first and corrections last: a turn's messages already in a failure chain or a rejected
+  // plan are left out of the correction that follows, so no turn is counted twice.
   detectInSession(session, index) {
+    this.countedMessageIds = /* @__PURE__ */ new Set();
     this.detectToolFailures(session, index);
     this.detectRepeatedReads(session, index);
     this.detectSubagentRereads(session, index);
     this.detectCorrectionsAndInterruptions(session, index);
     this.detectApiErrors(session, index);
-    this.detectCompactions(session);
+    this.detectCompactions(session, index);
   }
   detectRepeatedRequests(sessions) {
     const thresholds = this.options.thresholds;
@@ -897,6 +909,9 @@ var SignalDetectorService = class _SignalDetectorService {
       for (const failure of chain.failures) {
         callIdToChain.set(failure.id, chain);
       }
+      for (const messageId of chain.messageIds) {
+        this.countedMessageIds.add(messageId);
+      }
     }
     for (const call of session.tools) {
       const result = call.result;
@@ -911,7 +926,8 @@ var SignalDetectorService = class _SignalDetectorService {
           excerpt: `${call.summary} \u2192 ${result.ref.excerpt ?? ""}`.slice(0, MAX_FAILURE_EXCERPT_CHARS)
         },
         pieces: index.toolCallIdToPieces.get(call.id) ?? [AttributionService.MAIN_PIECE],
-        ...chain ? _SignalDetectorService.shareOf(chain) : this.reactionCost(call, index)
+        ...this.failureCost(session, index, call, chain),
+        isFixLoop: chain?.kind === "fix_loop"
       };
       const group = this.addFailure(call, occurrence);
       if (group && chain?.failures[0] === call) {
@@ -953,6 +969,17 @@ var SignalDetectorService = class _SignalDetectorService {
     group.details.error = errorHead;
     return group;
   }
+  failureCost(session, index, call, chain) {
+    if (chain) {
+      return _SignalDetectorService.shareOf(chain);
+    }
+    const rejectedAtMs = call.result?.returnedAtMs ?? call.calledAtMs;
+    const turnStartAtMs = [
+      ...session.prompts.map((prompt) => prompt.sentAtMs),
+      ...session.tools.filter((other) => other.result?.kind === "user_rejected").map((other) => other.result?.returnedAtMs)
+    ].filter((atMs) => atMs !== void 0 && rejectedAtMs !== void 0 && atMs < rejectedAtMs).reduce((latest, atMs) => Math.max(latest, atMs), Number.NEGATIVE_INFINITY);
+    return this.turnCost(index, turnStartAtMs, rejectedAtMs);
+  }
   // Why: a chain's cost is shared equally by its failures, so the totals add up to the chain once.
   static shareOf(chain) {
     const share = 1 / chain.failures.length;
@@ -978,7 +1005,7 @@ var SignalDetectorService = class _SignalDetectorService {
       this.collector.count(group, "recoveredWith", chain.recovery.key);
     }
   }
-  detectCompactions(session) {
+  detectCompactions(session, index) {
     for (const compaction of session.compactions) {
       const isSubagent = !SessionUtil.isMainThread(compaction.thread);
       const piece = isSubagent ? this.attribution.pieceIdFor("agent", compaction.thread.agentType) : AttributionService.MAIN_PIECE;
@@ -993,12 +1020,33 @@ var SignalDetectorService = class _SignalDetectorService {
           excerpt: turnsBefore ? `${compaction.ref.excerpt ?? ""} after ${turnsBefore} turns` : compaction.ref.excerpt
         },
         pieces: [piece],
-        activeMs: 0,
-        usage: TokenUsageUtil.zero()
+        ...this.compactionCost(session, index, compaction)
       });
       const contextTokens = compaction.contextTokens ?? 0;
       group.details.maxContextTokens = Math.max(group.details.maxContextTokens ?? 0, contextTokens) || void 0;
     }
+  }
+  // Why: what a compaction costs is reading again, after it, the files the thread had read before it.
+  compactionCost(session, index, compaction) {
+    const compactedAtMs = compaction.occurredAtMs ?? 0;
+    const nextCompactionAtMs = session.compactions.filter((other) => other.thread.id === compaction.thread.id && (other.occurredAtMs ?? 0) > compactedAtMs).reduce((earliest, other) => Math.min(earliest, other.occurredAtMs ?? Infinity), Infinity);
+    const threadReads = session.tools.filter((call) => call.thread.id === compaction.thread.id && this.isSuccessfulRead(call));
+    const filesReadBefore = new Set(threadReads.filter((call) => (call.calledAtMs ?? 0) < compactedAtMs).map((call) => call.filePath));
+    const seenFiles = /* @__PURE__ */ new Set();
+    const rereads = threadReads.filter((call) => {
+      const calledAtMs = call.calledAtMs ?? 0;
+      const isAfterCompaction = calledAtMs > compactedAtMs && calledAtMs < nextCompactionAtMs;
+      const isReread = isAfterCompaction && filesReadBefore.has(call.filePath);
+      const isFirstReread = isReread && !seenFiles.has(call.filePath);
+      seenFiles.add(isReread ? call.filePath : void 0);
+      return isFirstReread;
+    });
+    const rereadCosts = rereads.map((read) => this.readCost(read, index));
+    return {
+      activeMs: rereadCosts.reduce((total, cost) => total + cost.activeMs, 0),
+      usage: TokenUsageUtil.sum(rereadCosts.map((cost) => cost.usage)),
+      model: rereadCosts[0]?.model
+    };
   }
   detectApiErrors(session, index) {
     for (const apiError of session.apiErrors) {
@@ -1086,7 +1134,7 @@ var SignalDetectorService = class _SignalDetectorService {
           excerpt: conversationExcerpt
         },
         pieces,
-        ...this.correctedTurnCost(index, previousPrompt?.sentAtMs, prompt.sentAtMs)
+        ...this.turnCost(index, previousPrompt?.sentAtMs, prompt.sentAtMs)
       });
     });
   }
@@ -1109,21 +1157,6 @@ var SignalDetectorService = class _SignalDetectorService {
   }
   isSuccessfulRead(call) {
     return call.category === "read" && call.filePath !== void 0 && call.result?.isError !== true;
-  }
-  // Why: cost of a failed step: time until the agent reacted, and the tokens of the turn spent reacting.
-  reactionCost(call, index) {
-    const threadMessages = index.threadIdToMessages.get(call.thread.id) ?? [];
-    const resultAtMs = call.result?.returnedAtMs ?? call.calledAtMs ?? 0;
-    const reaction = threadMessages.find(
-      (message) => (message.sentAtMs ?? 0) >= resultAtMs && message.id !== call.messageId
-    );
-    const reactedAtMs = reaction?.sentAtMs ?? resultAtMs;
-    const elapsedMs = call.calledAtMs === void 0 ? 0 : Math.max(0, reactedAtMs - call.calledAtMs);
-    return {
-      activeMs: Math.min(this.options.idleMs, elapsedMs),
-      usage: reaction?.usage ?? TokenUsageUtil.zero(),
-      model: reaction?.model
-    };
   }
   // Why: cost of a failed request: the wait until the thread got a real answer (retries and fallbacks).
   apiErrorCost(apiError, index) {
@@ -1150,27 +1183,31 @@ var SignalDetectorService = class _SignalDetectorService {
       model: index.threadIdToMessages.get(read.thread.id)?.[0]?.model
     };
   }
-  // Why: cost of a corrected or interrupted turn is an upper bound: all main-thread time and tokens in it.
-  correctedTurnCost(index, turnStartAtMs, turnEndAtMs) {
-    if (turnStartAtMs === void 0 || turnEndAtMs === void 0) {
+  // Why: a turn's cost is an upper bound: every message of every thread in it, minus messages another signal
+  // already counted. The messages it counts are then marked counted too.
+  turnCost(index, turnStartAtMs, turnEndAtMs) {
+    const isOpenTurn = turnStartAtMs === void 0 || !Number.isFinite(turnStartAtMs);
+    if (isOpenTurn || turnEndAtMs === void 0) {
       return {
         activeMs: 0,
         usage: TokenUsageUtil.zero()
       };
     }
-    const mainMessages = index.threadIdToMessages.get(SessionUtil.MAIN_THREAD_ID) ?? [];
-    const turnMessages = mainMessages.filter((message) => {
+    const turnMessages = [...index.threadIdToMessages.values()].flat().filter((message) => {
       const sentAtMs = message.sentAtMs ?? 0;
-      return sentAtMs > turnStartAtMs && sentAtMs <= turnEndAtMs;
+      return !this.countedMessageIds.has(message.id) && sentAtMs > turnStartAtMs && sentAtMs <= turnEndAtMs;
     });
+    for (const message of turnMessages) {
+      this.countedMessageIds.add(message.id);
+    }
     const eventsAtMs = [turnStartAtMs, ...turnMessages.map((message) => message.sentAtMs ?? turnStartAtMs)].sort((left, right) => left - right);
     return {
       activeMs: TimeUtil.activeTime(eventsAtMs, this.options.idleMs),
-      usage: turnMessages.reduce((total, message) => TokenUsageUtil.add(total, message.usage), TokenUsageUtil.zero()),
+      usage: TokenUsageUtil.sum(turnMessages.map((message) => message.usage)),
       model: turnMessages[0]?.model
     };
   }
-  // Why: reading a file again is legitimate after it was edited or changed by a command in between.
+  // Why: reading a file again is legitimate after it was edited, changed by a command, or compacted out of context.
   wasChangedBetween(session, firstRead, laterRead) {
     const fromAtMs = firstRead.calledAtMs ?? 0;
     const toAtMs = laterRead.calledAtMs ?? 0;
@@ -1181,6 +1218,9 @@ var SignalDetectorService = class _SignalDetectorService {
       const isFileChangingCommand = call.category === "shell" && FILE_CHANGING_COMMAND.test(call.summary);
       const isBetween = calledAtMs >= fromAtMs && calledAtMs <= toAtMs;
       return isSameThread && isBetween && (isEditOfFile || isFileChangingCommand);
+    }) || session.compactions.some((compaction) => {
+      const compactedAtMs = compaction.occurredAtMs ?? 0;
+      return compaction.thread.id === firstRead.thread.id && compactedAtMs >= fromAtMs && compactedAtMs <= toAtMs;
     });
   }
 };
@@ -1353,7 +1393,7 @@ var WorkflowDetectorService = class {
 // src/Shared/Services/ContextLoadDetectorService.ts
 var TOKENS_PER_THOUSAND = 1e3;
 var LOADING_CATEGORIES = /* @__PURE__ */ new Set(["read", "shell", "search", "mcp", "skill", "other"]);
-var ContextLoadDetectorService = class {
+var ContextLoadDetectorService = class _ContextLoadDetectorService {
   constructor(options, collector) {
     this.options = options;
     this.collector = collector;
@@ -1370,18 +1410,27 @@ var ContextLoadDetectorService = class {
           },
           pieces: [loads.piece],
           activeMs: 0,
-          // Why: counted once as input; in practice it is re-read on every later turn of the thread.
           usage: {
+            ...TokenUsageUtil.zero(),
             input: tokens,
-            output: 0,
-            cacheRead: 0,
-            cacheWrite: 0
+            cacheRead: tokens * _ContextLoadDetectorService.laterMessagesOf(session, sessionIdToIndex, call)
           },
           model: void 0
         });
         this.collector.count(group, "sources", `${loads.source} (\xD7${loads.calls.length})`, tokens);
       }
     }
+  }
+  // Why: loaded material is re-sent as cached input with every later message of the thread, until a compaction
+  // drops it; that carry, not the first load, is most of what it costs.
+  static laterMessagesOf(session, sessionIdToIndex, call) {
+    const loadedAtMs = call.result?.returnedAtMs ?? call.calledAtMs ?? 0;
+    const droppedAtMs = session.compactions.filter((compaction) => compaction.thread.id === call.thread.id && (compaction.occurredAtMs ?? 0) > loadedAtMs).reduce((earliest, compaction) => Math.min(earliest, compaction.occurredAtMs ?? Infinity), Infinity);
+    const threadMessages = sessionIdToIndex.get(session.sessionId)?.threadIdToMessages.get(call.thread.id) ?? [];
+    return threadMessages.filter((message) => {
+      const sentAtMs = message.sentAtMs ?? 0;
+      return sentAtMs > loadedAtMs && sentAtMs < droppedAtMs;
+    }).length;
   }
   heavySources(sessions, sessionIdToIndex) {
     const thresholds = this.options.thresholds;
@@ -1447,6 +1496,56 @@ var SCORE_WEIGHTS = {
   maxCountedOccurrences: 30,
   partialPenalty: 2
 };
+var FAILURE_CHAIN_METHOD = {
+  bound: "estimate",
+  method: "Each chain of failed attempts, from the first failure until a call doing the same job worked: every message in between, idle gaps left out, shared by the chain's failures. `fixLoop` is the part spent rerunning the same command after fixes."
+};
+var REREAD_METHOD = {
+  bound: "lower",
+  method: "The re-read's duration and its content as input, once; the content also stays in context afterwards."
+};
+var NO_COST_METHOD = {
+  bound: "estimate",
+  method: "No cost: there is no clear counterfactual to price."
+};
+var SIGNAL_TYPE_TO_COST_METHOD = {
+  failed_command: FAILURE_CHAIN_METHOD,
+  tool_error: FAILURE_CHAIN_METHOD,
+  permission_denied: FAILURE_CHAIN_METHOD,
+  hook_blocked: FAILURE_CHAIN_METHOD,
+  api_error: {
+    bound: "estimate",
+    method: "The wait from the failed request until the thread got a real answer (retries and fallbacks)."
+  },
+  context_compaction: {
+    bound: "lower",
+    method: "Re-reads after the compaction of files the thread had read before it."
+  },
+  repeated_workflow: {
+    bound: "estimate",
+    method: "Each run's window, from the first step to the last: every message around the steps, minus the steps' own runs and the one call a script would still need."
+  },
+  context_heavy: {
+    bound: "estimate",
+    method: "Each load's tokens, plus their carry: re-sent as cached input on every later message of the thread until a compaction."
+  },
+  repeated_read: REREAD_METHOD,
+  subagent_reread: REREAD_METHOD,
+  repeated_request: NO_COST_METHOD,
+  user_correction: {
+    bound: "upper",
+    method: "The whole turn before the correction (all threads), or the turn that built a rejected plan, minus failure chains already counted."
+  },
+  interruption: {
+    bound: "upper",
+    method: "The whole turn before the interruption (all threads), minus failure chains already counted."
+  },
+  unused_piece: NO_COST_METHOD,
+  large_piece: {
+    bound: "estimate",
+    method: "The piece's size, as cached input, times the messages that carried it: every message for instructions, the agent's messages for an agent, the messages after its first use in a thread for a skill."
+  }
+};
 var SignalService = class _SignalService {
   constructor(options) {
     this.options = options;
@@ -1486,7 +1585,7 @@ var SignalService = class _SignalService {
     new ContextLoadDetectorService(this.options, collector).detect(sessions, sessionIdToIndex);
     const signals = collector.groups().filter((group) => this.isStrongEnough(group)).map((group) => this.buildSignal(group));
     if (inventory) {
-      signals.push(...this.unusedPieceSignals(sessions, inventory), ...this.largePieceSignals(inventory));
+      signals.push(...this.unusedPieceSignals(sessions, inventory), ...this.largePieceSignals(sessions, inventory));
       this.markPiecesChangedAfterEvidence(signals, inventory);
     }
     for (const signal of signals) {
@@ -1528,7 +1627,7 @@ var SignalService = class _SignalService {
       occurrences: occurrences.length,
       sessions: sessionCount,
       isPartial: partialReasons.length > 0,
-      cost: this.costOf(occurrences),
+      cost: this.costOf(group.type, occurrences),
       details: {
         ...group.details,
         ...this.topCountedValues(group)
@@ -1540,11 +1639,17 @@ var SignalService = class _SignalService {
       score: 0
     };
   }
-  costOf(occurrences) {
-    const usage = occurrences.reduce(
-      (total, occurrence) => TokenUsageUtil.add(total, occurrence.usage),
-      TokenUsageUtil.zero()
-    );
+  costOf(type, occurrences) {
+    const fixLoopOccurrences = occurrences.filter((occurrence) => occurrence.isFixLoop === true);
+    return {
+      ...this.figuresOf(occurrences),
+      ...SIGNAL_TYPE_TO_COST_METHOD[type],
+      ...fixLoopOccurrences.length ? { fixLoop: this.figuresOf(fixLoopOccurrences) } : {},
+      isEstimated: true
+    };
+  }
+  figuresOf(occurrences) {
+    const usage = TokenUsageUtil.sum(occurrences.map((occurrence) => occurrence.usage));
     const usd = occurrences.reduce(
       (total, occurrence) => total + this.costService.costUsd(occurrence.usage, occurrence.model),
       0
@@ -1555,8 +1660,7 @@ var SignalService = class _SignalService {
       tokens: TokenUsageUtil.total(usage),
       inputTokens: TokenUsageUtil.input(usage),
       outputTokens: usage.output,
-      usd: NumberUtil.round(usd),
-      isEstimated: true
+      usd: NumberUtil.round(usd)
     };
   }
   topCountedValues(group) {
@@ -1631,22 +1735,47 @@ var SignalService = class _SignalService {
     ];
   }
   // Why: instructions are loaded on every turn, so their size costs every time.
-  largePieceSignals(inventory) {
-    return inventory.pieces.filter((piece) => piece.isEditable && SIZE_KINDS.has(piece.kind)).filter((piece) => piece.approxTokens >= this.options.largePieceTokens).map(
-      (piece) => this.pieceSignal(piece, {
+  largePieceSignals(sessions, inventory) {
+    return inventory.pieces.filter((piece) => piece.isEditable && SIZE_KINDS.has(piece.kind)).filter((piece) => piece.approxTokens >= this.options.largePieceTokens).map((piece) => {
+      const carriers = sessions.flatMap((session) => this.messagesCarrying(piece, session));
+      return this.pieceSignal(piece, {
         type: "large_piece",
         title: `${piece.id} is large (~${piece.approxTokens} tokens)`,
-        sessions: 0,
+        sessions: new Set(carriers.map((message) => message.ref.sessionId)).size,
         partialReasons: [],
         details: {
           path: piece.path,
           approxTokens: piece.approxTokens,
           isLoadedEveryTurn: piece.kind === "instructions"
+        },
+        usage: {
+          ...TokenUsageUtil.zero(),
+          cacheRead: piece.approxTokens * carriers.length
         }
-      })
-    );
+      });
+    });
   }
-  pieceSignal(piece, fields) {
+  messagesCarrying(piece, session) {
+    if (piece.kind === "instructions") {
+      return session.messages;
+    }
+    if (piece.kind === "agent") {
+      return session.messages.filter((message) => message.thread.agentType === piece.name);
+    }
+    const threadIdToFirstUseAtMs = /* @__PURE__ */ new Map();
+    for (const call of session.tools.filter((toolCall) => toolCall.skill === piece.name)) {
+      const earlierUseAtMs = threadIdToFirstUseAtMs.get(call.thread.id) ?? Infinity;
+      threadIdToFirstUseAtMs.set(call.thread.id, Math.min(earlierUseAtMs, call.calledAtMs ?? Infinity));
+    }
+    const commandAtMs = session.prompts.find((prompt) => prompt.command === piece.name)?.sentAtMs;
+    if (commandAtMs !== void 0) {
+      const mainFirstUseAtMs = threadIdToFirstUseAtMs.get(SessionUtil.MAIN_THREAD_ID) ?? Infinity;
+      threadIdToFirstUseAtMs.set(SessionUtil.MAIN_THREAD_ID, Math.min(mainFirstUseAtMs, commandAtMs));
+    }
+    return session.messages.filter((message) => (message.sentAtMs ?? 0) >= (threadIdToFirstUseAtMs.get(message.thread.id) ?? Infinity));
+  }
+  pieceSignal(piece, { usage, ...fields }) {
+    const loadedUsage = usage ?? TokenUsageUtil.zero();
     return {
       ...fields,
       id: `${fields.type}:${piece.id}`,
@@ -1654,11 +1783,8 @@ var SignalService = class _SignalService {
       occurrences: 0,
       isPartial: fields.partialReasons.length > 0,
       cost: {
-        activeMinutes: 0,
-        tokens: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        usd: 0,
+        ...this.figuresOf([{ activeMs: 0, usage: loadedUsage }]),
+        ...SIGNAL_TYPE_TO_COST_METHOD[fields.type],
         isEstimated: true
       },
       evidence: [],
@@ -1878,6 +2004,10 @@ var CompareService = class _CompareService {
       verdict: hasEnoughData ? this.verdictOf(moves) : "insufficient_data",
       deltas: {
         errorRate: this.difference(before.errorRate, after.errorRate),
+        recoveryMinutesPerInvocation: this.difference(
+          before.recoveryMinutesPerInvocation,
+          after.recoveryMinutesPerInvocation
+        ),
         correctionsPerSession: this.difference(before.correctionsPerSession, after.correctionsPerSession),
         activeMinutesPerInvocation: this.difference(
           before.perInvocation?.activeMinutes,
@@ -1904,7 +2034,8 @@ var CompareService = class _CompareService {
       activeMinutesPerInvocation: [before.perInvocation?.activeMinutes, after.perInvocation?.activeMinutes],
       usdPerInvocation: [before.perInvocation?.usd, after.perInvocation?.usd],
       inputTokensPerInvocation: [before.perInvocation?.inputTokens, after.perInvocation?.inputTokens],
-      outputTokensPerInvocation: [before.perInvocation?.outputTokens, after.perInvocation?.outputTokens]
+      outputTokensPerInvocation: [before.perInvocation?.outputTokens, after.perInvocation?.outputTokens],
+      recoveryMinutesPerInvocation: [before.recoveryMinutesPerInvocation, after.recoveryMinutesPerInvocation]
     };
     return Object.entries(metricToValues).map(([metric, [beforeValue, afterValue]]) => {
       const relativeChange = this.relativeChange(beforeValue, afterValue);
@@ -1932,7 +2063,9 @@ var CompareService = class _CompareService {
   }
   sideMetrics(sessions, piece) {
     const usage = new UsageService(this.config.prices, /* @__PURE__ */ new Set([piece])).pieceUsage(sessions).find((entry) => entry.piece === this.usagePieceOf(piece));
-    const corrections = sessions.flatMap((session) => session.prompts).filter((prompt) => prompt.isCorrection || prompt.isInterruption).length;
+    const attributed = this.attributedToPiece(sessions, piece);
+    const corrections = attributed.corrections;
+    const invocations = usage?.invocations ?? 0;
     const signalService = new SignalService({
       idleMs: this.idleMs,
       prices: this.config.prices,
@@ -1948,12 +2081,33 @@ var CompareService = class _CompareService {
     return {
       corrections,
       signals,
+      invocations,
       sessions: sessions.length,
-      invocations: usage?.invocations ?? 0,
       toolCalls: usage?.toolCalls ?? 0,
       errorRate: usage?.errorRate ?? 0,
       perInvocation: usage?.perInvocation,
-      correctionsPerSession: sessions.length ? NumberUtil.round(corrections / sessions.length) : 0
+      correctionsPerSession: sessions.length ? NumberUtil.round(corrections / sessions.length) : 0,
+      recoveryMinutesPerInvocation: invocations ? NumberUtil.round(TimeUtil.msToMinutes(attributed.recoveryMs) / invocations) : void 0
+    };
+  }
+  // Why: a global piece (instructions, hooks, settings) is behind every turn; any other piece only answers for
+  // the corrections and failures that happened while it ran.
+  attributedToPiece(sessions, piece) {
+    const usagePiece = this.usagePieceOf(piece);
+    const isGlobalPiece = usagePiece === AttributionService.MAIN_PIECE && piece !== AttributionService.MAIN_PIECE;
+    const attribution = new AttributionService(/* @__PURE__ */ new Set([piece]));
+    const chains = new FailureChainService(this.idleMs);
+    const isPieceAmong = (pieces) => isGlobalPiece || (pieces ?? [AttributionService.MAIN_PIECE]).some((candidate) => AttributionService.isSamePiece(candidate, usagePiece));
+    let corrections = 0;
+    let recoveryMs = 0;
+    for (const session of sessions) {
+      const index = attribution.buildSessionIndex(session);
+      corrections += session.prompts.filter((prompt) => prompt.isCorrection || prompt.isInterruption).filter((prompt) => isPieceAmong(index.promptToPreviousTurnPieces.get(prompt))).length;
+      recoveryMs += chains.chainsOf(session, index).filter((chain) => isPieceAmong(index.toolCallIdToPieces.get(chain.failures[0]?.id ?? ""))).reduce((total, chain) => total + chain.cost.activeMs, 0);
+    }
+    return {
+      corrections,
+      recoveryMs
     };
   }
   relativeChange(before, after) {
@@ -2157,17 +2311,10 @@ var SAVED_EVIDENCE_PER_SIGNAL = 50;
 var MAX_USAGE_ENTRIES = 15;
 var MAX_FAILED_COMMANDS_TO_SEARCH = 15;
 var FAILED_COMMAND_PREFIX = "failed_command:";
-var WASTE_SIGNAL_TYPES = /* @__PURE__ */ new Set([
-  "failed_command",
-  "tool_error",
-  "permission_denied",
-  "hook_blocked",
-  "repeated_read",
-  "subagent_reread",
-  "api_error"
-]);
+var FAILURE_SIGNAL_TYPES = /* @__PURE__ */ new Set(["failed_command", "tool_error", "permission_denied", "hook_blocked", "api_error"]);
+var REREAD_SIGNAL_TYPES = /* @__PURE__ */ new Set(["repeated_read", "subagent_reread", "context_compaction"]);
 var CORRECTION_SIGNAL_TYPES = /* @__PURE__ */ new Set(["user_correction", "interruption"]);
-var COST_METHOD = "Active time sums gaps between transcript events up to the idle threshold; subagent time is reported per agent and not added to session time. Failure cost = time until the agent reacted + tokens of the reaction turn. Correction cost = the corrected turn (upper bound). Categories can overlap.";
+var COST_METHOD = "Active time sums gaps between transcript events up to the idle threshold. Each signal's cost.method says what it counts and cost.bound whether it is a lower bound, an upper bound or an estimate (docs/cost-model.md). The totals don't overlap: failures exclude fix loops, and corrections exclude turns already counted as failures.";
 var AnalysisService = class _AnalysisService {
   constructor(context) {
     this.context = context;
@@ -2301,7 +2448,9 @@ var AnalysisService = class _AnalysisService {
   totalsOf(sessions, signals) {
     return {
       ...this.sessionTotals(sessions),
-      lostToFailures: this.sumSignalCosts(signals, WASTE_SIGNAL_TYPES),
+      lostToFailures: this.sumSignalCosts(signals, FAILURE_SIGNAL_TYPES, "withoutFixLoops"),
+      inFixLoops: this.sumSignalCosts(signals, FAILURE_SIGNAL_TYPES, "onlyFixLoops"),
+      lostToRereads: this.sumSignalCosts(signals, REREAD_SIGNAL_TYPES),
       inCorrectedOrInterruptedTurns: this.sumSignalCosts(signals, CORRECTION_SIGNAL_TYPES),
       reportedByProvider: this.reportedTotals(sessions),
       isEstimated: true,
@@ -2392,14 +2541,35 @@ var AnalysisService = class _AnalysisService {
       usd: NumberUtil.round(usd)
     };
   }
-  sumSignalCosts(allSignals, types) {
-    const signals = allSignals.filter((signal) => types.has(signal.type));
+  sumSignalCosts(allSignals, types, fixLoops = "all") {
+    const figures = allSignals.filter((signal) => types.has(signal.type)).map((signal) => _AnalysisService.partOf(signal.cost, fixLoops));
+    const sumOf = (field) => figures.reduce((total, figure) => total + figure[field], 0);
     return {
-      activeMinutes: NumberUtil.round(signals.reduce((total, signal) => total + signal.cost.activeMinutes, 0), 1),
-      tokens: signals.reduce((total, signal) => total + signal.cost.tokens, 0),
-      inputTokens: signals.reduce((total, signal) => total + signal.cost.inputTokens, 0),
-      outputTokens: signals.reduce((total, signal) => total + signal.cost.outputTokens, 0),
-      usd: NumberUtil.round(signals.reduce((total, signal) => total + signal.cost.usd, 0))
+      activeMinutes: NumberUtil.round(sumOf("activeMinutes"), 1),
+      tokens: Math.round(sumOf("tokens")),
+      inputTokens: Math.round(sumOf("inputTokens")),
+      outputTokens: Math.round(sumOf("outputTokens")),
+      usd: NumberUtil.round(sumOf("usd"))
+    };
+  }
+  static partOf(cost, fixLoops) {
+    const fixLoop = cost.fixLoop ?? {
+      activeMinutes: 0,
+      tokens: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      usd: 0
+    };
+    if (fixLoops === "onlyFixLoops") {
+      return fixLoop;
+    }
+    const sign = fixLoops === "withoutFixLoops" ? -1 : 0;
+    return {
+      activeMinutes: cost.activeMinutes + sign * fixLoop.activeMinutes,
+      tokens: cost.tokens + sign * fixLoop.tokens,
+      inputTokens: cost.inputTokens + sign * fixLoop.inputTokens,
+      outputTokens: cost.outputTokens + sign * fixLoop.outputTokens,
+      usd: cost.usd + sign * fixLoop.usd
     };
   }
 };

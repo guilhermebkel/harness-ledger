@@ -62,11 +62,13 @@ export class FailureChainService {
       }
       return step === "stop" || step === "recovery" || failures.length >= MAX_CHAIN_ATTEMPTS;
     });
+    const window = this.chainWindow(first, failures, recovery, index);
     return {
       failures,
       recovery,
       kind: FailureChainService.kindOf(first, recovery),
-      cost: this.chainCost(first, failures, recovery, index),
+      cost: window.cost,
+      messageIds: window.messages.map((message) => message.id),
     };
   }
 
@@ -126,18 +128,23 @@ export class FailureChainService {
   // Why: the cost runs from the first failed call until the call that worked was issued, with every message in
   // between (reasoning, looking around, fixes); the working call's own run is not waste. Unrecovered chains end
   // at the agent's reaction to the last failure.
-  private chainCost(
+  private chainWindow(
     first: ToolCall,
     failures: ToolCall[],
     recovery: ToolCall | undefined,
     index: SessionIndex,
-  ): StepCost {
+  ): {
+    cost: StepCost; messages: AssistantMessage[];
+  } {
     const startAtMs = first.calledAtMs;
     const messages = index.threadIdToMessages.get(first.thread.id) ?? [];
     if (startAtMs === undefined) {
       return {
-        activeMs: 0,
-        usage: TokenUsageUtil.zero(),
+        cost: {
+          activeMs: 0,
+          usage: TokenUsageUtil.zero(),
+        },
+        messages: [],
       };
     }
     const lastFailure = failures.at(-1) ?? first;
@@ -149,9 +156,12 @@ export class FailureChainService {
     const eventsAtMs = [startAtMs, ...windowMessages.map((message) => message.sentAtMs ?? startAtMs), endAtMs]
       .sort((left, right) => left - right);
     return {
-      activeMs: TimeUtil.activeTime(eventsAtMs, this.idleMs),
-      usage: TokenUsageUtil.sum(windowMessages.map((message) => message.usage)),
-      model: windowMessages[0]?.model,
+      cost: {
+        activeMs: TimeUtil.activeTime(eventsAtMs, this.idleMs),
+        usage: TokenUsageUtil.sum(windowMessages.map((message) => message.usage)),
+        model: windowMessages[0]?.model,
+      },
+      messages: windowMessages,
     };
   }
 

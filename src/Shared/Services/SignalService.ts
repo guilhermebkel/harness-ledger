@@ -1,8 +1,9 @@
 import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
 import type { SignalThresholds } from "@/Shared/Protocols/ConfigProtocol.js";
 import type { HarnessPiece, Inventory, PieceKind } from "@/Shared/Protocols/HarnessProtocol.js";
-import type { EvidenceRef, SessionFacts, ToolCall } from "@/Shared/Protocols/SessionProtocol.js";
+import type { AssistantMessage, EvidenceRef, SessionFacts, TokenUsage, ToolCall } from "@/Shared/Protocols/SessionProtocol.js";
 import type {
+  CostFigures,
   CountedDetail,
   CountedValue,
   Occurrence,
@@ -55,7 +56,65 @@ interface PieceSignalFields {
   sessions: number;
   partialReasons: string[];
   details: SignalDetails;
+  usage?: TokenUsage;
 }
+
+const FAILURE_CHAIN_METHOD: Pick<SignalCost, "bound" | "method"> = {
+  bound: "estimate",
+  method: "Each chain of failed attempts, from the first failure until a call doing the same job worked: every message "
+    + "in between, idle gaps left out, shared by the chain's failures. `fixLoop` is the part spent rerunning the same "
+    + "command after fixes.",
+};
+const REREAD_METHOD: Pick<SignalCost, "bound" | "method"> = {
+  bound: "lower",
+  method: "The re-read's duration and its content as input, once; the content also stays in context afterwards.",
+};
+const NO_COST_METHOD: Pick<SignalCost, "bound" | "method"> = {
+  bound: "estimate",
+  method: "No cost: there is no clear counterfactual to price.",
+};
+const SIGNAL_TYPE_TO_COST_METHOD: Record<SignalType, Pick<SignalCost, "bound" | "method">> = {
+  failed_command: FAILURE_CHAIN_METHOD,
+  tool_error: FAILURE_CHAIN_METHOD,
+  permission_denied: FAILURE_CHAIN_METHOD,
+  hook_blocked: FAILURE_CHAIN_METHOD,
+  api_error: {
+    bound: "estimate",
+    method: "The wait from the failed request until the thread got a real answer (retries and fallbacks).",
+  },
+  context_compaction: {
+    bound: "lower",
+    method: "Re-reads after the compaction of files the thread had read before it.",
+  },
+  repeated_workflow: {
+    bound: "estimate",
+    method: "Each run's window, from the first step to the last: every message around the steps, minus the steps' own "
+      + "runs and the one call a script would still need.",
+  },
+  context_heavy: {
+    bound: "estimate",
+    method: "Each load's tokens, plus their carry: re-sent as cached input on every later message of the thread until "
+      + "a compaction.",
+  },
+  repeated_read: REREAD_METHOD,
+  subagent_reread: REREAD_METHOD,
+  repeated_request: NO_COST_METHOD,
+  user_correction: {
+    bound: "upper",
+    method: "The whole turn before the correction (all threads), or the turn that built a rejected plan, minus failure "
+      + "chains already counted.",
+  },
+  interruption: {
+    bound: "upper",
+    method: "The whole turn before the interruption (all threads), minus failure chains already counted.",
+  },
+  unused_piece: NO_COST_METHOD,
+  large_piece: {
+    bound: "estimate",
+    method: "The piece's size, as cached input, times the messages that carried it: every message for instructions, "
+      + "the agent's messages for an agent, the messages after its first use in a thread for a skill.",
+  },
+};
 
 export class SignalService {
   private static readonly SIGNAL_TYPE_TO_THRESHOLD: Record<SignalType, SignalThreshold> = {
@@ -102,7 +161,7 @@ export class SignalService {
       .filter((group) => this.isStrongEnough(group))
       .map((group) => this.buildSignal(group));
     if (inventory) {
-      signals.push(...this.unusedPieceSignals(sessions, inventory), ...this.largePieceSignals(inventory));
+      signals.push(...this.unusedPieceSignals(sessions, inventory), ...this.largePieceSignals(sessions, inventory));
       this.markPiecesChangedAfterEvidence(signals, inventory);
     }
     for (const signal of signals) {
@@ -147,7 +206,7 @@ export class SignalService {
       occurrences: occurrences.length,
       sessions: sessionCount,
       isPartial: partialReasons.length > 0,
-      cost: this.costOf(occurrences),
+      cost: this.costOf(group.type, occurrences),
       details: {
         ...group.details,
         ...this.topCountedValues(group),
@@ -160,11 +219,18 @@ export class SignalService {
     };
   }
 
-  private costOf(occurrences: Occurrence[]): SignalCost {
-    const usage = occurrences.reduce(
-      (total, occurrence) => TokenUsageUtil.add(total, occurrence.usage),
-      TokenUsageUtil.zero(),
-    );
+  private costOf(type: SignalType, occurrences: Occurrence[]): SignalCost {
+    const fixLoopOccurrences = occurrences.filter((occurrence) => occurrence.isFixLoop === true);
+    return {
+      ...this.figuresOf(occurrences),
+      ...SIGNAL_TYPE_TO_COST_METHOD[type],
+      ...(fixLoopOccurrences.length ? { fixLoop: this.figuresOf(fixLoopOccurrences) } : {}),
+      isEstimated: true,
+    };
+  }
+
+  private figuresOf(occurrences: Pick<Occurrence, "activeMs" | "usage" | "model">[]): CostFigures {
+    const usage = TokenUsageUtil.sum(occurrences.map((occurrence) => occurrence.usage));
     const usd = occurrences.reduce(
       (total, occurrence) => total + this.costService.costUsd(occurrence.usage, occurrence.model),
       0,
@@ -176,7 +242,6 @@ export class SignalService {
       inputTokens: TokenUsageUtil.input(usage),
       outputTokens: usage.output,
       usd: NumberUtil.round(usd),
-      isEstimated: true,
     };
   }
 
@@ -264,26 +329,53 @@ export class SignalService {
   }
 
   // Why: instructions are loaded on every turn, so their size costs every time.
-  private largePieceSignals(inventory: Inventory): Signal[] {
+  private largePieceSignals(sessions: SessionFacts[], inventory: Inventory): Signal[] {
     return inventory.pieces
       .filter((piece) => piece.isEditable && SIZE_KINDS.has(piece.kind))
       .filter((piece) => piece.approxTokens >= this.options.largePieceTokens)
-      .map((piece) =>
-        this.pieceSignal(piece, {
+      .map((piece) => {
+        const carriers = sessions.flatMap((session) => this.messagesCarrying(piece, session));
+        return this.pieceSignal(piece, {
           type: "large_piece",
           title: `${piece.id} is large (~${piece.approxTokens} tokens)`,
-          sessions: 0,
+          sessions: new Set(carriers.map((message) => message.ref.sessionId)).size,
           partialReasons: [],
           details: {
             path: piece.path,
             approxTokens: piece.approxTokens,
             isLoadedEveryTurn: piece.kind === "instructions",
           },
-        }),
-      );
+          usage: {
+            ...TokenUsageUtil.zero(),
+            cacheRead: piece.approxTokens * carriers.length,
+          },
+        });
+      });
   }
 
-  private pieceSignal(piece: HarnessPiece, fields: PieceSignalFields): Signal {
+  private messagesCarrying(piece: HarnessPiece, session: SessionFacts): AssistantMessage[] {
+    if (piece.kind === "instructions") {
+      return session.messages;
+    }
+    if (piece.kind === "agent") {
+      return session.messages.filter((message) => message.thread.agentType === piece.name);
+    }
+    const threadIdToFirstUseAtMs = new Map<string, number>();
+    for (const call of session.tools.filter((toolCall) => toolCall.skill === piece.name)) {
+      const earlierUseAtMs = threadIdToFirstUseAtMs.get(call.thread.id) ?? Infinity;
+      threadIdToFirstUseAtMs.set(call.thread.id, Math.min(earlierUseAtMs, call.calledAtMs ?? Infinity));
+    }
+    const commandAtMs = session.prompts.find((prompt) => prompt.command === piece.name)?.sentAtMs;
+    if (commandAtMs !== undefined) {
+      const mainFirstUseAtMs = threadIdToFirstUseAtMs.get(SessionUtil.MAIN_THREAD_ID) ?? Infinity;
+      threadIdToFirstUseAtMs.set(SessionUtil.MAIN_THREAD_ID, Math.min(mainFirstUseAtMs, commandAtMs));
+    }
+    return session.messages.filter((message) =>
+      (message.sentAtMs ?? 0) >= (threadIdToFirstUseAtMs.get(message.thread.id) ?? Infinity));
+  }
+
+  private pieceSignal(piece: HarnessPiece, { usage, ...fields }: PieceSignalFields): Signal {
+    const loadedUsage = usage ?? TokenUsageUtil.zero();
     return {
       ...fields,
       id: `${fields.type}:${piece.id}`,
@@ -291,11 +383,8 @@ export class SignalService {
       occurrences: 0,
       isPartial: fields.partialReasons.length > 0,
       cost: {
-        activeMinutes: 0,
-        tokens: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        usd: 0,
+        ...this.figuresOf([{ activeMs: 0, usage: loadedUsage }]),
+        ...SIGNAL_TYPE_TO_COST_METHOD[fields.type],
         isEstimated: true,
       },
       evidence: [],

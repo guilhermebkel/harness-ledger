@@ -81,3 +81,96 @@ describe("SignalService repeated workflows", () => {
     expect(workflow?.cost.activeMinutes).toBe(0.1);
   });
 });
+
+const turnService = new SignalService({
+  idleMs: config.idleMinutes * 60_000,
+  prices: config.prices,
+  maxEvidence: 5,
+  minSessionsForUnused: Infinity,
+  largePieceTokens: 1000,
+  thresholds: {
+    ...config.signalThresholds,
+    minFailures: 1,
+    minRepeatedEvents: 1,
+  },
+});
+const SUBAGENT = {
+  id: "agent1",
+  agentType: "researcher",
+};
+
+describe("SignalService turn costs", () => {
+  it("costs a rejected plan as the turn that built it, and leaves it out of the correction that follows", () => {
+    const session = new SessionFactsBuilder()
+      .prompt("Add the export button")
+      .wait(5).say()
+      .call("Read", { category: "read", filePath: "src/a.ts" })
+      .call("ExitPlanMode", { category: "plan", isError: true, kind: "user_rejected" })
+      .wait(30).prompt("no, only on mobile", { isCorrection: true })
+      .build();
+    const corrections = turnService.extract([session]).find((signal) => signal.type === "user_correction");
+    expect(corrections?.occurrences).toBe(2);
+    expect(corrections?.cost.tokens).toBe(3 * 1100);
+  });
+
+  it("counts subagent messages in a corrected turn but not the failure chains already counted", () => {
+    const session = new SessionFactsBuilder()
+      .prompt("Fix the tests")
+      .wait(5).say()
+      .inThread(SUBAGENT).say().say()
+      .inThread({ id: "main", agentType: "main" })
+      .call("npm test", { isError: true })
+      .call("pnpm test")
+      .wait(10).prompt("that's not what I asked", { isCorrection: true })
+      .build();
+    const signals = turnService.extract([session]);
+    const correction = signals.find((signal) => signal.type === "user_correction");
+    const failure = signals.find((signal) => signal.type === "failed_command");
+    expect(failure?.cost.tokens).toBe(1100);
+    expect(correction?.cost.tokens).toBe(4 * 1100);
+  });
+
+  it("charges re-reads after a compaction to the compaction, not to the agent", () => {
+    const session = new SessionFactsBuilder()
+      .call("Read", { category: "read", filePath: "src/a.ts" })
+      .call("Read", { category: "read", filePath: "src/b.ts" })
+      .compact()
+      .call("Read", { category: "read", filePath: "src/a.ts" })
+      .call("Read", { category: "read", filePath: "src/a.ts" })
+      .build();
+    const signals = turnService.extract([session]);
+    expect(signals.some((signal) => signal.type === "repeated_read")).toBe(false);
+    const compaction = signals.find((signal) => signal.type === "context_compaction");
+    expect(compaction?.cost.inputTokens).toBe(25);
+    expect(compaction?.cost.bound).toBe("lower");
+  });
+
+  it("prices a large instructions file by the messages that carried it", () => {
+    const session = new SessionFactsBuilder().say().say().say().build();
+    const inventory = {
+      provider: "test",
+      projectDir: "/work/app",
+      takenAt: "2026-09-01T00:00:00.000Z",
+      fingerprint: "x",
+      pieces: [{
+        id: "instructions:project",
+        kind: "instructions" as const,
+        name: "CLAUDE.md",
+        scope: "project" as const,
+        path: "CLAUDE.md",
+        hash: "h",
+        bytes: 12_000,
+        approxTokens: 3000,
+        isEditable: true,
+      }],
+      retention: {
+        days: 30,
+        source: "default",
+      },
+      notes: [],
+    };
+    const large = turnService.extract([session], inventory).find((signal) => signal.type === "large_piece");
+    expect(large?.cost.inputTokens).toBe(3 * 3000);
+    expect(large?.sessions).toBe(1);
+  });
+});

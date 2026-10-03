@@ -21,6 +21,7 @@ These are starting points, not rules; read the piece and what it loads (skill fi
 | --- | --- |
 | `failed_command` with `recoveredWith` and `mentions` | Rule exists, but is ignored |
 | `failed_command` with `recoveredWith`, no mentions | Missing instruction, or a script/hook if it repeats a lot |
+| `failed_command` with `details.chains.fixLoops` | The agent reruns a check (lint, types, tests, build) until it passes after fixing the code: a deterministic check in a `PostToolUse` hook on the edited file catches it earlier. Time and tokens until it worked are in `cost.fixLoop` |
 | `failed_command` / `tool_error` without recovery | Partial instruction, or out of scope if it's a tool/plugin problem |
 | `permission_denied` | Missing instruction (the agent keeps trying something not allowed) or a permission rule the user may want; ask, never widen permissions on your own. `errors` holds the reason, e.g. the auto-mode classifier's category |
 | `api_error` | Structure change: a model name that doesn't exist, expired credentials or a proxy failing. `details.models` names the model; check the `model:` of the attributed agent or the settings |
@@ -30,7 +31,7 @@ These are starting points, not rules; read the piece and what it loads (skill fi
 | `user_correction`, `interruption` | Read the excerpt: the class depends on what was corrected; attributed pieces are where the turn ran. Excerpts starting with `rejected` are calls the user turned down (often a plan), with their feedback |
 | `repeated_request` | Structure change: a skill or command (draft it) |
 | `repeated_workflow` | Structure change: the agent rebuilds the same procedure (`details.steps`) by hand. With no skill in `pieces`, draft a script that runs the steps plus a skill or command that calls it. With a skill in `pieces`, that skill leaves the steps to the agent: add the script to the skill's folder. If an existing skill already covers it but isn't in `pieces`, its description isn't triggering: fix the description |
-| `context_heavy` | Structure change: a piece loads the same material again and again, or huge outputs (`details.sources`: "source (×loads)" with approximate tokens). By source: a doc read by every run → pass the part it needs when delegating, split the doc, or preload it once (`skills:` on the agent); a doc also read by the main thread → see `subagent_reread`; a command printing everything (`git diff`, logs, test output) → a narrower command in the piece (`git diff --stat` first, `| tail -50`, a filter); an MCP tool returning large pages → narrower queries; agents searching a large codebase file by file → a map in the instructions or the cartographer plugin. The token cost is a lower bound: loaded material is re-read on every later turn |
+| `context_heavy` | Structure change: a piece loads the same material again and again, or huge outputs (`details.sources`: "source (×loads)" with approximate tokens). By source: a doc read by every run → pass the part it needs when delegating, split the doc, or preload it once (`skills:` on the agent); a doc also read by the main thread → see `subagent_reread`; a command printing everything (`git diff`, logs, test output) → a narrower command in the piece (`git diff --stat` first, `| tail -50`, a filter); an MCP tool returning large pages → narrower queries; agents searching a large codebase file by file → a map in the instructions or the cartographer plugin. The token cost includes the carry: the material, as cached input, on every later message until a compaction |
 | `context_compaction` | Structure change: the work doesn't fit one conversation (`details.maxContextTokens`, excerpts give the turns). Delegate self-contained stages to a subagent that returns a short summary, move a multi-step procedure into a skill, or suggest one session per task. Check `large_piece` signals too: always-loaded instructions fill the context faster. `manual` means the person compacted by hand |
 | `unused_piece` | Structure change: remove, or improve its description if it should have triggered. Partial when it was added during the period |
 | `large_piece` | Structure change when `isLoadedEveryTurn` is true and the content is only needed sometimes |
@@ -84,7 +85,7 @@ Costs are the script's numbers for the whole analyzed period, adding up every oc
 # Harness report — <YYYY-MM-DD>
 
 Analyzed <N> sessions (<period>) · <K> suggestions
-Estimated cost of the problems found, for the whole period: ~<activeMinutes> min · <inputTokens> input tokens · <outputTokens> output tokens · ~$<usd>
+Estimated cost of the problems found, for the whole period: failures ~<lostToFailures> · fix loops ~<inFixLoops> · re-reads ~<lostToRereads> · corrected or interrupted turns, at most ~<inCorrectedOrInterruptedTurns> (each as min · input tokens · output tokens · $)
 History: <transcriptsAvailable> transcripts since <oldestAt>; retention <retentionDays> days.
 
 ## Suggestions
@@ -112,6 +113,6 @@ _Time, tokens and cost add up the whole period (<N> sessions), not one session; 
 - <file>: <verdict> — <moves, e.g. "same cost, 40% faster">, only for files with an applied suggestion.
 ```
 
-When `totals.reportedByProvider.costUsd` exists, show it next to the estimate as the agent's own figure ("the agent reports $X"); never add the two. When several signals make up one suggestion, add their costs only if they don't overlap (corrections and failures can describe the same turn); otherwise show the largest and say so. Skill rows in `usage` overlap the main and agent rows.
+When `totals.reportedByProvider.costUsd` exists, show it next to the estimate as the agent's own figure ("the agent reports $X"); never add the two. The totals don't overlap, so they can be listed side by side. A signal's `cost.bound` decides the wording: `lower` → "at least", `upper` → "at most", `estimate` → "about"; `cost.method` says what was counted when the person asks. Failure costs run until the call that worked (`details.chains`: chains, how many recovered, attempts), so "3 attempts, ~4 min until it worked" is the way to put them. Skill rows in `usage` overlap the main and agent rows.
 
 Leave out empty sections.
