@@ -130,13 +130,13 @@ export class UsageService {
     const tokens = TokenUsageUtil.total(totals.usage);
     const pieceUsage: PieceUsage = {
       piece,
+      tokens,
       invocations: totals.invocations,
       sessions: totals.sessionIds.size,
       toolCalls: totals.toolCalls,
       toolErrors: totals.toolErrors,
       errorRate: totals.toolCalls ? NumberUtil.round(totals.toolErrors / totals.toolCalls, RATE_DIGITS) : 0,
       activeMinutes: TimeUtil.msToMinutes(totals.activeMs),
-      tokens,
       usd: NumberUtil.round(totals.usd),
       models: [...totals.models],
     };

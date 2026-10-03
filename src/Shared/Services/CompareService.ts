@@ -71,13 +71,14 @@ export class CompareService {
     }
     return {
       piece,
-      changedAt: TimeUtil.toIso(changedAtMs),
       changedAtSource,
       minSessions,
       before,
       after,
-      verdict: hasEnoughData ? this.verdictOf(moves) : "insufficient_data",
       moves,
+      caveats,
+      changedAt: TimeUtil.toIso(changedAtMs),
+      verdict: hasEnoughData ? this.verdictOf(moves) : "insufficient_data",
       deltas: {
         errorRate: this.difference(before.errorRate, after.errorRate),
         correctionsPerSession: this.difference(before.correctionsPerSession, after.correctionsPerSession),
@@ -93,7 +94,6 @@ export class CompareService {
         ),
         usdPerInvocation: this.difference(before.perInvocation?.usd, after.perInvocation?.usd),
       },
-      caveats,
     };
   }
 
@@ -165,14 +165,14 @@ export class CompareService {
         occurrences: signal.occurrences,
       }));
     return {
+      corrections,
+      signals,
       sessions: sessions.length,
       invocations: usage?.invocations ?? 0,
       toolCalls: usage?.toolCalls ?? 0,
       errorRate: usage?.errorRate ?? 0,
       perInvocation: usage?.perInvocation,
-      corrections,
       correctionsPerSession: sessions.length ? NumberUtil.round(corrections / sessions.length) : 0,
-      signals,
     };
   }
 

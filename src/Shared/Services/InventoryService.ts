@@ -29,15 +29,10 @@ export class InventoryService {
     const changes: InventoryChange[] = [];
     for (const [id, hash] of currentIdToHash) {
       const previousHash = previousIdToHash.get(id);
-      if (previousHash === undefined) {
+      if (previousHash !== hash) {
         changes.push({
           id,
-          change: "added",
-        });
-      } else if (previousHash !== hash) {
-        changes.push({
-          id,
-          change: "modified",
+          change: previousHash === undefined ? "added" : "modified",
         });
       }
     }

@@ -15,7 +15,7 @@ const SETUP_COMMAND = /^(git (checkout|switch|pull|fetch|worktree|branch|clone|s
 const COMMAND_WRAPPERS = new Set(["sudo", "time", "nohup", "env", "command", "exec", "timeout", "do", "then", "else"]);
 /** Segments that set up the shell rather than do the work: navigation, variables and loop or condition headers. */
 const NAVIGATION_COMMAND = /^(cd|pushd|popd|export|source|\.|set|for|while|until|if|elif|done|fi|esac|nvm use|conda activate|pyenv shell)\b/;
-const ENV_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+const ENV_ASSIGNMENT = /^[A-Za-z_]\w*=/;
 /** What a wrapper takes before the command: flags and durations (`timeout -k 5 300s cmd`). */
 const WRAPPER_ARGUMENT = /^(-\S*|\d+(\.\d+)?[smhd]?)$/;
 /** Programs whose subcommand is part of what the command means (`git push`, `npm test`). */
@@ -57,8 +57,13 @@ const ERROR_LOOKING_LINE
 
 const CORRECTION_PREFIX_CHARS = 80;
 /** "no" counts only as "no," / "no." / "no!": in Portuguese, "no" opens ordinary sentences ("no backend ..."). */
-const CORRECTION_START
-  = /^(no(?=[,.!]|\s*$)|nope|não|nao|wrong|errado|actually|na verdade|instead|ao invés|em vez|stop|pare|para de|don'?t|do not|não faça|nao faca|that'?s not|isso não|isso nao|you should|you shouldn'?t|você deveria|voce deveria|why did you|por que você|por que voce|undo|revert|desfaz|desfaça|again|de novo|still (?:not|wrong|failing)|ainda (?:não|nao|está|esta))\b/i;
+const CORRECTION_OPENERS = [
+  "no(?=[,.!]|\\s*$)", "nope", "não", "nao", "wrong", "errado", "actually", "na verdade", "instead", "ao invés", "em vez",
+  "stop", "pare", "para de", "don'?t", "do not", "não faça", "nao faca", "that'?s not", "isso não", "isso nao",
+  "you should", "you shouldn'?t", "você deveria", "voce deveria", "why did you", "por que você", "por que voce",
+  "undo", "revert", "desfaz", "desfaça", "again", "de novo", "still (?:not|wrong|failing)", "ainda (?:não|nao|está|esta)",
+];
+const CORRECTION_START = new RegExp(`^(?:${CORRECTION_OPENERS.join("|")})\\b`, "i");
 
 const MIN_WORD_CHARS = 3;
 const STOPWORDS = new Set(
@@ -194,15 +199,12 @@ export class NormalizeUtil {
   private static programIndexOf(tokens: string[]): number {
     let isAfterWrapper = false;
     for (const [index, token] of tokens.entries()) {
+      const isWrapper = COMMAND_WRAPPERS.has(token);
       const isWrapperArgument = isAfterWrapper && WRAPPER_ARGUMENT.test(token);
-      if (ENV_ASSIGNMENT.test(token) || isWrapperArgument) {
-        continue;
+      if (!isWrapper && !isWrapperArgument && !ENV_ASSIGNMENT.test(token)) {
+        return index;
       }
-      if (COMMAND_WRAPPERS.has(token)) {
-        isAfterWrapper = true;
-        continue;
-      }
-      return index;
+      isAfterWrapper ||= isWrapper;
     }
     return -1;
   }
@@ -215,7 +217,8 @@ export class NormalizeUtil {
     }
     // When the output was cut before the exception, the last line is still closer to the cause than "Traceback".
     const afterTraceback = lines.slice(tracebackIndex + 1);
-    return afterTraceback.reverse().find((line) => PYTHON_EXCEPTION_LINE.test(line)) ?? afterTraceback[0];
+    const fromLastLine = [...afterTraceback].reverse();
+    return fromLastLine.find((line) => PYTHON_EXCEPTION_LINE.test(line)) ?? fromLastLine[0];
   }
 
   private static withoutGlobalOptions(program: string, argumentTokens: string[]): string[] {

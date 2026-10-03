@@ -198,24 +198,15 @@ export class SignalDetectorService {
   }
 
   private detectRepeatedReads(session: SessionFacts, index: SessionIndex): void {
-    const thresholds = this.options.thresholds;
     const threadFileToReads = new Map<string, ToolCall[]>();
     for (const call of session.tools.filter((toolCall) => this.isSuccessfulRead(toolCall))) {
       CollectionUtil.pushTo(threadFileToReads, `${call.thread.id}\u0000${call.filePath ?? ""}`, call);
     }
     for (const reads of threadFileToReads.values()) {
-      const [firstRead] = reads;
-      if (!firstRead || reads.length < thresholds.minReadsPerFile) {
-        continue;
-      }
-      const extraReads = reads.slice(1).filter((read) => !this.wasChangedBetween(session, firstRead, read));
-      if (extraReads.length < thresholds.minExtraReads) {
-        continue;
-      }
       // One signal per agent: the finding is "this agent re-reads files"; which files is a detail.
-      const agentType = firstRead.thread.agentType;
-      const filePath = firstRead.filePath ?? "";
-      for (const read of extraReads) {
+      for (const read of this.extraReadsOf(session, reads)) {
+        const agentType = read.thread.agentType;
+        const filePath = read.filePath ?? "";
         const title = `${agentType} re-reads files it already read`;
         const group = this.collector.add(`repeated_read:${agentType}`, "repeated_read", title, {
           session,
@@ -226,6 +217,17 @@ export class SignalDetectorService {
         this.collector.count(group, "files", filePath);
       }
     }
+  }
+
+  /** Reads of one file in one thread after the first, when there are enough and the file did not change in between. */
+  private extraReadsOf(session: SessionFacts, reads: ToolCall[]): ToolCall[] {
+    const thresholds = this.options.thresholds;
+    const [firstRead] = reads;
+    if (!firstRead || reads.length < thresholds.minReadsPerFile) {
+      return [];
+    }
+    const extraReads = reads.slice(1).filter((read) => !this.wasChangedBetween(session, firstRead, read));
+    return extraReads.length < thresholds.minExtraReads ? [] : extraReads;
   }
 
   private detectSubagentRereads(session: SessionFacts, index: SessionIndex): void {

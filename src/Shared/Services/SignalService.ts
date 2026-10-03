@@ -2,6 +2,7 @@
 // the skill turns these signals into classified findings.
 
 import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
+import type { SignalThresholds } from "@/Shared/Protocols/ConfigProtocol.js";
 import type { HarnessPiece, Inventory, PieceKind } from "@/Shared/Protocols/HarnessProtocol.js";
 import type { EvidenceRef, SessionFacts, ToolCall } from "@/Shared/Protocols/SessionProtocol.js";
 import type {
@@ -45,7 +46,11 @@ const SCORE_WEIGHTS = {
   partialPenalty: 2,
 };
 
-type ThresholdCheck = (occurrences: number, sessions: number, options: SignalOptions) => boolean;
+/** A group is reported when it reaches either threshold; "always" groups were already filtered by their detector. */
+type SignalThreshold = "always" | {
+  minOccurrences?: keyof SignalThresholds;
+  minSessions?: keyof SignalThresholds;
+};
 
 interface PieceSignalFields {
   type: SignalType;
@@ -57,25 +62,22 @@ interface PieceSignalFields {
 
 export class SignalService {
   /** When a group of occurrences is strong enough to report. Piece signals (unused, large) are built separately. */
-  private static readonly SIGNAL_TYPE_TO_THRESHOLD: Record<SignalType, ThresholdCheck> = {
-    failed_command: (occurrences, sessions, options) =>
-      occurrences >= options.thresholds.minFailures || sessions >= options.thresholds.minFailureSessions,
-    tool_error: (occurrences, sessions, options) =>
-      occurrences >= options.thresholds.minFailures || sessions >= options.thresholds.minFailureSessions,
-    permission_denied: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
-    hook_blocked: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
-    api_error: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
-    context_compaction: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
-    context_heavy: () => true,
-    repeated_workflow: (occurrences, sessions, options) =>
-      sessions >= options.thresholds.minWorkflowSessions || occurrences >= options.thresholds.minWorkflowRuns,
-    user_correction: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
-    interruption: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
-    repeated_read: (occurrences, _sessions, options) => occurrences >= options.thresholds.minExtraReads,
-    subagent_reread: (occurrences, _sessions, options) => occurrences >= options.thresholds.minSubagentRereads,
-    repeated_request: (_occurrences, sessions, options) => sessions >= options.thresholds.minRepeatedRequestSessions,
-    unused_piece: () => true,
-    large_piece: () => true,
+  private static readonly SIGNAL_TYPE_TO_THRESHOLD: Record<SignalType, SignalThreshold> = {
+    failed_command: { minOccurrences: "minFailures", minSessions: "minFailureSessions" },
+    tool_error: { minOccurrences: "minFailures", minSessions: "minFailureSessions" },
+    permission_denied: { minOccurrences: "minRepeatedEvents" },
+    hook_blocked: { minOccurrences: "minRepeatedEvents" },
+    api_error: { minOccurrences: "minRepeatedEvents" },
+    context_compaction: { minOccurrences: "minRepeatedEvents" },
+    context_heavy: "always",
+    repeated_workflow: { minOccurrences: "minWorkflowRuns", minSessions: "minWorkflowSessions" },
+    user_correction: { minOccurrences: "minRepeatedEvents" },
+    interruption: { minOccurrences: "minRepeatedEvents" },
+    repeated_read: { minOccurrences: "minExtraReads" },
+    subagent_reread: { minOccurrences: "minSubagentRereads" },
+    repeated_request: { minSessions: "minRepeatedRequestSessions" },
+    unused_piece: "always",
+    large_piece: "always",
   };
 
   private readonly costService: CostService;
@@ -115,7 +117,15 @@ export class SignalService {
 
   private isStrongEnough(group: OccurrenceGroup): boolean {
     const sessionCount = new Set(group.occurrences.map((occurrence) => occurrence.session.sessionId)).size;
-    return SignalService.SIGNAL_TYPE_TO_THRESHOLD[group.type](group.occurrences.length, sessionCount, this.options);
+    const threshold = SignalService.SIGNAL_TYPE_TO_THRESHOLD[group.type];
+    if (threshold === "always") {
+      return true;
+    }
+    const thresholds = this.options.thresholds;
+    const hasEnoughOccurrences = threshold.minOccurrences !== undefined
+      && group.occurrences.length >= thresholds[threshold.minOccurrences];
+    const hasEnoughSessions = threshold.minSessions !== undefined && sessionCount >= thresholds[threshold.minSessions];
+    return hasEnoughOccurrences || hasEnoughSessions;
   }
 
   private buildSignal(group: OccurrenceGroup): Signal {
@@ -133,14 +143,14 @@ export class SignalService {
       partialReasons.push("seen in a single session");
     }
     return {
+      pieces,
+      partialReasons,
       id: group.id,
       type: group.type,
       title: group.title,
-      pieces,
       occurrences: occurrences.length,
       sessions: sessionCount,
       isPartial: partialReasons.length > 0,
-      partialReasons,
       cost: this.costOf(occurrences),
       details: {
         ...group.details,
@@ -218,10 +228,10 @@ export class SignalService {
         ...(piece.isEditable ? [] : ["piece comes from a plugin"]),
       ];
       return this.pieceSignal(piece, {
+        partialReasons,
         type: "unused_piece",
         title: `Not used in ${sessions.length} sessions: ${piece.id}`,
         sessions: sessions.length,
-        partialReasons,
         details: {
           scope: piece.scope,
           path: piece.path,
@@ -331,14 +341,13 @@ export class SignalService {
     for (const occurrence of sortedOccurrences) {
       CollectionUtil.pushTo(sessionIdToOccurrences, occurrence.session.sessionId, occurrence);
     }
+    const sessionsOccurrences = [...sessionIdToOccurrences.values()];
+    const roundCount = Math.max(0, ...sessionsOccurrences.map((sessionOccurrences) => sessionOccurrences.length));
     const evidence: EvidenceRef[] = [];
-    for (let roundIndex = 0; evidence.length < maxEvidence; roundIndex++) {
-      const roundEvidence = [...sessionIdToOccurrences.values()]
+    for (let roundIndex = 0; roundIndex < roundCount && evidence.length < maxEvidence; roundIndex++) {
+      const roundEvidence = sessionsOccurrences
         .map((sessionOccurrences) => sessionOccurrences[roundIndex]?.ref)
         .filter((ref) => ref !== undefined);
-      if (!roundEvidence.length) {
-        break;
-      }
       evidence.push(...roundEvidence.slice(0, maxEvidence - evidence.length));
     }
     return evidence;

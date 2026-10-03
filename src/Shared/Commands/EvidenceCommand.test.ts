@@ -5,6 +5,8 @@ import { ClaudeCodeFixtureUtil, ClaudeCodeTranscriptBuilder } from "@/Providers/
 import { AnalyzeCommand } from "./AnalyzeCommand.js";
 import { EvidenceCommand } from "./EvidenceCommand.js";
 
+const MAKE_FAILURE_SIGNAL = "failed_command:make";
+
 const history = ClaudeCodeFixtureUtil.useHistoryFixture((fixture) => {
   // Two sessions where `npm test` fails and `pnpm test` works after a look around, and a script fails before other work.
   for (const sessionId of ["r1", "r2"]) {
@@ -34,9 +36,9 @@ describe("EvidenceCommand", () => {
   it("returns the exact signal even when a longer id starts with it", async () => {
     const analysis = await new AnalyzeCommand().run(history.commonOptions());
     const ids = analysis.signals.map((signal) => signal.id);
-    expect(ids.indexOf("failed_command:make build")).toBeLessThan(ids.indexOf("failed_command:make"));
-    const evidence = await new EvidenceCommand().run({ ...history.commonOptions(), signalId: "failed_command:make" });
-    expect(evidence.id).toBe("failed_command:make");
+    expect(ids.indexOf("failed_command:make build")).toBeLessThan(ids.indexOf(MAKE_FAILURE_SIGNAL));
+    const evidence = await new EvidenceCommand().run({ ...history.commonOptions(), signalId: MAKE_FAILURE_SIGNAL });
+    expect(evidence.id).toBe(MAKE_FAILURE_SIGNAL);
   });
 });
 

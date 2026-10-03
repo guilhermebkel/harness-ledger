@@ -54,11 +54,13 @@ export class AttributionService {
         prompt,
       }));
     for (const call of session.tools) {
-      if (!SessionUtil.isMainThread(call.thread)) {
+      const isMainThread = SessionUtil.isMainThread(call.thread);
+      if (!isMainThread) {
         const agentPiece = this.pieceIdFor("agent", call.thread.agentType);
         const skillPieces = call.skillInUse ? [this.pieceIdFor("skill", call.skillInUse)] : [];
         index.toolCallIdToPieces.set(call.id, [agentPiece, ...skillPieces]);
-      } else if (call.ref.file === session.file) {
+      }
+      if (isMainThread && call.ref.file === session.file) {
         mainEvents.push({
           line: call.ref.line,
           call,
@@ -91,7 +93,8 @@ export class AttributionService {
         index.promptToPreviousTurnPieces.set(event.prompt, previousPieces);
         turn.current = event.prompt.command ? [this.commandPieceId(event.prompt.command)] : [];
         turn.last = turn.current;
-      } else if (event.call) {
+      }
+      if (event.call) {
         this.attributeCall(event.call, turn, index);
       }
     }

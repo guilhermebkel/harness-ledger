@@ -10,8 +10,8 @@ const projectDir = mkdtempSync(join(tempDir, "imh-mentions-"));
 const instructionsFile = join(projectDir, "CLAUDE.md");
 writeFileSync(instructionsFile, "# App\n\n- Pick a category before you cat the logs.\n- Run `pnpm test`.\n");
 const inventory: Inventory = {
-  provider: "test",
   projectDir,
+  provider: "test",
   takenAt: "2026-10-01T00:00:00.000Z",
   fingerprint: "x",
   pieces: [{

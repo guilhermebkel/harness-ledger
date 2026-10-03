@@ -72,13 +72,13 @@ export class SessionLoaderService {
     const sessions = projectSessions.filter((facts) => this.isInPeriod(facts, options) && this.hasActivity(facts));
     return {
       sessions,
+      parsedCount,
+      cachedCount,
       available: {
         count: projectSessions.length,
         oldestAt: TimeUtil.toIso(startsAtMs[0]),
         newestAt: TimeUtil.toIso(startsAtMs.at(-1)),
       },
-      parsedCount,
-      cachedCount,
       unparsedLines: sessions.reduce((total, facts) => total + facts.unparsedLines, 0),
     };
   }

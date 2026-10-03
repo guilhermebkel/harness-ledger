@@ -25,7 +25,7 @@ export class FrontmatterUtil {
     }
     const state: ParseState = { data: {}, currentKey: undefined, blockMode: undefined };
     for (const rawLine of (match[1] ?? "").split(/\r?\n/)) {
-      FrontmatterUtil.readLine(state, rawLine.replace(/\s+$/, ""));
+      FrontmatterUtil.readLine(state, rawLine.trimEnd());
     }
     const data = state.data;
     return {
@@ -41,20 +41,23 @@ export class FrontmatterUtil {
       return;
     }
     const key = state.currentKey;
-    const listItem = /^\s+-\s+(.*)$/.exec(line);
-    if (listItem && key && state.blockMode !== "text") {
+    const content = line.trimStart();
+    const isIndented = content.length < line.length;
+    const isListItem = isIndented && /^-\s/.test(content);
+    if (isListItem && key && state.blockMode !== "text") {
       const previous = state.data[key];
       const list = Array.isArray(previous) ? previous : [];
-      list.push(FrontmatterUtil.unquote(listItem[1] ?? ""));
+      const item = content.slice(1).trim();
+      list.push(FrontmatterUtil.unquote(item));
       state.data[key] = list;
       state.blockMode = "list";
       return;
     }
-    if (/^\s+/.test(line) && key && state.blockMode === "text") {
+    if (isIndented && key && state.blockMode === "text") {
       state.data[key] = `${String(state.data[key] ?? "")} ${line.trim()}`.trim();
       return;
     }
-    const keyValue = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
+    const keyValue = /^([\w-]+):(.*)$/.exec(line);
     if (!keyValue) {
       return;
     }
@@ -62,7 +65,8 @@ export class FrontmatterUtil {
     const value = (keyValue[2] ?? "").trim();
     state.currentKey = newKey;
     state.blockMode = BLOCK_TEXT_MARKERS.has(value) ? "text" : undefined;
-    state.data[newKey] = FrontmatterUtil.parseScalarOrFlowList(value);
+    const isFlowList = value.startsWith("[") && value.endsWith("]");
+    state.data[newKey] = isFlowList ? FrontmatterUtil.parseFlowList(value) : FrontmatterUtil.parseScalar(value);
   }
 
   /** A list field written as a YAML list, a flow list or a comma/space separated string (`tools: Read, Bash`). */
@@ -73,30 +77,43 @@ export class FrontmatterUtil {
     if (Array.isArray(value)) {
       return value;
     }
-    const separator = value.includes(",") ? "," : /\s+(?![^(]*\))/;
-    return value
-      .split(separator)
-      .map((entry) => entry.trim())
-      .filter(Boolean);
+    const entries = value.includes(",") ? value.split(",") : FrontmatterUtil.splitOutsideParentheses(value);
+    return entries.map((entry) => entry.trim()).filter(Boolean);
   }
 
   static asText(value: FrontmatterValue | undefined): string | undefined {
     return typeof value === "string" && value !== "" ? value : undefined;
   }
 
-  private static parseScalarOrFlowList(value: string): FrontmatterValue {
-    if (BLOCK_TEXT_MARKERS.has(value)) {
-      return "";
+  private static parseScalar(value: string): string {
+    return BLOCK_TEXT_MARKERS.has(value) ? "" : FrontmatterUtil.unquote(value);
+  }
+
+  private static parseFlowList(value: string): string[] {
+    return value
+      .slice(1, -1)
+      .split(",")
+      .map((entry) => FrontmatterUtil.unquote(entry.trim()))
+      .filter(Boolean);
+  }
+
+  /** Splits on whitespace, keeping `Bash(git log *)` in one piece. */
+  private static splitOutsideParentheses(value: string): string[] {
+    const entries: string[] = [];
+    let current = "";
+    let depth = 0;
+    for (const character of value) {
+      depth += Number(character === "(") - Number(character === ")");
+      const isSeparator = depth <= 0 && /\s/.test(character);
+      if (isSeparator) {
+        entries.push(current);
+        current = "";
+      } else {
+        current += character;
+      }
     }
-    const isFlowList = value.startsWith("[") && value.endsWith("]");
-    if (isFlowList) {
-      return value
-        .slice(1, -1)
-        .split(",")
-        .map((entry) => FrontmatterUtil.unquote(entry.trim()))
-        .filter(Boolean);
-    }
-    return FrontmatterUtil.unquote(value);
+    entries.push(current);
+    return entries;
   }
 
   private static unquote(text: string): string {

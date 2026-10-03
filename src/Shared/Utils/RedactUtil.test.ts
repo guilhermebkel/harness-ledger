@@ -16,6 +16,17 @@ describe("redact", () => {
     const text = "API_KEY=supersecretvalue password: \"hunter22\" Authorization: Bearer abcdefghijklmnop123 https://user:pa55word@host.com";
     expect(RedactUtil.redact(text)).not.toMatch(/supersecretvalue|hunter22|abcdefghijklmnop123|pa55word/);
   });
+
+  it("masks a sensitive assignment that follows another one", () => {
+    expect(RedactUtil.redact("a=password=secret1 x_auth_token: \"tok12345\"")).not.toMatch(/secret1|tok12345/);
+  });
+
+  it("stays fast on long strings without secrets", () => {
+    const longWord = "a".repeat(200_000);
+    const startedAtMs = performance.now();
+    RedactUtil.redact(`${longWord}=value ${longWord}`);
+    expect(performance.now() - startedAtMs).toBeLessThan(1000);
+  });
 });
 
 describe("excerpt", () => {

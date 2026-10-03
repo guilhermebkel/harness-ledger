@@ -152,10 +152,10 @@ export class ClaudeCodeInventoryService {
     builder.pieces.sort((left, right) => left.id.localeCompare(right.id));
     const fingerprint = HashUtil.sha(builder.pieces.map((piece) => `${piece.id}=${piece.hash}`).join("\n"));
     return {
-      provider: "claude-code",
       projectDir,
-      takenAt: new Date().toISOString(),
       fingerprint,
+      provider: "claude-code",
+      takenAt: new Date().toISOString(),
       pieces: builder.pieces,
       retention: settings.retention,
       notes: builder.notes,
@@ -213,11 +213,11 @@ export class ClaudeCodeInventoryService {
       const extraFiles = await this.skillFolderFiles(skillFolder);
       await builder.addFile({
         file,
-        kind: "skill",
-        name: `${prefix}${declaredName ?? skillDir}`,
         scope,
         plugin,
         extraFiles,
+        kind: "skill",
+        name: `${prefix}${declaredName ?? skillDir}`,
       });
     }
     const rootSkill = join(baseDir, "SKILL.md");
@@ -236,20 +236,20 @@ export class ClaudeCodeInventoryService {
       const declaredName = await this.declaredNameOf(file);
       await builder.addFile({
         file,
-        kind: "agent",
-        name: `${prefix}${declaredName ?? this.nameFromPath(agentsDir, file)}`,
         scope,
         plugin,
+        kind: "agent",
+        name: `${prefix}${declaredName ?? this.nameFromPath(agentsDir, file)}`,
       });
     }
     const commandsDir = join(baseDir, "commands");
     for (const file of await this.listMarkdownFiles(commandsDir)) {
       await builder.addFile({
         file,
-        kind: "command",
-        name: `${prefix}${this.nameFromPath(commandsDir, file)}`,
         scope,
         plugin,
+        kind: "command",
+        name: `${prefix}${this.nameFromPath(commandsDir, file)}`,
       });
     }
   }
@@ -276,7 +276,9 @@ export class ClaudeCodeInventoryService {
       const isHidden = entry.name.startsWith(".");
       if (entry.isDirectory() && !isHidden && !SKIPPED_FOLDERS.has(entry.name)) {
         files.push(...(await this.skillFolderFiles(entryPath, depth + 1)));
-      } else if (entry.isFile() && !isHidden && !(depth === 0 && entry.name === "SKILL.md")) {
+      }
+      const isSkillEntryFile = depth === 0 && entry.name === "SKILL.md";
+      if (entry.isFile() && !isHidden && !isSkillEntryFile) {
         files.push(entryPath);
       }
     }
@@ -293,7 +295,8 @@ export class ClaudeCodeInventoryService {
       const entryPath = join(dir, entry.name);
       if (entry.isDirectory()) {
         files.push(...(await this.listMarkdownFiles(entryPath, depth + 1)));
-      } else if (entry.isFile() && entry.name.endsWith(".md")) {
+      }
+      if (entry.isFile() && entry.name.endsWith(".md")) {
         files.push(entryPath);
       }
     }

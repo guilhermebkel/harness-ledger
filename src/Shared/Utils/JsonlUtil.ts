@@ -13,20 +13,23 @@ export class JsonlUtil {
     let lineNumber = 0;
     for await (const line of lines) {
       lineNumber++;
-      if (!line.trim()) {
-        continue;
+      if (line.trim()) {
+        JsonlUtil.handleLine(line, lineNumber, handlers);
       }
-      const record = GuardUtil.parseJson(line);
-      if (record === undefined) {
-        handlers.onBadLine();
-        continue;
-      }
-      try {
-        handlers.onRecord(record, lineNumber);
-      } catch {
-        // A line in a shape we don't understand must never stop the analysis (format drift).
-        handlers.onBadLine();
-      }
+    }
+  }
+
+  private static handleLine(line: string, lineNumber: number, handlers: JsonLineHandlers): void {
+    const record = GuardUtil.parseJson(line);
+    if (record === undefined) {
+      handlers.onBadLine();
+      return;
+    }
+    try {
+      handlers.onRecord(record, lineNumber);
+    } catch {
+      // A line in a shape we don't understand must never stop the analysis (format drift).
+      handlers.onBadLine();
     }
   }
 }

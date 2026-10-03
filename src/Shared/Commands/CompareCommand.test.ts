@@ -5,13 +5,16 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ClaudeCodeFixtureUtil, type Fixture, type TestRunOptions } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.js";
 import { CompareCommand } from "./CompareCommand.js";
 
+const TEST_RUNNER_PIECE = "agent:test-runner";
+const CHANGE_DAY = "2026-09-08";
+
 const command = new CompareCommand();
 
 const history = ClaudeCodeFixtureUtil.useHistoryFixture();
 
 describe("CompareCommand", () => {
   it("refuses to call a winner with too few sessions", async () => {
-    const result = await command.run({ ...history.commonOptions(), piece: "agent:test-runner", changedAt: "2026-09-12" });
+    const result = await command.run({ ...history.commonOptions(), piece: TEST_RUNNER_PIECE, changedAt: "2026-09-12" });
     expect(result.verdict).toBe("insufficient_data");
     expect(result.before.sessions).toBe(2);
     expect(result.after.sessions).toBe(1);
@@ -25,7 +28,7 @@ describe("CompareCommand", () => {
     ClaudeCodeFixtureUtil.writeTestRunnerSession(history.fixture, "o1", "2026-09-05T10:00:00.000Z", { command: "npm test", isFailing: true });
     ClaudeCodeFixtureUtil.writeTestRunnerSession(history.fixture, "o2", "2026-09-06T10:00:00.000Z", { command: "npm test", isFailing: true });
 
-    const result = await command.run({ ...history.commonOptions(), piece: "agent:test-runner", changedAt: "2026-09-15" });
+    const result = await command.run({ ...history.commonOptions(), piece: TEST_RUNNER_PIECE, changedAt: "2026-09-15" });
     expect(result.before.sessions).toBe(5);
     expect(result.after.sessions).toBe(5);
     expect(result.before.errorRate).toBeGreaterThan(0);
@@ -65,10 +68,10 @@ describe("CompareCommand counts time as much as cost", () => {
 
   async function compareAt(changedAt: string) {
     return command.run({
+      changedAt,
       projectDir: timeFixture.projectDir,
       dataDir: timeFixture.dataDir,
-      piece: "agent:test-runner",
-      changedAt,
+      piece: TEST_RUNNER_PIECE,
       shouldSkipCache: true,
     });
   }
@@ -76,7 +79,7 @@ describe("CompareCommand counts time as much as cost", () => {
   it("calls a change that keeps the cost but makes the work faster an improvement", async () => {
     writeSide("slow", 1, { commandSeconds: 200 });
     writeSide("fast", 10, { commandSeconds: 20 });
-    const result = await compareAt("2026-09-08");
+    const result = await compareAt(CHANGE_DAY);
     expect(result.verdict).toBe("improved");
     expect(result.moves).toEqual([
       {
@@ -91,7 +94,7 @@ describe("CompareCommand counts time as much as cost", () => {
   });
 
   it("reports input and output tokens per use without letting them vote twice", async () => {
-    const result = await compareAt("2026-09-08");
+    const result = await compareAt(CHANGE_DAY);
     expect(result.before.perInvocation).toMatchObject({ inputTokens: 1100, outputTokens: 50 });
     expect(result.deltas).toMatchObject({ inputTokensPerInvocation: 0, outputTokensPerInvocation: 0 });
   });
@@ -136,8 +139,8 @@ describe("CompareCommand with fewer output tokens", () => {
     const result = await command.run({
       projectDir: tokenFixture.projectDir,
       dataDir: tokenFixture.dataDir,
-      piece: "agent:test-runner",
-      changedAt: "2026-09-08",
+      piece: TEST_RUNNER_PIECE,
+      changedAt: CHANGE_DAY,
     });
     expect(result.verdict).toBe("improved");
     const metricToMove = Object.fromEntries(result.moves.map((move) => [move.metric, move]));

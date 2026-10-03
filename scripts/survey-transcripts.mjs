@@ -36,7 +36,8 @@ async function listJsonl(folder, depth = 0) {
     const entryPath = join(folder, entry.name);
     if (entry.isDirectory()) {
       files.push(...(await listJsonl(entryPath, depth + 1)));
-    } else if (entry.name.endsWith(".jsonl")) {
+    }
+    if (entry.isFile() && entry.name.endsWith(".jsonl")) {
       files.push(entryPath);
     }
   }

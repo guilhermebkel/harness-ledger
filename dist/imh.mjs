@@ -7,6 +7,13 @@ import { parseArgs } from "node:util";
 
 // src/Shared/Utils/CollectionUtil.ts
 var CollectionUtil = class {
+  /** The order of `Array.prototype.sort()` without a comparator (UTF-16 code units), stated explicitly. */
+  static compareCodeUnits = (left, right) => {
+    if (left === right) {
+      return 0;
+    }
+    return left < right ? -1 : 1;
+  };
   static unique(items) {
     return [...new Set(items)];
   }
@@ -25,7 +32,7 @@ var CollectionUtil = class {
   }
   /** Runs async work over items with a concurrency limit, keeping the input order in the results. */
   static async mapWithConcurrency(items, concurrency, work) {
-    const results = new Array(items.length);
+    const results = [];
     let nextIndex = 0;
     const workerCount = Math.max(1, Math.min(concurrency, items.length));
     const runWorker = async () => {
@@ -48,7 +55,7 @@ var SECRET_PATTERNS = [
   [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(-----END [A-Z ]*PRIVATE KEY-----|$)/g, MASK],
   [/\bsk-(?:ant-|proj-|live-|test-)?[A-Za-z0-9_-]{16,}/g, MASK],
   [/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/g, MASK],
-  [/\bgithub_pat_[A-Za-z0-9_]{20,}/g, MASK],
+  [/\bgithub_pat_\w{20,}/g, MASK],
   [/\bglpat-[A-Za-z0-9_-]{16,}/g, MASK],
   [/\bxox[abposr]-[A-Za-z0-9-]{10,}/g, MASK],
   [/\bAKIA[0-9A-Z]{16}\b/g, MASK],
@@ -56,10 +63,16 @@ var SECRET_PATTERNS = [
   [/\b(?:rk|pk|sk)_(?:live|test)_[A-Za-z0-9]{16,}/g, MASK],
   [/\bnpm_[A-Za-z0-9]{30,}/g, MASK],
   [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, MASK],
-  [/\b(Bearer|Basic|Token)\s+[A-Za-z0-9._~+/=-]{12,}/gi, `$1 ${MASK}`],
-  [/([a-z][a-z0-9+.-]*:\/\/)[^\s:/@]+:[^\s@/]+@/gi, `$1${MASK}@`]
+  [/\b(Bearer|Basic|Token)\s+[a-z0-9._~+/=-]{12,}/gi, `$1 ${MASK}`],
+  [/([a-z][a-z0-9+.-]{0,30}:\/\/)[^\s:/@]{1,256}:[^\s@/]{1,256}@/gi, `$1${MASK}@`]
 ];
-var SENSITIVE_ASSIGNMENT = /((?:["']?)[A-Za-z0-9_.-]*(?:pass(?:word|wd)?|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|credential|auth)[A-Za-z0-9_.-]*["']?\s*[:=]\s*)(["']?)([^\s"',;&]{4,})\2/gi;
+var SENSITIVE_KEY_WORDS = ["pass", "secret", "token", "api[_-]?key", "access[_-]?key", "private[_-]?key", "credential", "auth"];
+var MAX_KEY_AFFIX_CHARS = 40;
+var KEY_AFFIX = `[\\w.-]{0,${MAX_KEY_AFFIX_CHARS}}`;
+var SENSITIVE_ASSIGNMENT = new RegExp(
+  `(["']?${KEY_AFFIX}(?:${SENSITIVE_KEY_WORDS.join("|")})${KEY_AFFIX}["']?\\s{0,4}[:=]\\s{0,4})(["']?)([^\\s"',;&]{4,})\\2`,
+  "gi"
+);
 var RedactUtil = class _RedactUtil {
   static redact(text) {
     if (!text) {
@@ -128,7 +141,7 @@ var DELIVERY_COMMAND = /^(git (commit|push|tag)|gh pr|gh release|glab mr|vercel|
 var SETUP_COMMAND = /^(git (checkout|switch|pull|fetch|worktree|branch|clone|stash|rebase)|npm (install|ci)|pnpm install|yarn install|pip install|uv sync|bundle install|docker compose up)\b/;
 var COMMAND_WRAPPERS = /* @__PURE__ */ new Set(["sudo", "time", "nohup", "env", "command", "exec", "timeout", "do", "then", "else"]);
 var NAVIGATION_COMMAND = /^(cd|pushd|popd|export|source|\.|set|for|while|until|if|elif|done|fi|esac|nvm use|conda activate|pyenv shell)\b/;
-var ENV_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+var ENV_ASSIGNMENT = /^[A-Za-z_]\w*=/;
 var WRAPPER_ARGUMENT = /^(-\S*|\d+(\.\d+)?[smhd]?)$/;
 var PROGRAMS_WITH_SUBCOMMAND = /* @__PURE__ */ new Set([
   "npm",
@@ -187,7 +200,45 @@ var LEADING_CLOCK_TIME = /^\d{1,2}:\d{2}:\d{2}(\.\d+)?\s+/;
 var MAX_ERROR_KEY_CHARS = 160;
 var ERROR_LOOKING_LINE = /error|fail|denied|not found|no such|invalid|cannot|can't|unable|exception|refused|timed? ?out|"reason"/i;
 var CORRECTION_PREFIX_CHARS = 80;
-var CORRECTION_START = /^(no(?=[,.!]|\s*$)|nope|não|nao|wrong|errado|actually|na verdade|instead|ao invés|em vez|stop|pare|para de|don'?t|do not|não faça|nao faca|that'?s not|isso não|isso nao|you should|you shouldn'?t|você deveria|voce deveria|why did you|por que você|por que voce|undo|revert|desfaz|desfaça|again|de novo|still (?:not|wrong|failing)|ainda (?:não|nao|está|esta))\b/i;
+var CORRECTION_OPENERS = [
+  "no(?=[,.!]|\\s*$)",
+  "nope",
+  "n\xE3o",
+  "nao",
+  "wrong",
+  "errado",
+  "actually",
+  "na verdade",
+  "instead",
+  "ao inv\xE9s",
+  "em vez",
+  "stop",
+  "pare",
+  "para de",
+  "don'?t",
+  "do not",
+  "n\xE3o fa\xE7a",
+  "nao faca",
+  "that'?s not",
+  "isso n\xE3o",
+  "isso nao",
+  "you should",
+  "you shouldn'?t",
+  "voc\xEA deveria",
+  "voce deveria",
+  "why did you",
+  "por que voc\xEA",
+  "por que voce",
+  "undo",
+  "revert",
+  "desfaz",
+  "desfa\xE7a",
+  "again",
+  "de novo",
+  "still (?:not|wrong|failing)",
+  "ainda (?:n\xE3o|nao|est\xE1|esta)"
+];
+var CORRECTION_START = new RegExp(`^(?:${CORRECTION_OPENERS.join("|")})\\b`, "i");
 var MIN_WORD_CHARS = 3;
 var STOPWORDS = new Set(
   "the and for with that this from you your are was were can could would should please into have has had not but all any some what when where which who how why its it's our out then than them they there here tamb\xE9m para com que uma umas uns dos das por pelo pela isso isto esse essa este esta voc\xEA voce seu sua nos nas n\xE3o nao mais muito pode poderia favor ser ter tem foi vai fazer faz como quando onde qual quais".split(" ")
@@ -284,15 +335,12 @@ var NormalizeUtil = class _NormalizeUtil {
   static programIndexOf(tokens) {
     let isAfterWrapper = false;
     for (const [index, token] of tokens.entries()) {
+      const isWrapper = COMMAND_WRAPPERS.has(token);
       const isWrapperArgument = isAfterWrapper && WRAPPER_ARGUMENT.test(token);
-      if (ENV_ASSIGNMENT.test(token) || isWrapperArgument) {
-        continue;
+      if (!isWrapper && !isWrapperArgument && !ENV_ASSIGNMENT.test(token)) {
+        return index;
       }
-      if (COMMAND_WRAPPERS.has(token)) {
-        isAfterWrapper = true;
-        continue;
-      }
-      return index;
+      isAfterWrapper ||= isWrapper;
     }
     return -1;
   }
@@ -303,7 +351,8 @@ var NormalizeUtil = class _NormalizeUtil {
       return void 0;
     }
     const afterTraceback = lines.slice(tracebackIndex + 1);
-    return afterTraceback.reverse().find((line) => PYTHON_EXCEPTION_LINE.test(line)) ?? afterTraceback[0];
+    const fromLastLine = [...afterTraceback].reverse();
+    return fromLastLine.find((line) => PYTHON_EXCEPTION_LINE.test(line)) ?? fromLastLine[0];
   }
   static withoutGlobalOptions(program, argumentTokens) {
     const globalOptions = PROGRAM_TO_GLOBAL_OPTIONS[program];
@@ -481,11 +530,13 @@ var AttributionService = class _AttributionService {
       prompt
     }));
     for (const call of session.tools) {
-      if (!SessionUtil.isMainThread(call.thread)) {
+      const isMainThread = SessionUtil.isMainThread(call.thread);
+      if (!isMainThread) {
         const agentPiece = this.pieceIdFor("agent", call.thread.agentType);
         const skillPieces = call.skillInUse ? [this.pieceIdFor("skill", call.skillInUse)] : [];
         index.toolCallIdToPieces.set(call.id, [agentPiece, ...skillPieces]);
-      } else if (call.ref.file === session.file) {
+      }
+      if (isMainThread && call.ref.file === session.file) {
         mainEvents.push({
           line: call.ref.line,
           call
@@ -515,7 +566,8 @@ var AttributionService = class _AttributionService {
         index.promptToPreviousTurnPieces.set(event.prompt, previousPieces);
         turn.current = event.prompt.command ? [this.commandPieceId(event.prompt.command)] : [];
         turn.last = turn.current;
-      } else if (event.call) {
+      }
+      if (event.call) {
         this.attributeCall(event.call, turn, index);
       }
     }
@@ -808,23 +860,14 @@ var SignalDetectorService = class {
     }
   }
   detectRepeatedReads(session, index) {
-    const thresholds = this.options.thresholds;
     const threadFileToReads = /* @__PURE__ */ new Map();
     for (const call of session.tools.filter((toolCall) => this.isSuccessfulRead(toolCall))) {
       CollectionUtil.pushTo(threadFileToReads, `${call.thread.id}\0${call.filePath ?? ""}`, call);
     }
     for (const reads of threadFileToReads.values()) {
-      const [firstRead] = reads;
-      if (!firstRead || reads.length < thresholds.minReadsPerFile) {
-        continue;
-      }
-      const extraReads = reads.slice(1).filter((read) => !this.wasChangedBetween(session, firstRead, read));
-      if (extraReads.length < thresholds.minExtraReads) {
-        continue;
-      }
-      const agentType = firstRead.thread.agentType;
-      const filePath = firstRead.filePath ?? "";
-      for (const read of extraReads) {
+      for (const read of this.extraReadsOf(session, reads)) {
+        const agentType = read.thread.agentType;
+        const filePath = read.filePath ?? "";
         const title = `${agentType} re-reads files it already read`;
         const group = this.collector.add(`repeated_read:${agentType}`, "repeated_read", title, {
           session,
@@ -835,6 +878,16 @@ var SignalDetectorService = class {
         this.collector.count(group, "files", filePath);
       }
     }
+  }
+  /** Reads of one file in one thread after the first, when there are enough and the file did not change in between. */
+  extraReadsOf(session, reads) {
+    const thresholds = this.options.thresholds;
+    const [firstRead] = reads;
+    if (!firstRead || reads.length < thresholds.minReadsPerFile) {
+      return [];
+    }
+    const extraReads = reads.slice(1).filter((read) => !this.wasChangedBetween(session, firstRead, read));
+    return extraReads.length < thresholds.minExtraReads ? [] : extraReads;
   }
   detectSubagentRereads(session, index) {
     const reads = session.tools.filter((call) => this.isSuccessfulRead(call));
@@ -1252,21 +1305,21 @@ var SignalService = class _SignalService {
   }
   /** When a group of occurrences is strong enough to report. Piece signals (unused, large) are built separately. */
   static SIGNAL_TYPE_TO_THRESHOLD = {
-    failed_command: (occurrences, sessions, options) => occurrences >= options.thresholds.minFailures || sessions >= options.thresholds.minFailureSessions,
-    tool_error: (occurrences, sessions, options) => occurrences >= options.thresholds.minFailures || sessions >= options.thresholds.minFailureSessions,
-    permission_denied: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
-    hook_blocked: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
-    api_error: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
-    context_compaction: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
-    context_heavy: () => true,
-    repeated_workflow: (occurrences, sessions, options) => sessions >= options.thresholds.minWorkflowSessions || occurrences >= options.thresholds.minWorkflowRuns,
-    user_correction: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
-    interruption: (occurrences, _sessions, options) => occurrences >= options.thresholds.minRepeatedEvents,
-    repeated_read: (occurrences, _sessions, options) => occurrences >= options.thresholds.minExtraReads,
-    subagent_reread: (occurrences, _sessions, options) => occurrences >= options.thresholds.minSubagentRereads,
-    repeated_request: (_occurrences, sessions, options) => sessions >= options.thresholds.minRepeatedRequestSessions,
-    unused_piece: () => true,
-    large_piece: () => true
+    failed_command: { minOccurrences: "minFailures", minSessions: "minFailureSessions" },
+    tool_error: { minOccurrences: "minFailures", minSessions: "minFailureSessions" },
+    permission_denied: { minOccurrences: "minRepeatedEvents" },
+    hook_blocked: { minOccurrences: "minRepeatedEvents" },
+    api_error: { minOccurrences: "minRepeatedEvents" },
+    context_compaction: { minOccurrences: "minRepeatedEvents" },
+    context_heavy: "always",
+    repeated_workflow: { minOccurrences: "minWorkflowRuns", minSessions: "minWorkflowSessions" },
+    user_correction: { minOccurrences: "minRepeatedEvents" },
+    interruption: { minOccurrences: "minRepeatedEvents" },
+    repeated_read: { minOccurrences: "minExtraReads" },
+    subagent_reread: { minOccurrences: "minSubagentRereads" },
+    repeated_request: { minSessions: "minRepeatedRequestSessions" },
+    unused_piece: "always",
+    large_piece: "always"
   };
   costService;
   extract(sessions, inventory) {
@@ -1295,7 +1348,14 @@ var SignalService = class _SignalService {
   }
   isStrongEnough(group) {
     const sessionCount = new Set(group.occurrences.map((occurrence) => occurrence.session.sessionId)).size;
-    return _SignalService.SIGNAL_TYPE_TO_THRESHOLD[group.type](group.occurrences.length, sessionCount, this.options);
+    const threshold = _SignalService.SIGNAL_TYPE_TO_THRESHOLD[group.type];
+    if (threshold === "always") {
+      return true;
+    }
+    const thresholds = this.options.thresholds;
+    const hasEnoughOccurrences = threshold.minOccurrences !== void 0 && group.occurrences.length >= thresholds[threshold.minOccurrences];
+    const hasEnoughSessions = threshold.minSessions !== void 0 && sessionCount >= thresholds[threshold.minSessions];
+    return hasEnoughOccurrences || hasEnoughSessions;
   }
   buildSignal(group) {
     const occurrences = [...group.occurrences].sort(
@@ -1312,14 +1372,14 @@ var SignalService = class _SignalService {
       partialReasons.push("seen in a single session");
     }
     return {
+      pieces,
+      partialReasons,
       id: group.id,
       type: group.type,
       title: group.title,
-      pieces,
       occurrences: occurrences.length,
       sessions: sessionCount,
       isPartial: partialReasons.length > 0,
-      partialReasons,
       cost: this.costOf(occurrences),
       details: {
         ...group.details,
@@ -1386,10 +1446,10 @@ var SignalService = class _SignalService {
         ...piece.isEditable ? [] : ["piece comes from a plugin"]
       ];
       return this.pieceSignal(piece, {
+        partialReasons,
         type: "unused_piece",
         title: `Not used in ${sessions.length} sessions: ${piece.id}`,
         sessions: sessions.length,
-        partialReasons,
         details: {
           scope: piece.scope,
           path: piece.path,
@@ -1488,12 +1548,11 @@ var SignalService = class _SignalService {
     for (const occurrence of sortedOccurrences) {
       CollectionUtil.pushTo(sessionIdToOccurrences, occurrence.session.sessionId, occurrence);
     }
+    const sessionsOccurrences = [...sessionIdToOccurrences.values()];
+    const roundCount = Math.max(0, ...sessionsOccurrences.map((sessionOccurrences) => sessionOccurrences.length));
     const evidence = [];
-    for (let roundIndex = 0; evidence.length < maxEvidence; roundIndex++) {
-      const roundEvidence = [...sessionIdToOccurrences.values()].map((sessionOccurrences) => sessionOccurrences[roundIndex]?.ref).filter((ref) => ref !== void 0);
-      if (!roundEvidence.length) {
-        break;
-      }
+    for (let roundIndex = 0; roundIndex < roundCount && evidence.length < maxEvidence; roundIndex++) {
+      const roundEvidence = sessionsOccurrences.map((sessionOccurrences) => sessionOccurrences[roundIndex]?.ref).filter((ref) => ref !== void 0);
       evidence.push(...roundEvidence.slice(0, maxEvidence - evidence.length));
     }
     return evidence;
@@ -1591,13 +1650,13 @@ var UsageService = class {
     const tokens = TokenUsageUtil.total(totals.usage);
     const pieceUsage = {
       piece,
+      tokens,
       invocations: totals.invocations,
       sessions: totals.sessionIds.size,
       toolCalls: totals.toolCalls,
       toolErrors: totals.toolErrors,
       errorRate: totals.toolCalls ? NumberUtil.round(totals.toolErrors / totals.toolCalls, RATE_DIGITS) : 0,
       activeMinutes: TimeUtil.msToMinutes(totals.activeMs),
-      tokens,
       usd: NumberUtil.round(totals.usd),
       models: [...totals.models]
     };
@@ -1661,13 +1720,14 @@ var CompareService = class _CompareService {
     }
     return {
       piece,
-      changedAt: TimeUtil.toIso(changedAtMs),
       changedAtSource,
       minSessions,
       before,
       after,
-      verdict: hasEnoughData ? this.verdictOf(moves) : "insufficient_data",
       moves,
+      caveats,
+      changedAt: TimeUtil.toIso(changedAtMs),
+      verdict: hasEnoughData ? this.verdictOf(moves) : "insufficient_data",
       deltas: {
         errorRate: this.difference(before.errorRate, after.errorRate),
         correctionsPerSession: this.difference(before.correctionsPerSession, after.correctionsPerSession),
@@ -1682,8 +1742,7 @@ var CompareService = class _CompareService {
           after.perInvocation?.outputTokens
         ),
         usdPerInvocation: this.difference(before.perInvocation?.usd, after.perInvocation?.usd)
-      },
-      caveats
+      }
     };
   }
   /**
@@ -1740,14 +1799,14 @@ var CompareService = class _CompareService {
       occurrences: signal.occurrences
     }));
     return {
+      corrections,
+      signals,
       sessions: sessions.length,
       invocations: usage?.invocations ?? 0,
       toolCalls: usage?.toolCalls ?? 0,
       errorRate: usage?.errorRate ?? 0,
       perInvocation: usage?.perInvocation,
-      corrections,
-      correctionsPerSession: sessions.length ? NumberUtil.round(corrections / sessions.length) : 0,
-      signals
+      correctionsPerSession: sessions.length ? NumberUtil.round(corrections / sessions.length) : 0
     };
   }
   relativeChange(before, after) {
@@ -1785,15 +1844,10 @@ var InventoryService = class _InventoryService {
     const changes = [];
     for (const [id, hash] of currentIdToHash) {
       const previousHash = previousIdToHash.get(id);
-      if (previousHash === void 0) {
+      if (previousHash !== hash) {
         changes.push({
           id,
-          change: "added"
-        });
-      } else if (previousHash !== hash) {
-        changes.push({
-          id,
-          change: "modified"
+          change: previousHash === void 0 ? "added" : "modified"
         });
       }
     }
@@ -2042,9 +2096,9 @@ var AnalysisService = class _AnalysisService {
       },
       process: this.processProfile(sessions, pieceIds),
       commonCommands: this.commonCommands(sessions),
-      signals,
       suggestions: CollectionUtil.countBy(suggestions.map((suggestion) => suggestion.status)),
-      dataDir: store.root
+      dataDir: store.root,
+      signals
     };
     await store.writeJson(_AnalysisService.LAST_ANALYSIS_FILE, analysis);
     return this.compact(analysis, options);
@@ -2169,7 +2223,7 @@ var AnalysisService = class _AnalysisService {
   unpricedModels(sessions) {
     const costService = new CostService(this.context.config.prices);
     const models = sessions.flatMap((session) => session.messages.map((message) => message.model)).filter((model) => model !== void 0 && !costService.isPriced(model));
-    return CollectionUtil.unique(models).map((model) => RedactUtil.redact(model)).sort();
+    return CollectionUtil.unique(models).map((model) => RedactUtil.redact(model)).sort(CollectionUtil.compareCodeUnits);
   }
   sessionTotals(sessions) {
     const costService = new CostService(this.context.config.prices);
@@ -2234,7 +2288,7 @@ var FrontmatterUtil = class _FrontmatterUtil {
     }
     const state = { data: {}, currentKey: void 0, blockMode: void 0 };
     for (const rawLine of (match[1] ?? "").split(/\r?\n/)) {
-      _FrontmatterUtil.readLine(state, rawLine.replace(/\s+$/, ""));
+      _FrontmatterUtil.readLine(state, rawLine.trimEnd());
     }
     const data = state.data;
     return {
@@ -2249,20 +2303,23 @@ var FrontmatterUtil = class _FrontmatterUtil {
       return;
     }
     const key = state.currentKey;
-    const listItem = /^\s+-\s+(.*)$/.exec(line);
-    if (listItem && key && state.blockMode !== "text") {
+    const content = line.trimStart();
+    const isIndented = content.length < line.length;
+    const isListItem = isIndented && /^-\s/.test(content);
+    if (isListItem && key && state.blockMode !== "text") {
       const previous = state.data[key];
       const list = Array.isArray(previous) ? previous : [];
-      list.push(_FrontmatterUtil.unquote(listItem[1] ?? ""));
+      const item = content.slice(1).trim();
+      list.push(_FrontmatterUtil.unquote(item));
       state.data[key] = list;
       state.blockMode = "list";
       return;
     }
-    if (/^\s+/.test(line) && key && state.blockMode === "text") {
+    if (isIndented && key && state.blockMode === "text") {
       state.data[key] = `${String(state.data[key] ?? "")} ${line.trim()}`.trim();
       return;
     }
-    const keyValue = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
+    const keyValue = /^([\w-]+):(.*)$/.exec(line);
     if (!keyValue) {
       return;
     }
@@ -2270,7 +2327,8 @@ var FrontmatterUtil = class _FrontmatterUtil {
     const value = (keyValue[2] ?? "").trim();
     state.currentKey = newKey;
     state.blockMode = BLOCK_TEXT_MARKERS.has(value) ? "text" : void 0;
-    state.data[newKey] = _FrontmatterUtil.parseScalarOrFlowList(value);
+    const isFlowList = value.startsWith("[") && value.endsWith("]");
+    state.data[newKey] = isFlowList ? _FrontmatterUtil.parseFlowList(value) : _FrontmatterUtil.parseScalar(value);
   }
   /** A list field written as a YAML list, a flow list or a comma/space separated string (`tools: Read, Bash`). */
   static asList(value) {
@@ -2280,21 +2338,35 @@ var FrontmatterUtil = class _FrontmatterUtil {
     if (Array.isArray(value)) {
       return value;
     }
-    const separator = value.includes(",") ? "," : /\s+(?![^(]*\))/;
-    return value.split(separator).map((entry) => entry.trim()).filter(Boolean);
+    const entries = value.includes(",") ? value.split(",") : _FrontmatterUtil.splitOutsideParentheses(value);
+    return entries.map((entry) => entry.trim()).filter(Boolean);
   }
   static asText(value) {
     return typeof value === "string" && value !== "" ? value : void 0;
   }
-  static parseScalarOrFlowList(value) {
-    if (BLOCK_TEXT_MARKERS.has(value)) {
-      return "";
+  static parseScalar(value) {
+    return BLOCK_TEXT_MARKERS.has(value) ? "" : _FrontmatterUtil.unquote(value);
+  }
+  static parseFlowList(value) {
+    return value.slice(1, -1).split(",").map((entry) => _FrontmatterUtil.unquote(entry.trim())).filter(Boolean);
+  }
+  /** Splits on whitespace, keeping `Bash(git log *)` in one piece. */
+  static splitOutsideParentheses(value) {
+    const entries = [];
+    let current = "";
+    let depth = 0;
+    for (const character of value) {
+      depth += Number(character === "(") - Number(character === ")");
+      const isSeparator = depth <= 0 && /\s/.test(character);
+      if (isSeparator) {
+        entries.push(current);
+        current = "";
+      } else {
+        current += character;
+      }
     }
-    const isFlowList = value.startsWith("[") && value.endsWith("]");
-    if (isFlowList) {
-      return value.slice(1, -1).split(",").map((entry) => _FrontmatterUtil.unquote(entry.trim())).filter(Boolean);
-    }
-    return _FrontmatterUtil.unquote(value);
+    entries.push(current);
+    return entries;
   }
   static unquote(text) {
     return text.replace(/^["'](.*)["']$/, "$1");
@@ -2499,10 +2571,10 @@ var ClaudeCodeInventoryService = class {
     builder.pieces.sort((left, right) => left.id.localeCompare(right.id));
     const fingerprint = HashUtil.sha(builder.pieces.map((piece) => `${piece.id}=${piece.hash}`).join("\n"));
     return {
-      provider: "claude-code",
       projectDir,
-      takenAt: (/* @__PURE__ */ new Date()).toISOString(),
       fingerprint,
+      provider: "claude-code",
+      takenAt: (/* @__PURE__ */ new Date()).toISOString(),
       pieces: builder.pieces,
       retention: settings.retention,
       notes: builder.notes
@@ -2553,11 +2625,11 @@ var ClaudeCodeInventoryService = class {
       const extraFiles = await this.skillFolderFiles(skillFolder);
       await builder.addFile({
         file,
-        kind: "skill",
-        name: `${prefix}${declaredName ?? skillDir}`,
         scope,
         plugin,
-        extraFiles
+        extraFiles,
+        kind: "skill",
+        name: `${prefix}${declaredName ?? skillDir}`
       });
     }
     const rootSkill = join2(baseDir, "SKILL.md");
@@ -2576,20 +2648,20 @@ var ClaudeCodeInventoryService = class {
       const declaredName = await this.declaredNameOf(file);
       await builder.addFile({
         file,
-        kind: "agent",
-        name: `${prefix}${declaredName ?? this.nameFromPath(agentsDir, file)}`,
         scope,
-        plugin
+        plugin,
+        kind: "agent",
+        name: `${prefix}${declaredName ?? this.nameFromPath(agentsDir, file)}`
       });
     }
     const commandsDir = join2(baseDir, "commands");
     for (const file of await this.listMarkdownFiles(commandsDir)) {
       await builder.addFile({
         file,
-        kind: "command",
-        name: `${prefix}${this.nameFromPath(commandsDir, file)}`,
         scope,
-        plugin
+        plugin,
+        kind: "command",
+        name: `${prefix}${this.nameFromPath(commandsDir, file)}`
       });
     }
   }
@@ -2613,7 +2685,9 @@ var ClaudeCodeInventoryService = class {
       const isHidden = entry.name.startsWith(".");
       if (entry.isDirectory() && !isHidden && !SKIPPED_FOLDERS.has(entry.name)) {
         files.push(...await this.skillFolderFiles(entryPath, depth + 1));
-      } else if (entry.isFile() && !isHidden && !(depth === 0 && entry.name === "SKILL.md")) {
+      }
+      const isSkillEntryFile = depth === 0 && entry.name === "SKILL.md";
+      if (entry.isFile() && !isHidden && !isSkillEntryFile) {
         files.push(entryPath);
       }
     }
@@ -2629,7 +2703,8 @@ var ClaudeCodeInventoryService = class {
       const entryPath = join2(dir, entry.name);
       if (entry.isDirectory()) {
         files.push(...await this.listMarkdownFiles(entryPath, depth + 1));
-      } else if (entry.isFile() && entry.name.endsWith(".md")) {
+      }
+      if (entry.isFile() && entry.name.endsWith(".md")) {
         files.push(entryPath);
       }
     }
@@ -2844,7 +2919,7 @@ import { basename as basename2, isAbsolute as isAbsolute2, join as join4, relati
 // src/Shared/Utils/JsonlUtil.ts
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
-var JsonlUtil = class {
+var JsonlUtil = class _JsonlUtil {
   /** Streams a JSONL file line by line, so transcripts of any size are read with bounded memory. */
   static async read(file, handlers) {
     const lines = createInterface({
@@ -2854,19 +2929,21 @@ var JsonlUtil = class {
     let lineNumber = 0;
     for await (const line of lines) {
       lineNumber++;
-      if (!line.trim()) {
-        continue;
+      if (line.trim()) {
+        _JsonlUtil.handleLine(line, lineNumber, handlers);
       }
-      const record = GuardUtil.parseJson(line);
-      if (record === void 0) {
-        handlers.onBadLine();
-        continue;
-      }
-      try {
-        handlers.onRecord(record, lineNumber);
-      } catch {
-        handlers.onBadLine();
-      }
+    }
+  }
+  static handleLine(line, lineNumber, handlers) {
+    const record = GuardUtil.parseJson(line);
+    if (record === void 0) {
+      handlers.onBadLine();
+      return;
+    }
+    try {
+      handlers.onRecord(record, lineNumber);
+    } catch {
+      handlers.onBadLine();
     }
   }
 };
@@ -2907,7 +2984,7 @@ var HARNESS_INJECTED_BLOCKS = /<(system-reminder|command-message|command-args|lo
 var INTERRUPTION_PREFIX = "[Request interrupted by user";
 var PERMISSION_DENIED = /(permission to use .+ (?:has been|was) denied|permission for this action was denied|denied by (?:the )?(?:claude code )?(?:permission|auto[- ]mode)|requires approval|not allowed by your permission settings)/i;
 var USER_REJECTED = /(doesn'?t want to proceed with this tool use|tool use was rejected|denied by (?:the )?user)/i;
-var REJECTION_FEEDBACK = /the user said:\s*([\s\S]+)$/i;
+var REJECTION_FEEDBACK_MARKER = /the user said:/i;
 var DENIAL_KIND_TO_RESULT_KIND = {
   "user-rejected": "user_rejected",
   "automode-blocked": "permission_denied",
@@ -2957,7 +3034,11 @@ var ClaudeCodeTranscriptUtil = class _ClaudeCodeTranscriptUtil {
   }
   /** The person's words after "the user said:", when they rejected a call with feedback. */
   static rejectionFeedback(text) {
-    const feedback = REJECTION_FEEDBACK.exec(text)?.[1]?.trim();
+    const marker = REJECTION_FEEDBACK_MARKER.exec(text);
+    if (!marker) {
+      return void 0;
+    }
+    const feedback = text.slice(marker.index + marker[0].length).trim();
     return feedback === "" ? void 0 : feedback;
   }
   /** Error text without Claude Code's wrapper tags, ready for `NormalizeUtil.errorKey`. */
@@ -3186,8 +3267,8 @@ var ClaudeCodeSessionService = class {
     const line = {
       record,
       lineNumber,
-      thread: this.threadOfLine(context, record, isMainFile),
       occurredAt,
+      thread: this.threadOfLine(context, record, isMainFile),
       occurredAtMs: Number.isNaN(parsedAtMs) ? void 0 : parsedAtMs
     };
     const lineType = GuardUtil.asString(record.type);
@@ -3214,7 +3295,8 @@ var ClaudeCodeSessionService = class {
     }
     if (lineType === "assistant") {
       this.handleAssistantLine(context, line, message);
-    } else if (lineType === "user") {
+    }
+    if (lineType === "user") {
       this.handleUserLine(context, line, message);
     }
   }
@@ -3262,13 +3344,13 @@ var ClaudeCodeSessionService = class {
       existing.usage = this.maxUsage(existing.usage, usage);
     } else {
       context.messageIdToMessage.set(messageId, {
-        id: messageId,
         model,
         usage,
+        skillInUse,
+        id: messageId,
         thread: line.thread,
         sentAtMs: line.occurredAtMs,
-        ref: toEvidence(),
-        skillInUse
+        ref: toEvidence()
       });
     }
     for (const block of GuardUtil.asArray(message.content).map((item) => GuardUtil.asRecord(item))) {
@@ -3277,12 +3359,12 @@ var ClaudeCodeSessionService = class {
         continue;
       }
       const call = this.buildToolCall(block, toolUseId, {
-        thread: line.thread,
         toEvidence,
-        calledAtMs: line.occurredAtMs,
         messageId,
-        projectDir: context.projectDir,
-        skillInUse
+        skillInUse,
+        thread: line.thread,
+        calledAtMs: line.occurredAtMs,
+        projectDir: context.projectDir
       });
       context.toolUseIdToPendingCall.set(toolUseId, call);
       context.facts.tools.push(call);
@@ -3448,11 +3530,11 @@ var ClaudeCodeSessionService = class {
     const isInterruption = ClaudeCodeTranscriptUtil.isInterruption(text);
     const hasEarlierPrompt = context.facts.prompts.length > 0;
     context.facts.prompts.push({
+      command,
+      isInterruption,
       text: RedactUtil.redact(text).slice(0, MAX_PROMPT_CHARS),
       ref: this.evidenceFactory(context, line)(text || `/${command ?? ""}`),
       sentAtMs: line.occurredAtMs,
-      command,
-      isInterruption,
       isCorrection: !isInterruption && hasEarlierPrompt && NormalizeUtil.isCorrection(text)
     });
   }
@@ -3471,8 +3553,8 @@ var ClaudeCodeSessionService = class {
     const text = this.resultText(block.content);
     const wasInterrupted = toolUseResult?.interrupted === true;
     const kind = ClaudeCodeTranscriptUtil.classifyResult(text, {
-      isMarkedError: block.is_error === true,
       wasInterrupted,
+      isMarkedError: block.is_error === true,
       denialKind: GuardUtil.asString(line.record.toolDenialKind)
     });
     const isError = kind !== "ok";
@@ -3557,10 +3639,10 @@ var ClaudeCodeSessionService = class {
     if (isDelegation) {
       const subagentType = delegatedType ?? DEFAULT_SUBAGENT_TYPE;
       return {
+        subagentType,
         key: `${name}:${subagentType}`,
         category: "delegation",
         summary: `${subagentType}: ${GuardUtil.asString(input.description) ?? ""}`,
-        subagentType,
         subagentPromptHash: delegatedPrompt === void 0 ? void 0 : HashUtil.sha(delegatedPrompt.trim())
       };
     }
@@ -3854,13 +3936,13 @@ var SessionLoaderService = class {
     const sessions = projectSessions.filter((facts) => this.isInPeriod(facts, options) && this.hasActivity(facts));
     return {
       sessions,
+      parsedCount,
+      cachedCount,
       available: {
         count: projectSessions.length,
         oldestAt: TimeUtil.toIso(startsAtMs[0]),
         newestAt: TimeUtil.toIso(startsAtMs.at(-1))
       },
-      parsedCount,
-      cachedCount,
       unparsedLines: sessions.reduce((total, facts) => total + facts.unparsedLines, 0)
     };
   }
@@ -4061,7 +4143,7 @@ var SuggestionService = class _SuggestionService {
   ];
   static STATUSES = ["pending", "accepted", "rejected", "applied"];
   static idOf(suggestion) {
-    const sortedSignals = [...suggestion.signals].sort().join("|");
+    const sortedSignals = [...suggestion.signals].sort(CollectionUtil.compareCodeUnits).join("|");
     const identity = `${sortedSignals}@${suggestion.piece ?? ""}`;
     return `sug-${HashUtil.sha(identity, SUGGESTION_ID_HASH_CHARS)}`;
   }
@@ -4092,11 +4174,11 @@ var SuggestionService = class _SuggestionService {
       }
       return {
         title,
+        signals,
+        status,
         class: findingClass,
         piece: GuardUtil.asString(record?.piece),
-        signals,
         change: GuardUtil.asString(record?.change),
-        status,
         note: GuardUtil.asString(record?.note)
       };
     });
@@ -4126,12 +4208,12 @@ var SuggestionService = class _SuggestionService {
       }
       suggestions.push({
         id,
+        createdAt,
         title: newSuggestion.title.slice(0, MAX_TITLE_CHARS),
         class: newSuggestion.class,
         piece: newSuggestion.piece,
         signals: newSuggestion.signals,
         status: newSuggestion.status ?? "pending",
-        createdAt,
         updatedAt: createdAt,
         change: newSuggestion.change?.slice(0, MAX_CHANGE_CHARS),
         note: newSuggestion.note?.slice(0, MAX_NOTE_CHARS)

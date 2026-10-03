@@ -8,6 +8,7 @@ import type {
 import { GuardUtil } from "@/Shared/Utils/GuardUtil.js";
 import { HashUtil } from "@/Shared/Utils/HashUtil.js";
 import type { StoreService } from "./StoreService.js";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
 
 const SUGGESTION_ID_HASH_CHARS = 8;
 const MAX_TITLE_CHARS = 200;
@@ -30,7 +31,7 @@ export class SuggestionService {
   constructor(private readonly store: StoreService) {}
 
   static idOf(suggestion: Pick<NewSuggestion, "signals" | "piece">): string {
-    const sortedSignals = [...suggestion.signals].sort().join("|");
+    const sortedSignals = [...suggestion.signals].sort(CollectionUtil.compareCodeUnits).join("|");
     const identity = `${sortedSignals}@${suggestion.piece ?? ""}`;
     return `sug-${HashUtil.sha(identity, SUGGESTION_ID_HASH_CHARS)}`;
   }
@@ -67,11 +68,11 @@ export class SuggestionService {
       }
       return {
         title,
+        signals,
+        status,
         class: findingClass,
         piece: GuardUtil.asString(record?.piece),
-        signals,
         change: GuardUtil.asString(record?.change),
-        status,
         note: GuardUtil.asString(record?.note),
       };
     });
@@ -103,12 +104,12 @@ export class SuggestionService {
       }
       suggestions.push({
         id,
+        createdAt,
         title: newSuggestion.title.slice(0, MAX_TITLE_CHARS),
         class: newSuggestion.class,
         piece: newSuggestion.piece,
         signals: newSuggestion.signals,
         status: newSuggestion.status ?? "pending",
-        createdAt,
         updatedAt: createdAt,
         change: newSuggestion.change?.slice(0, MAX_CHANGE_CHARS),
         note: newSuggestion.note?.slice(0, MAX_NOTE_CHARS),

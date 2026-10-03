@@ -284,8 +284,8 @@ export class ClaudeCodeSessionService {
     const line: ClaudeCodeTranscriptLine = {
       record,
       lineNumber,
-      thread: this.threadOfLine(context, record, isMainFile),
       occurredAt,
+      thread: this.threadOfLine(context, record, isMainFile),
       occurredAtMs: Number.isNaN(parsedAtMs) ? undefined : parsedAtMs,
     };
     const lineType = GuardUtil.asString(record.type);
@@ -312,7 +312,8 @@ export class ClaudeCodeSessionService {
     }
     if (lineType === "assistant") {
       this.handleAssistantLine(context, line, message);
-    } else if (lineType === "user") {
+    }
+    if (lineType === "user") {
       this.handleUserLine(context, line, message);
     }
   }
@@ -368,13 +369,13 @@ export class ClaudeCodeSessionService {
       existing.usage = this.maxUsage(existing.usage, usage);
     } else {
       context.messageIdToMessage.set(messageId, {
-        id: messageId,
         model,
         usage,
+        skillInUse,
+        id: messageId,
         thread: line.thread,
         sentAtMs: line.occurredAtMs,
         ref: toEvidence(),
-        skillInUse,
       });
     }
     for (const block of GuardUtil.asArray(message.content).map((item) => GuardUtil.asRecord(item))) {
@@ -383,12 +384,12 @@ export class ClaudeCodeSessionService {
         continue;
       }
       const call = this.buildToolCall(block, toolUseId, {
-        thread: line.thread,
         toEvidence,
-        calledAtMs: line.occurredAtMs,
         messageId,
-        projectDir: context.projectDir,
         skillInUse,
+        thread: line.thread,
+        calledAtMs: line.occurredAtMs,
+        projectDir: context.projectDir,
       });
       context.toolUseIdToPendingCall.set(toolUseId, call);
       context.facts.tools.push(call);
@@ -586,11 +587,11 @@ export class ClaudeCodeSessionService {
     const isInterruption = ClaudeCodeTranscriptUtil.isInterruption(text);
     const hasEarlierPrompt = context.facts.prompts.length > 0;
     context.facts.prompts.push({
+      command,
+      isInterruption,
       text: RedactUtil.redact(text).slice(0, MAX_PROMPT_CHARS),
       ref: this.evidenceFactory(context, line)(text || `/${command ?? ""}`),
       sentAtMs: line.occurredAtMs,
-      command,
-      isInterruption,
       isCorrection: !isInterruption && hasEarlierPrompt && NormalizeUtil.isCorrection(text),
     });
   }
@@ -614,8 +615,8 @@ export class ClaudeCodeSessionService {
     const text = this.resultText(block.content);
     const wasInterrupted = toolUseResult?.interrupted === true;
     const kind = ClaudeCodeTranscriptUtil.classifyResult(text, {
-      isMarkedError: block.is_error === true,
       wasInterrupted,
+      isMarkedError: block.is_error === true,
       denialKind: GuardUtil.asString(line.record.toolDenialKind),
     });
     const isError = kind !== "ok";
@@ -709,10 +710,10 @@ export class ClaudeCodeSessionService {
     if (isDelegation) {
       const subagentType = delegatedType ?? DEFAULT_SUBAGENT_TYPE;
       return {
+        subagentType,
         key: `${name}:${subagentType}`,
         category: "delegation",
         summary: `${subagentType}: ${GuardUtil.asString(input.description) ?? ""}`,
-        subagentType,
         subagentPromptHash: delegatedPrompt === undefined ? undefined : HashUtil.sha(delegatedPrompt.trim()),
       };
     }

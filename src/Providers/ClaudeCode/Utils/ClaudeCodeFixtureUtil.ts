@@ -8,6 +8,10 @@ import { dirname, join } from "node:path";
 import { afterAll, beforeAll } from "vitest";
 import { ClaudeCodePathUtil } from "./ClaudeCodePathUtil.js";
 
+const TEST_RUNNER_AGENT = "test-runner";
+const TASK_NOTIFICATION = "task-notification";
+const COST_STATE_ATTACHMENT = "cost-state";
+
 export interface Fixture {
   root: string;
   claudeHome: string;
@@ -176,10 +180,10 @@ export class ClaudeCodeTranscriptBuilder {
   }
 
   /** A prompt sent while the agent was busy: Claude Code writes it as a `queued_command` attachment. */
-  queued(prompt: string, commandMode: "prompt" | "task-notification", originKind = "human", secondsLater = 5): this {
+  queued(prompt: string, commandMode: "prompt" | typeof TASK_NOTIFICATION, originKind = "human", secondsLater = 5): this {
     this.lines.push({
       ...this.lineBase("attachment", secondsLater),
-      attachment: { type: "queued_command", commandMode, prompt, origin: { kind: originKind } },
+      attachment: { commandMode, prompt, type: "queued_command", origin: { kind: originKind } },
     });
     return this;
   }
@@ -319,7 +323,7 @@ export class ClaudeCodeFixtureUtil {
     const delegationPrompt = `Run the test suite for ${sessionId}`;
     const main = new ClaudeCodeTranscriptBuilder(sessionId, fixture.projectDir, startedAt)
       .user(firstPrompt)
-      .tool(`task_${sessionId}`, "Task", { subagent_type: "test-runner", description: "Run tests", prompt: delegationPrompt });
+      .tool(`task_${sessionId}`, "Task", { subagent_type: TEST_RUNNER_AGENT, description: "Run tests", prompt: delegationPrompt });
     const agentId = `a${sessionId}`;
     new ClaudeCodeTranscriptBuilder(sessionId, fixture.projectDir, startedAt, { isSidechain: true, agentId })
       .user(delegationPrompt, 4)
@@ -331,7 +335,7 @@ export class ClaudeCodeFixtureUtil {
       .writeTo(fixture);
     if (typeSource === "meta") {
       const metaFile = ClaudeCodeFixtureUtil.subagentPath(fixture, sessionId, agentId).replace(/\.jsonl$/, ".meta.json");
-      writeFileSync(metaFile, JSON.stringify({ agentType: "test-runner" }));
+      writeFileSync(metaFile, JSON.stringify({ agentType: TEST_RUNNER_AGENT }));
     }
     const toolUseResult = typeSource === "result" ? { agentId, status: "completed" } : undefined;
     return main.result(`task_${sessionId}`, "All tests pass.", { secondsLater: 70, toolUseResult }).say("Done.");
@@ -430,7 +434,7 @@ export class ClaudeCodeFixtureUtil {
     subagent.writeTo(fixture);
     new ClaudeCodeTranscriptBuilder(sessionId, fixture.projectDir, startedAt)
       .user("run the tests")
-      .tool(`task_${sessionId}`, "Task", { subagent_type: "test-runner", prompt: delegationPrompt })
+      .tool(`task_${sessionId}`, "Task", { subagent_type: TEST_RUNNER_AGENT, prompt: delegationPrompt })
       .result(`task_${sessionId}`, "ok", { secondsLater: 30, toolUseResult: { agentId } })
       .write(ClaudeCodeFixtureUtil.sessionPath(fixture, sessionId));
   }
@@ -487,8 +491,8 @@ export class ClaudeCodeFixtureUtil {
         "Exit code 1\nwarning: ignoring dangling symref refs/remotes/origin/HEAD\nerror: 'stash@{0}' is not a stash reference",
         { isError: true },
       )
-      .queued("Background task finished: lint", "task-notification", "task-notification")
-      .systemUser("<task-notification><status>completed</status><summary>lint done</summary></task-notification>", "task-notification")
+      .queued("Background task finished: lint", TASK_NOTIFICATION, TASK_NOTIFICATION)
+      .systemUser("<task-notification><status>completed</status><summary>lint done</summary></task-notification>", TASK_NOTIFICATION)
       .tool(`loop_${sessionId}`, "Bash", { command: "for f in jobs/*.py; do python3 -m py_compile $f; done" })
       .result(`loop_${sessionId}`, "")
       .tool(`home_${sessionId}`, "Read", { file_path: join(homedir(), ".claude", "skills", "review", "SKILL.md") })
@@ -531,13 +535,17 @@ export class ClaudeCodeFixtureUtil {
       .result(`d_${sessionId}`, "Migration written", { secondsLater: 40, toolUseResult: { agentId } })
       .say("Done.")
       .record("system", { subtype: "turn_duration", durationMs: 90_000, isMeta: true })
-      .record("cost-state", { totalCostUSD: 0.5, startTime: runStartAtMs, hasUnknownModelCost: false })
-      .record("cost-state", { totalCostUSD: 1.25, startTime: runStartAtMs, hasUnknownModelCost: true })
+      .record(COST_STATE_ATTACHMENT, { totalCostUSD: 0.5, startTime: runStartAtMs, hasUnknownModelCost: false })
+      .record(COST_STATE_ATTACHMENT, { totalCostUSD: 1.25, startTime: runStartAtMs, hasUnknownModelCost: true })
       .idle(3600)
       .user("Now run it")
       .say("Ran it.")
       .record("system", { subtype: "turn_duration", durationMs: 30_000, isMeta: true })
-      .record("cost-state", { totalCostUSD: 0.75, startTime: runStartAtMs + 3_600_000, hasUnknownModelCost: false })
+      .record(COST_STATE_ATTACHMENT, {
+        totalCostUSD: 0.75,
+        startTime: runStartAtMs + 3_600_000,
+        hasUnknownModelCost: false,
+      })
       .write(ClaudeCodeFixtureUtil.sessionPath(fixture, sessionId));
   }
 

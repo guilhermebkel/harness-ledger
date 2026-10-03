@@ -138,9 +138,9 @@ export class AnalysisService {
       },
       process: this.processProfile(sessions, pieceIds),
       commonCommands: this.commonCommands(sessions),
-      signals,
       suggestions: CollectionUtil.countBy(suggestions.map((suggestion) => suggestion.status)),
       dataDir: store.root,
+      signals,
     };
     await store.writeJson(AnalysisService.LAST_ANALYSIS_FILE, analysis);
     return this.compact(analysis, options);
@@ -290,7 +290,7 @@ export class AnalysisService {
     const models = sessions
       .flatMap((session) => session.messages.map((message) => message.model))
       .filter((model): model is string => model !== undefined && !costService.isPriced(model));
-    return CollectionUtil.unique(models).map((model) => RedactUtil.redact(model)).sort();
+    return CollectionUtil.unique(models).map((model) => RedactUtil.redact(model)).sort(CollectionUtil.compareCodeUnits);
   }
 
   private sessionTotals(sessions: SessionFacts[]): SessionTotals {

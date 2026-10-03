@@ -10,7 +10,7 @@ const SECRET_PATTERNS: [RegExp, string][] = [
   [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(-----END [A-Z ]*PRIVATE KEY-----|$)/g, MASK],
   [/\bsk-(?:ant-|proj-|live-|test-)?[A-Za-z0-9_-]{16,}/g, MASK],
   [/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/g, MASK],
-  [/\bgithub_pat_[A-Za-z0-9_]{20,}/g, MASK],
+  [/\bgithub_pat_\w{20,}/g, MASK],
   [/\bglpat-[A-Za-z0-9_-]{16,}/g, MASK],
   [/\bxox[abposr]-[A-Za-z0-9-]{10,}/g, MASK],
   [/\bAKIA[0-9A-Z]{16}\b/g, MASK],
@@ -18,13 +18,18 @@ const SECRET_PATTERNS: [RegExp, string][] = [
   [/\b(?:rk|pk|sk)_(?:live|test)_[A-Za-z0-9]{16,}/g, MASK],
   [/\bnpm_[A-Za-z0-9]{30,}/g, MASK],
   [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, MASK],
-  [/\b(Bearer|Basic|Token)\s+[A-Za-z0-9._~+/=-]{12,}/gi, `$1 ${MASK}`],
-  [/([a-z][a-z0-9+.-]*:\/\/)[^\s:/@]+:[^\s@/]+@/gi, `$1${MASK}@`],
+  [/\b(Bearer|Basic|Token)\s+[a-z0-9._~+/=-]{12,}/gi, `$1 ${MASK}`],
+  [/([a-z][a-z0-9+.-]{0,30}:\/\/)[^\s:/@]{1,256}:[^\s@/]{1,256}@/gi, `$1${MASK}@`],
 ];
 
-/** `key=value`, `key: value` or `"key": "value"` where the key looks sensitive. */
-const SENSITIVE_ASSIGNMENT
-  = /((?:["']?)[A-Za-z0-9_.-]*(?:pass(?:word|wd)?|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|credential|auth)[A-Za-z0-9_.-]*["']?\s*[:=]\s*)(["']?)([^\s"',;&]{4,})\2/gi;
+const SENSITIVE_KEY_WORDS = ["pass", "secret", "token", "api[_-]?key", "access[_-]?key", "private[_-]?key", "credential", "auth"];
+const MAX_KEY_AFFIX_CHARS = 40;
+const KEY_AFFIX = `[\\w.-]{0,${MAX_KEY_AFFIX_CHARS}}`;
+/** `key=value`, `key: value` or `"key": "value"` where the key contains a sensitive word. */
+const SENSITIVE_ASSIGNMENT = new RegExp(
+  `(["']?${KEY_AFFIX}(?:${SENSITIVE_KEY_WORDS.join("|")})${KEY_AFFIX}["']?\\s{0,4}[:=]\\s{0,4})(["']?)([^\\s"',;&]{4,})\\2`,
+  "gi",
+);
 
 export class RedactUtil {
   static redact(text: string): string {
