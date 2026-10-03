@@ -1,6 +1,4 @@
-// Reads Claude Code transcripts: JSONL at <home>/projects/<project>/<session>.jsonl, with subagent
-// transcripts at <session>/subagents/agent-<id>.jsonl. The format is internal and changes between
-// versions, so every field is read through GuardUtil: unknown lines are counted, never fatal.
+// Why: the transcript format is internal and changes between versions; every field goes through GuardUtil and unknown lines are counted, never fatal.
 
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, relative } from "node:path";
@@ -43,7 +41,7 @@ const UNKNOWN_SUBAGENT_TYPE = "subagent";
 const DEFAULT_SUBAGENT_TYPE = "general-purpose";
 const MAX_PROMPT_CHARS = 2000;
 const MAX_SUMMARY_CHARS = 160;
-/** `attributionAgent` is written on every subagent line by recent versions. */
+// Why: recent versions write `attributionAgent` on every subagent line.
 const SUBAGENT_TYPE_KEYS = ["agentType", "agent_type", "subagentType", "subagent_type", "attributionAgent"];
 const TIMED_LINE_TYPES = new Set(["user", "assistant", "attachment", "system"]);
 const READ_TOOLS = new Set(["Read", "NotebookRead"]);
@@ -52,9 +50,8 @@ const SEARCH_TOOLS = new Set(["Grep", "Glob", "WebSearch", "WebFetch", "ToolSear
 const DELEGATION_TOOLS = new Set(["Task", "Agent"]);
 const PLAN_TOOLS = new Set(["ExitPlanMode", "EnterPlanMode"]);
 const HUMAN_ORIGIN = "human";
-/** Claude Code writes API errors and "no response" notices as assistant messages from this pseudo-model. */
+// Why: Claude Code writes API errors and "no response" notices as assistant messages from this pseudo-model.
 const SYNTHETIC_MODEL = "<synthetic>";
-/** Model named in an API-error message, e.g. "There's an issue with the selected model (x)". */
 const MODEL_IN_ERROR = /\bmodel \(([^)\s]{1,80})\)/i;
 const UNKNOWN_API_ERROR = "unknown";
 const TOKENS_PER_THOUSAND = 1000;
@@ -148,7 +145,7 @@ export class ClaudeCodeSessionService {
       }
     }
 
-    // Older versions wrote subagent turns inline in the main file; the delegation result names their id.
+    // Why: older versions wrote subagent turns inline in the main file; the delegation result names their id.
     for (const call of facts.tools) {
       const agentId = context.delegationCallIdToAgentId.get(call.id);
       if (agentId && call.subagentType) {
@@ -195,7 +192,6 @@ export class ClaudeCodeSessionService {
     });
   }
 
-  /** A subagent's type, found through the delegation whose result named it or whose prompt it received. */
   private typeFromDelegation(context: ClaudeCodeParseContext, agentId: string): string | undefined {
     const delegations = context.facts.tools.filter((call) => call.subagentType !== undefined);
     const firstPromptHash = context.threadIdToFirstPromptHash.get(agentId);
@@ -365,7 +361,7 @@ export class ClaudeCodeSessionService {
     }
     const existing = context.messageIdToMessage.get(messageId);
     if (existing) {
-      // Claude Code writes one line per content block and repeats the message's usage on each one.
+      // Why: Claude Code writes one line per content block and repeats the message's usage on each one.
       existing.usage = this.maxUsage(existing.usage, usage);
     } else {
       context.messageIdToMessage.set(messageId, {
@@ -460,7 +456,7 @@ export class ClaudeCodeSessionService {
     });
   }
 
-  /** Older transcripts have no environment record; the working directory's shape still tells the platform. */
+  // Why: older transcripts have no environment record; the working directory's shape still tells the platform.
   private platformFromPath(projectDir: string | undefined): string | undefined {
     if (projectDir === undefined) {
       return undefined;
@@ -474,14 +470,14 @@ export class ClaudeCodeSessionService {
     return projectDir.startsWith("/home/") ? "linux" : undefined;
   }
 
-  /** Claude Code records the platform and shell in an `environment` attachment; the first one wins. */
+  // Why: Claude Code records the platform and shell in an `environment` attachment; the first one wins.
   private readEnvironment(context: ClaudeCodeParseContext, snapshot: UnknownRecord | undefined): void {
     const environment = context.facts.environment;
     environment.platform ??= GuardUtil.asString(snapshot?.platform);
     environment.shell ??= GuardUtil.asString(snapshot?.shell);
   }
 
-  /** Claude Code's own running cost; the last line of each run holds that run's total. */
+  // Why: `cost-state` is a running total; the last line of each run holds that run's total.
   private handleCostState(context: ClaudeCodeParseContext, line: ClaudeCodeTranscriptLine): void {
     const costUsd = GuardUtil.asNumber(line.record.totalCostUSD);
     if (costUsd === undefined) {
@@ -536,11 +532,7 @@ export class ClaudeCodeSessionService {
       .join("\n");
   }
 
-  /**
-   * A prompt the person typed while the agent was busy is written as a `queued_command` attachment,
-   * never as a user line. Other queued commands (finished background tasks, messages from other
-   * sessions) are not the person's words.
-   */
+  // Why: a prompt typed while the agent is busy is written as a `queued_command` attachment, never as a user line; other queued commands (finished background tasks, other sessions) are not the person's words.
   private handleAttachment(context: ClaudeCodeParseContext, line: ClaudeCodeTranscriptLine): void {
     const attachment = GuardUtil.asRecord(line.record.attachment);
     if (attachment?.type === "environment") {
@@ -564,7 +556,7 @@ export class ClaudeCodeSessionService {
     if (harnessFlags.some((flag) => flag === true)) {
       return true;
     }
-    // Recent versions say where a user line came from; background-task notifications are not the person.
+    // Why: recent versions say where a user line came from; background-task notifications are not the person.
     const originKind = GuardUtil.asString(GuardUtil.asRecord(record.origin)?.kind);
     return originKind !== undefined && originKind !== HUMAN_ORIGIN;
   }
@@ -575,7 +567,7 @@ export class ClaudeCodeSessionService {
       const promptHash = HashUtil.sha(rawText.trim());
       context.threadIdToFirstPromptHash.set(threadId, promptHash);
     }
-    // A subagent's "user" turn is the delegation prompt, not something the person typed.
+    // Why: a subagent's "user" turn is the delegation prompt, not something the person typed.
     if (this.isHarnessGenerated(line) || !SessionUtil.isMainThread(line.thread)) {
       return;
     }
@@ -634,7 +626,6 @@ export class ClaudeCodeSessionService {
     };
   }
 
-  /** What the person wrote when they rejected a call, without Claude Code's fixed wording around it. */
   private resultExcerptText(text: string, kind: ToolResultKind): string | undefined {
     if (kind === "ok") {
       return undefined;
@@ -666,7 +657,7 @@ export class ClaudeCodeSessionService {
   }
 
   private buildToolCall(block: UnknownRecord, toolUseId: string, callContext: ClaudeCodeToolCallContext): ToolCall {
-    // Some models behind proxies leak text into the tool name; never carry that text into keys or reports.
+    // Why: some models behind proxies leak text into the tool name; never carry that text into keys or reports.
     const rawName = GuardUtil.asString(block.name) ?? "unknown";
     const name = VALID_TOOL_NAME.test(rawName) ? rawName : MALFORMED_TOOL_NAME;
     const input = GuardUtil.asRecord(block.input) ?? {};
@@ -753,7 +744,7 @@ export class ClaudeCodeSessionService {
     const isInsideProject = projectDir !== undefined
       && isAbsolute(filePath)
       && (filePath === projectDir || filePath.startsWith(`${projectDir}/`));
-    // Outside the project, the home folder (and the user name in it) is replaced by "~".
+    // Why: outside the project, the home folder (and the user name in it) becomes "~".
     return isInsideProject ? relative(projectDir, filePath) || "." : PathUtil.tildify(filePath);
   }
 }

@@ -9,22 +9,19 @@ export type FindingClass
 export type SuggestionStatus = "pending" | "accepted" | "rejected" | "applied";
 
 export interface Suggestion {
-  /** Derived from the signal ids and the piece, so the same problem never gets two ids. */
+  // Why: derived from the signal ids and the piece, so the same problem never gets two ids.
   id: string;
   title: string;
   class: FindingClass;
-  /** Piece id, e.g. "agent:code-reviewer". */
   piece?: string;
-  /** Signal ids the suggestion came from, e.g. "failed_command:npm test". */
   signals: string[];
   status: SuggestionStatus;
   createdAt: string;
   updatedAt: string;
   appliedAt?: string;
-  /** Harness fingerprint right after the suggestion was applied, for before/after. */
   appliedFingerprint?: string;
   note?: string;
-  /** Redacted summary of the proposed change. */
+  // Why: redacted.
   change?: string;
 }
 

@@ -1,6 +1,3 @@
-// Deterministic pattern extraction (ADR 0002). Every number comes from the transcripts;
-// the skill turns these signals into classified findings.
-
 import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
 import type { SignalThresholds } from "@/Shared/Protocols/ConfigProtocol.js";
 import type { HarnessPiece, Inventory, PieceKind } from "@/Shared/Protocols/HarnessProtocol.js";
@@ -30,13 +27,13 @@ import { WorkflowDetectorService } from "./WorkflowDetectorService.js";
 import { ContextLoadDetectorService } from "./ContextLoadDetectorService.js";
 
 const MAX_COUNTED_VALUES = 5;
-/** Evidence from fewer sessions than this is marked partial (re-reads within one session are still meaningful). */
+// Why: evidence from fewer sessions is partial; re-reads within one session are still meaningful.
 const MIN_SESSIONS_FOR_FULL_EVIDENCE = 2;
 const SELF_SKILL_NAME = /(^|:)improve-my-harness$/;
 const USAGE_KINDS = new Set<PieceKind>(["skill", "agent", "command", "mcp"]);
 const SIZE_KINDS = new Set<PieceKind>(["instructions", "skill", "agent"]);
 
-/** Ranking weights: estimated waste first, then how widespread the pattern is; partial evidence ranks lower. */
+// Why: estimated waste ranks first, then how widespread the pattern is; partial evidence ranks lower.
 const SCORE_WEIGHTS = {
   perActiveMinute: 1,
   perUsd: 2,
@@ -46,7 +43,7 @@ const SCORE_WEIGHTS = {
   partialPenalty: 2,
 };
 
-/** A group is reported when it reaches either threshold; "always" groups were already filtered by their detector. */
+// Why: a group is reported when it reaches either threshold; "always" groups were already filtered by their detector.
 type SignalThreshold = "always" | {
   minOccurrences?: keyof SignalThresholds;
   minSessions?: keyof SignalThresholds;
@@ -61,7 +58,6 @@ interface PieceSignalFields {
 }
 
 export class SignalService {
-  /** When a group of occurrences is strong enough to report. Piece signals (unused, large) are built separately. */
   private static readonly SIGNAL_TYPE_TO_THRESHOLD: Record<SignalType, SignalThreshold> = {
     failed_command: { minOccurrences: "minFailures", minSessions: "minFailureSessions" },
     tool_error: { minOccurrences: "minFailures", minSessions: "minFailureSessions" },
@@ -209,7 +205,7 @@ export class SignalService {
     return NumberUtil.round(score);
   }
 
-  /** Pieces nobody used during the period. Needs enough sessions for absence to mean something. */
+  // Why: needs enough sessions for absence to mean something.
   private unusedPieceSignals(sessions: SessionFacts[], inventory: Inventory): Signal[] {
     if (sessions.length < this.options.minSessionsForUnused) {
       return [];
@@ -267,7 +263,7 @@ export class SignalService {
     ];
   }
 
-  /** Editable pieces large enough to be worth trimming; instructions are loaded on every turn. */
+  // Why: instructions are loaded on every turn, so their size costs every time.
   private largePieceSignals(inventory: Inventory): Signal[] {
     return inventory.pieces
       .filter((piece) => piece.isEditable && SIZE_KINDS.has(piece.kind))
@@ -308,7 +304,7 @@ export class SignalService {
     };
   }
 
-  /** A piece changed after the newest evidence may already be fixed: mark the signal partial. */
+  // Why: a piece changed after the newest evidence may already be fixed, so the signal is partial.
   private markPiecesChangedAfterEvidence(signals: Signal[], inventory: Inventory): void {
     const pieceIdToPiece = new Map(inventory.pieces.map((piece) => [piece.id, piece]));
     for (const signal of signals) {
@@ -334,7 +330,7 @@ export class SignalService {
     }
   }
 
-  /** Evidence picked round-robin across sessions, so it shows the spread instead of the first N. */
+  // Why: round-robin across sessions shows the spread instead of the first N.
   private spreadEvidence(sortedOccurrences: Occurrence[]): EvidenceRef[] {
     const maxEvidence = this.options.maxEvidence;
     const sessionIdToOccurrences = new Map<string, Occurrence[]>();

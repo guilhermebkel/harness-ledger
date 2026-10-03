@@ -1,5 +1,4 @@
-// .imh/config.json: thresholds a user may want to tune. People edit this file by hand,
-// so every field is validated and falls back to its default on its own.
+// Why: people edit .imh/config.json by hand, so every field is validated and falls back to its default on its own.
 
 import type { Config, ModelPrice, NumericConfigKey, PriceTable, SignalThresholds } from "@/Shared/Protocols/ConfigProtocol.js";
 import type { UnknownRecord } from "@/Shared/Protocols/UtilProtocol.js";

@@ -1,33 +1,29 @@
 import { RedactUtil } from "./RedactUtil.js";
 
-/** Commands that look around rather than do the work; a workflow is made of the others. */
+// Why: a workflow is made of the other commands.
 const EXPLORATION_PROGRAMS = new Set([
   "ls", "cat", "find", "grep", "rg", "sed", "head", "tail", "wc", "echo", "pwd", "tree", "which", "sort", "awk",
   "cut", "jq", "file", "stat", "du", "diff", "true", "sleep", "less", "printf", "date", "env", "type",
 ]);
-/** Commands that check the work: tests, linters, type checks, builds. */
 const VALIDATION_COMMAND = /\b(test|tests|jest|vitest|mocha|pytest|rspec|phpunit|lint|eslint|prettier|ruff|flake8|mypy|tsc|typecheck|check|build|clippy|vet)\b/;
-/** Commands that hand the work over: commits, pushes, pull or merge requests, deploys. */
 const DELIVERY_COMMAND = /^(git (commit|push|tag)|gh pr|gh release|glab mr|vercel|netlify|fly deploy|kubectl apply)\b/;
-/** Commands that get the workspace ready: branches, worktrees, pulls, installs. */
 const SETUP_COMMAND = /^(git (checkout|switch|pull|fetch|worktree|branch|clone|stash|rebase)|npm (install|ci)|pnpm install|yarn install|pip install|uv sync|bundle install|docker compose up)\b/;
-/** Words that run the next word as the command, including shell keywords (`do pnpm test`, `then make`). */
+// Why: includes shell keywords (`do pnpm test`, `then make`).
 const COMMAND_WRAPPERS = new Set(["sudo", "time", "nohup", "env", "command", "exec", "timeout", "do", "then", "else"]);
-/** Segments that set up the shell rather than do the work: navigation, variables and loop or condition headers. */
 const NAVIGATION_COMMAND = /^(cd|pushd|popd|export|source|\.|set|for|while|until|if|elif|done|fi|esac|nvm use|conda activate|pyenv shell)\b/;
 const ENV_ASSIGNMENT = /^[A-Za-z_]\w*=/;
-/** What a wrapper takes before the command: flags and durations (`timeout -k 5 300s cmd`). */
+// Why: wrappers take flags and durations before the command (`timeout -k 5 300s cmd`).
 const WRAPPER_ARGUMENT = /^(-\S*|\d+(\.\d+)?[smhd]?)$/;
-/** Programs whose subcommand is part of what the command means (`git push`, `npm test`). */
+// Why: their subcommand is part of what the command means (`git push`, `npm test`).
 const PROGRAMS_WITH_SUBCOMMAND = new Set([
   "npm", "pnpm", "yarn", "bun", "npx", "bunx", "git", "gh", "docker", "kubectl", "helm", "cargo", "go",
   "make", "pip", "pip3", "uv", "poetry", "dotnet", "mvn", "gradle", "./gradlew", "terraform", "aws",
   "gcloud", "az", "brew", "apt", "apt-get", "composer", "bundle", "rails", "mix", "deno", "turbo", "nx",
 ]);
-/** Subcommands that take the real target as the next word (`npm run test`, `python -m pytest`). */
+// Why: these take the real target as the next word (`npm run test`, `python -m pytest`).
 const RUNNER_SUBCOMMANDS = new Set(["run", "exec", "x", "dlx", "-m"]);
 const MAX_SUBCOMMAND_CHARS = 30;
-/** Options that come before the subcommand (`git -C repo status`); the ones in the map take a value. */
+// Why: options can come before the subcommand (`git -C repo status`); the ones in the map take a value.
 const PROGRAM_TO_GLOBAL_OPTIONS: Record<string, {
   withValue: Set<string>; prefixes: string[];
 }> = {
@@ -38,25 +34,23 @@ const PROGRAM_TO_GLOBAL_OPTIONS: Record<string, {
 };
 
 const ERROR_LINES_TO_SCAN = 8;
-/** Warnings printed before the real error (`FutureWarning:`, `warning:`, `npm WARN`). */
+// Why: tools print warnings before the real error (`FutureWarning:`, `warning:`, `npm WARN`).
 const WARNING_LINE = /^(warning\b|npm warn\b)|\b\w*Warning:|^\s*warnings\.warn\(/i;
 const PYTHON_TRACEBACK = "Traceback (most recent call last):";
-/** An option and its value, e.g. `-C repo`. */
 const OPTION_WITH_VALUE_TOKENS = 2;
 const PYTHON_EXCEPTION_LINE = /^[\w.]+(Error|Exception|Exit|Interrupt)\b/;
-/** Terminal color codes, which tools like dbt print even when piped. */
+// Why: tools like dbt print color codes even when piped.
 // eslint-disable-next-line no-control-regex -- matching the escape character is the point
 const ANSI_ESCAPE = /\u001b\[[0-9;]*[A-Za-z]/g;
-/** A line that only announces errors follow, ending in a colon. */
 const ERROR_HEADER_LINE = /^[^:]{0,60}\berrors?\b[^:]{0,30}:$/i;
-/** A clock time some tools put before every line ("14:44:07  Completed with 1 error"). */
+// Why: some tools put a clock time before every line ("14:44:07 Completed with 1 error").
 const LEADING_CLOCK_TIME = /^\d{1,2}:\d{2}:\d{2}(\.\d+)?\s+/;
 const MAX_ERROR_KEY_CHARS = 160;
 const ERROR_LOOKING_LINE
   = /error|fail|denied|not found|no such|invalid|cannot|can't|unable|exception|refused|timed? ?out|"reason"/i;
 
 const CORRECTION_PREFIX_CHARS = 80;
-/** "no" counts only as "no," / "no." / "no!": in Portuguese, "no" opens ordinary sentences ("no backend ..."). */
+// Why: "no" counts only as "no," / "no." / "no!": in Portuguese, "no" opens ordinary sentences ("no backend ...").
 const CORRECTION_OPENERS = [
   "no(?=[,.!]|\\s*$)", "nope", "não", "nao", "wrong", "errado", "actually", "na verdade", "instead", "ao invés", "em vez",
   "stop", "pare", "para de", "don'?t", "do not", "não faça", "nao faca", "that'?s not", "isso não", "isso nao",
@@ -75,18 +69,13 @@ const STOPWORDS = new Set(
   ).split(" "),
 );
 
-/** Turns free text from sessions into stable keys for grouping, in any provider. */
 export class NormalizeUtil {
-  /**
-   * A short grouping key for a shell command, e.g.
-   * `cd app && CI=1 npm run test -- --watch=false` → `npm run test`.
-   */
   static commandKey(command: string): string {
     const segments = command
       .split(/&&|\|\||;|\n/)
       .map((segment) => segment.trim())
       .filter(Boolean);
-    // The first segment that runs a program: setup lines, loop keywords and bare assignments are skipped.
+    // Why: setup lines, loop keywords and bare assignments are skipped; the first segment that runs a program is the command.
     let tokens: string[] = [];
     let programIndex = -1;
     for (const segment of segments.filter((candidate) => !NAVIGATION_COMMAND.test(candidate))) {
@@ -117,7 +106,6 @@ export class NormalizeUtil {
     return RedactUtil.redact(keyParts.join(" "));
   }
 
-  /** The stage of work a shell command belongs to, from its grouping key; undefined when it says nothing. */
   static commandStage(commandKey: string): "setup" | "exploration" | "validation" | "delivery" | undefined {
     if (NormalizeUtil.isExplorationCommand(commandKey)) {
       return "exploration";
@@ -131,12 +119,10 @@ export class NormalizeUtil {
     return VALIDATION_COMMAND.test(commandKey) ? "validation" : undefined;
   }
 
-  /** True for a command key whose program only reads or prints (`ls`, `cat`, `grep`). */
   static isExplorationCommand(commandKey: string): boolean {
     return EXPLORATION_PROGRAMS.has(commandKey.split(" ")[0] ?? "");
   }
 
-  /** The first meaningful line of an error, normalized so the same error groups across sessions. */
   static errorKey(text: string): string {
     const lines = text
       .replace(ANSI_ESCAPE, "")
@@ -144,10 +130,10 @@ export class NormalizeUtil {
       .map((line) => line.replace(LEADING_CLOCK_TIME, "").trim())
       .filter((line) => line && !/^exit code \d+$/i.test(line) && !/^<\/?[\w-]+\s*\/?>$/.test(line))
       .filter((line) => /[A-Za-z]/.test(line));
-    // Tools prepend banners, notices and warnings to errors; the line that reads like an error is the useful one.
+    // Why: tools prepend banners, notices and warnings to errors; the line that reads like an error is the useful one.
     const nonWarningLines = lines.filter((line) => !WARNING_LINE.test(line));
     const errorIndex = nonWarningLines.slice(0, ERROR_LINES_TO_SCAN).findIndex((line) => ERROR_LOOKING_LINE.test(line));
-    // "Encountered an error:" only announces the error; the next line is the error.
+    // Why: "Encountered an error:" only announces the error; the next line is the error.
     const isHeaderOnly = errorIndex !== -1 && ERROR_HEADER_LINE.test(nonWarningLines[errorIndex] ?? "");
     const announcedErrorLine = isHeaderOnly ? nonWarningLines[errorIndex + 1] : undefined;
     const firstErrorLine = errorIndex === -1 ? undefined : nonWarningLines[errorIndex];
@@ -164,12 +150,11 @@ export class NormalizeUtil {
       .trim();
   }
 
-  /** Heuristic (English and Portuguese): the message opens by pushing back on what the agent did. */
+  // Why: a heuristic, for English and Portuguese.
   static isCorrection(text: string): boolean {
     return CORRECTION_START.test(text.trim().slice(0, CORRECTION_PREFIX_CHARS));
   }
 
-  /** The set of meaningful words in a prompt, used to cluster repeated requests. */
   static wordSet(text: string): Set<string> {
     const words = text
       .toLowerCase()
@@ -195,7 +180,6 @@ export class NormalizeUtil {
     return sharedCount / (left.size + right.size - sharedCount);
   }
 
-  /** Skips variable assignments and wrappers (`sudo`, `timeout 300`), with the wrappers' flags and durations. */
   private static programIndexOf(tokens: string[]): number {
     let isAfterWrapper = false;
     for (const [index, token] of tokens.entries()) {
@@ -209,13 +193,12 @@ export class NormalizeUtil {
     return -1;
   }
 
-  /** A Python traceback ends with the exception that was raised; everything above it is the stack. */
   private static pythonException(lines: string[]): string | undefined {
     const tracebackIndex = lines.findIndex((line) => line.startsWith(PYTHON_TRACEBACK));
     if (tracebackIndex === -1) {
       return undefined;
     }
-    // When the output was cut before the exception, the last line is still closer to the cause than "Traceback".
+    // Why: when the output was cut before the exception, the last line is still closer to the cause than "Traceback".
     const afterTraceback = lines.slice(tracebackIndex + 1);
     const fromLastLine = [...afterTraceback].reverse();
     return fromLastLine.find((line) => PYTHON_EXCEPTION_LINE.test(line)) ?? fromLastLine[0];

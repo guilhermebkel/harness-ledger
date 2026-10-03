@@ -1,6 +1,4 @@
-// The same sequence of work commands in many sessions: a procedure the agent rebuilds by hand each time,
-// which a script or a skill could do in one step. Exploration (ls, cat, grep...) is left out: reading
-// around is not a procedure.
+// Why: exploration (ls, cat, grep) is left out: reading around is not a procedure.
 
 import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
 import type { SessionFacts, ToolCall } from "@/Shared/Protocols/SessionProtocol.js";
@@ -17,14 +15,13 @@ const MAX_WORKFLOW_STEPS = 5;
 const WORKFLOW_HASH_CHARS = 8;
 const MAX_WORKFLOW_SIGNALS = 10;
 const STEP_SEPARATOR = " → ";
-/** A shorter sequence run about as often as a longer one that contains it is the same workflow. */
+// Why: a shorter sequence run about as often as a longer one that contains it is the same workflow.
 const SUBSUMED_SESSION_RATIO = 0.75;
-/** Steps spread over a longer stretch are separate pieces of work, not one procedure. */
+// Why: steps spread over a longer stretch are separate pieces of work, not one procedure.
 const MAX_WORKFLOW_SPAN_MINUTES = 15;
 
 interface WorkflowCandidate {
   steps: string[];
-  /** Every non-overlapping run of the sequence, per session. */
   sessionIdToRuns: Map<string, ToolCall[][]>;
 }
 
@@ -36,7 +33,7 @@ export class WorkflowDetectorService {
 
   detect(sessions: SessionFacts[], sessionIdToIndex: Map<string, SessionIndex>): void {
     const thresholds = this.options.thresholds;
-    // Across sessions, or many times within long sessions (an edit → lint → diff loop done by hand).
+    // Why: across sessions, or many times within long sessions (an edit → lint → diff loop done by hand).
     const candidates = this.candidatesOf(sessions).filter((candidate) => {
       const isAcrossSessions = candidate.sessionIdToRuns.size >= thresholds.minWorkflowSessions;
       return isAcrossSessions || this.runCountOf(candidate) >= thresholds.minWorkflowRuns;
@@ -77,7 +74,6 @@ export class WorkflowDetectorService {
     }
   }
 
-  /** Every run of distinct work commands, per thread, keeping the first time each session ran it. */
   private candidatesOf(sessions: SessionFacts[]): WorkflowCandidate[] {
     const gramToCandidate = new Map<string, WorkflowCandidate>();
     for (const session of sessions) {
@@ -88,7 +84,6 @@ export class WorkflowDetectorService {
     return [...gramToCandidate.values()];
   }
 
-  /** Every contiguous slice of a thread's commands with an allowed workflow length. */
   private windowsOf(calls: ToolCall[]): ToolCall[][] {
     const windows: ToolCall[][] = [];
     for (let length = this.options.thresholds.minWorkflowSteps; length <= MAX_WORKFLOW_STEPS; length++) {
@@ -99,7 +94,6 @@ export class WorkflowDetectorService {
     return windows;
   }
 
-  /** Records one window of commands as a run of its n-gram, unless it repeats a step, spreads too long or overlaps the last run. */
   private addWindow(gramToCandidate: Map<string, WorkflowCandidate>, sessionId: string, window: ToolCall[]): void {
     const steps = window.map((call) => call.key);
     const isTooSpread = this.spanOf(window) > MAX_WORKFLOW_SPAN_MINUTES * TimeUtil.MS_PER_MINUTE;
@@ -124,7 +118,7 @@ export class WorkflowDetectorService {
     );
     for (const call of workCalls) {
       const threadCalls = threadIdToCalls.get(call.thread.id) ?? [];
-      // Running the same command twice in a row (a retry) is one step.
+      // Why: running the same command twice in a row (a retry) is one step.
       if (threadCalls.at(-1)?.key !== call.key) {
         threadCalls.push(call);
       }
@@ -134,7 +128,7 @@ export class WorkflowDetectorService {
   }
 
   /**
-   * Longest workflows first, so the whole procedure wins over its pieces: a shorter sequence inside a kept
+   * Why: Longest workflows first, so the whole procedure wins over its pieces: a shorter sequence inside a kept
    * one is dropped when the kept one happens in about as many sessions. Then the most widespread first.
    */
   private withoutSubsumed(candidates: WorkflowCandidate[]): WorkflowCandidate[] {
@@ -170,7 +164,6 @@ export class WorkflowDetectorService {
     return endedAtMs - (calls[0]?.calledAtMs ?? endedAtMs);
   }
 
-  /** Time from the first step until the last one returned, and the tokens of the messages that issued the steps. */
   private workflowCost(calls: ToolCall[], index: SessionIndex): StepCost {
     const messageIds = new Set(calls.map((call) => call.messageId));
     const stepMessages = (index.threadIdToMessages.get(calls[0]?.thread.id ?? "") ?? [])

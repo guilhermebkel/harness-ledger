@@ -1,5 +1,3 @@
-// Integration test against a fake Claude Code home (see AnalyzeCommand.test.ts).
-
 import { describe, expect, it } from "vitest";
 import { ClaudeCodeFixtureUtil } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.js";
 import { SuggestionService } from "@/Shared/Services/SuggestionService.js";

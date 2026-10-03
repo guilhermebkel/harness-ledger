@@ -10,7 +10,6 @@ import { ConfigService } from "./ConfigService.js";
 import { SessionLoaderService } from "./SessionLoaderService.js";
 import { StoreService } from "./StoreService.js";
 
-/** What every command needs: the project, its `.imh/` store and config, and the provider to read from. */
 export class ContextService {
   private constructor(
     readonly projectDir: string,

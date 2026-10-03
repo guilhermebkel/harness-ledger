@@ -3,15 +3,13 @@ import type { TokenUsage } from "@/Shared/Protocols/SessionProtocol.js";
 
 const DEFAULT_FAMILY = "default";
 const TOKENS_PER_MILLION = 1_000_000;
-/** Cache pricing relative to the input price, used when a table doesn't set it. */
 const CACHE_READ_INPUT_RATIO = 0.1;
 const CACHE_WRITE_INPUT_RATIO = 1.25;
-/** Unlisted models from this vendor fall back to the default price; anything else (e.g. a model behind a proxy) is unpriced. */
+// Why: unlisted models from this vendor fall back to the default price; anything else (e.g. a model behind a proxy) is unpriced rather than guessed.
 const DEFAULT_PRICED_VENDOR = "claude";
 
-/** Turns token usage into estimated USD with a price table. Every cost it returns is an estimate. */
 export class CostService {
-  /** List prices that may be outdated; override them in .imh/config.json. */
+  // Why: list prices may be outdated; .imh/config.json overrides them.
   static readonly DEFAULT_PRICES: PriceTable = {
     opus: {
       input: 5,
@@ -34,7 +32,7 @@ export class CostService {
   constructor(private readonly prices: PriceTable) {}
 
   /**
-   * The price-table key for a model: a listed family it contains, "default" for an unnamed model or an
+   * Why: The price-table key for a model: a listed family it contains, "default" for an unnamed model or an
    * unlisted Claude model, and undefined for anything else, which is left unpriced rather than guessed.
    * Add a key to `prices` in .imh/config.json (e.g. "glm") to price other models.
    */
@@ -54,7 +52,7 @@ export class CostService {
     return this.modelFamily(model) !== undefined;
   }
 
-  /** 0 for an unpriced model; callers report those models so the gap is visible. */
+  // Why: 0 for an unpriced model; callers report those models so the gap is visible.
   costUsd(usage: TokenUsage, model: string | undefined): number {
     const family = this.modelFamily(model);
     if (family === undefined) {

@@ -1,6 +1,4 @@
-// What fills each piece's context: the files, commands and tools whose results it keeps loading. High token
-// use alone is not a finding (big tasks are big); the same material loaded again and again, or one huge
-// output, is: it can be summarized, split, cut short or looked up instead.
+// Why: high token use alone is not a finding (big tasks are big); the same material loaded again and again, or one huge output, is.
 
 import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
 import type { SessionFacts, ToolCall, ToolCategory } from "@/Shared/Protocols/SessionProtocol.js";
@@ -11,7 +9,7 @@ import { AttributionService } from "./AttributionService.js";
 import type { OccurrenceCollectorService } from "./OccurrenceCollectorService.js";
 
 const TOKENS_PER_THOUSAND = 1000;
-/** Results that bring material into the context. Edits, plans and delegations return little or a summary. */
+// Why: edits, plans and delegations return little or a summary, so they don't load material.
 const LOADING_CATEGORIES = new Set<ToolCategory>(["read", "shell", "search", "mcp", "skill", "other"]);
 
 interface SourceLoads {
@@ -43,7 +41,7 @@ export class ContextLoadDetectorService {
           },
           pieces: [loads.piece],
           activeMs: 0,
-          // Counted once as input; in practice it is re-read on every later turn of the thread.
+          // Why: counted once as input; in practice it is re-read on every later turn of the thread.
           usage: {
             input: tokens,
             output: 0,
@@ -57,7 +55,6 @@ export class ContextLoadDetectorService {
     }
   }
 
-  /** Sources over the token threshold that were loaded repeatedly, or that once returned a huge result. */
   private heavySources(sessions: SessionFacts[], sessionIdToIndex: Map<string, SessionIndex>): SourceLoads[] {
     const thresholds = this.options.thresholds;
     const keyToLoads = new Map<string, SourceLoads>();
@@ -94,7 +91,7 @@ export class ContextLoadDetectorService {
   }
 
   /**
-   * The material a call loads: a file for reads; for shell, the exact command when it only looks around
+   * Why: The material a call loads: a file for reads; for shell, the exact command when it only looks around
    * (`cat a.ts` and `cat b.ts` are different material), otherwise its key (every `git diff` prints a diff).
    */
   private sourceOf(call: ToolCall): string {

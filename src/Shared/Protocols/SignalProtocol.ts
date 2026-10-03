@@ -32,31 +32,20 @@ export interface Mention {
   term: string;
 }
 
-/** Details that only some signal types carry. */
 export interface SignalDetails {
-  /** api_error: models the failing requests used, most frequent first. */
   models?: CountedValue[];
-  /** failed_command: the errors seen, most frequent first. */
   errors?: CountedValue[];
-  /** failed_command: the command that worked right after the failure. */
   recoveredWith?: CountedValue[];
-  /** failed_command: where the harness already mentions the failing or the working command. */
   mentions?: Mention[];
-  /** subagent_reread and repeated_read: files re-read, most re-read first. */
   files?: CountedValue[];
-  /** tool_error */
   tool?: string;
   error?: string;
-  /** context_heavy: what filled the context ("source (×loads)"), with the approximate tokens it added. */
+  // Why: "source (×loads)" weighted by tokens; findings.md reads this format.
   sources?: CountedValue[];
-  /** repeated_workflow: the commands, in order. */
   steps?: string[];
-  /** context_compaction: the largest context seen right before compacting. */
   maxContextTokens?: number;
-  /** repeated_request */
   example?: string;
   commands?: string[];
-  /** unused_piece and large_piece */
   scope?: string;
   path?: string;
   approxTokens?: number;
@@ -68,9 +57,8 @@ export type CountedDetail = "errors" | "recoveredWith" | "files" | "models" | "s
 
 export interface SignalCost {
   activeMinutes: number;
-  /** inputTokens + outputTokens. */
   tokens: number;
-  /** Tokens the model read: new input plus cache reads and writes. */
+  // Why: includes cache reads and writes.
   inputTokens: number;
   outputTokens: number;
   usd: number;
@@ -91,11 +79,10 @@ export interface Signal {
   id: string;
   type: SignalType;
   title: string;
-  /** Pieces involved: inventory ids when known (e.g. "agent:code-reviewer"), or "main". */
   pieces: string[];
   occurrences: number;
   sessions: number;
-  /** The evidence is incomplete: few sessions, unresolved subagent type, or the piece changed since. */
+  // Why: few sessions, an unresolved subagent type, or the piece changed since.
   isPartial: boolean;
   partialReasons: string[];
   cost: SignalCost;
@@ -104,9 +91,7 @@ export interface Signal {
   evidenceTotal: number;
   firstSeenAt?: string;
   lastSeenAt?: string;
-  /** Pieces that changed after the newest evidence: the problem may already be fixed. */
   changedAfterEvidence?: PieceChange[];
-  /** A suggestion already exists for this signal. */
   handledBy?: HandledBy;
   score: number;
 }
@@ -120,7 +105,6 @@ export interface SignalOptions {
   thresholds: SignalThresholds;
 }
 
-/** One time a pattern happened, with what it cost. */
 export interface Occurrence {
   session: SessionFacts;
   ref: EvidenceRef;
@@ -130,7 +114,6 @@ export interface Occurrence {
   model?: string;
 }
 
-/** Occurrences of one pattern, collected across sessions before they become a signal. */
 export interface OccurrenceGroup {
   id: string;
   type: SignalType;
@@ -140,7 +123,6 @@ export interface OccurrenceGroup {
   details: SignalDetails;
 }
 
-/** The cost a detector estimates for one step. */
 export interface StepCost {
   activeMs: number;
   usage: TokenUsage;

@@ -1,5 +1,4 @@
-// The `imh` command line. Validates arguments at the edge, runs one command and prints its
-// result as JSON. This is the only module that writes to stdout and stderr.
+// Why: this is the only module that writes to stdout and stderr.
 
 import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
@@ -46,7 +45,6 @@ type ParsedValues = ReturnType<typeof CLIModule.parseArguments>["values"];
 
 interface Invocation {
   values: ParsedValues;
-  /** Positional arguments after the command name. */
   rest: string[];
   common: CommonOptions;
 }
@@ -101,10 +99,7 @@ export class CLIModule {
     });
   }
 
-  /**
-   * Runs the CLI and sets the exit code: 0 on success, 1 on error. It never calls `process.exit()`, which
-   * would cut stdout short when it's a pipe (how agents run the script) and the JSON is larger than 64 KB.
-   */
+  // Why: never call `process.exit()`: it cuts stdout short when it is a pipe (how agents run the script) and the JSON is larger than 64 KB.
   run(argv: string[]): void {
     this.main(argv).then(
       () => {

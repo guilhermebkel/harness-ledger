@@ -1,7 +1,3 @@
-// How the person's work splits into stages (setup, planning, exploration, implementation, validation,
-// delivery), measured from the steps in the sessions. A harness built in that order supports the work
-// where it actually happens.
-
 import type { ProcessStage, SessionIndex, StageProfile } from "@/Shared/Protocols/AnalysisProtocol.js";
 import type { SessionFacts, ToolCall, ToolCategory } from "@/Shared/Protocols/SessionProtocol.js";
 import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";

@@ -1,6 +1,3 @@
-// Text conventions of Claude Code transcripts: blocks the harness injects into user messages,
-// and the wording of interruptions, permission denials and hook blocks in tool results.
-
 import type { ToolResultKind } from "@/Shared/Protocols/SessionProtocol.js";
 import type { CleanPrompt } from "@/Shared/Protocols/UtilProtocol.js";
 import type { ClaudeCodeResultSignals } from "@/Providers/ClaudeCode/Protocols/ClaudeCodeProtocol.js";
@@ -10,10 +7,10 @@ const HARNESS_INJECTED_BLOCKS
 const INTERRUPTION_PREFIX = "[Request interrupted by user";
 const PERMISSION_DENIED
   = /(permission to use .+ (?:has been|was) denied|permission for this action was denied|denied by (?:the )?(?:claude code )?(?:permission|auto[- ]mode)|requires approval|not allowed by your permission settings)/i;
-/** The person said no to this call (often with feedback), as opposed to a rule or classifier blocking it. */
+// Why: the person said no (often with feedback), as opposed to a rule or classifier blocking the call.
 const USER_REJECTED = /(doesn'?t want to proceed with this tool use|tool use was rejected|denied by (?:the )?user)/i;
 const REJECTION_FEEDBACK_MARKER = /the user said:/i;
-/** `toolDenialKind` on the result line, written by recent Claude Code versions; more reliable than the text. */
+// Why: recent versions write `toolDenialKind` on the result line; it is more reliable than the text.
 const DENIAL_KIND_TO_RESULT_KIND: Record<string, ToolResultKind> = {
   "user-rejected": "user_rejected",
   "automode-blocked": "permission_denied",
@@ -21,11 +18,10 @@ const DENIAL_KIND_TO_RESULT_KIND: Record<string, ToolResultKind> = {
 };
 const HOOK_BLOCKED = /(hook (?:error|blocked|denied)|blocked by (?:a |the )?(?:\w+ )?hook|PreToolUse:\w+ hook)/i;
 const COMPACTION_CAVEAT = /^Caveat: The messages below were generated/i;
-/** Classification only looks at the start of a tool result; the rest is output. */
+// Why: classification looks only at the start; the rest of a result is output and may quote these words.
 const RESULT_HEAD_CHARS = 600;
 
 export class ClaudeCodeTranscriptUtil {
-  /** Strips harness-injected blocks from a user message, leaving what the person typed. */
   static cleanPrompt(rawText: string): CleanPrompt {
     const commandName = /<command-name>\s*\/?([^<\s]+)\s*<\/command-name>/.exec(rawText)?.[1];
     const commandArguments = /<command-args>([\s\S]*?)<\/command-args>/.exec(rawText)?.[1];
@@ -45,7 +41,7 @@ export class ClaudeCodeTranscriptUtil {
     return text.trim().startsWith(INTERRUPTION_PREFIX);
   }
 
-  /** Claude Code writes this notice when it compacts a conversation; it isn't something the person typed. */
+  // Why: Claude Code writes this notice when it compacts a conversation; the person didn't type it.
   static isCompactionCaveat(text: string): boolean {
     return COMPACTION_CAVEAT.test(text);
   }
@@ -59,7 +55,7 @@ export class ClaudeCodeTranscriptUtil {
     if (denialKind !== undefined) {
       return DENIAL_KIND_TO_RESULT_KIND[denialKind] ?? "permission_denied";
     }
-    // Denials are always marked as errors; a successful result that mentions "denied" is just output.
+    // Why: denials are always marked as errors; a successful result that mentions "denied" is just output.
     if (isMarkedError && USER_REJECTED.test(head)) {
       return "user_rejected";
     }
@@ -72,7 +68,6 @@ export class ClaudeCodeTranscriptUtil {
     return isMarkedError || wasInterrupted ? "error" : "ok";
   }
 
-  /** The person's words after "the user said:", when they rejected a call with feedback. */
   static rejectionFeedback(text: string): string | undefined {
     const marker = REJECTION_FEEDBACK_MARKER.exec(text);
     if (!marker) {
@@ -82,7 +77,6 @@ export class ClaudeCodeTranscriptUtil {
     return feedback === "" ? undefined : feedback;
   }
 
-  /** Error text without Claude Code's wrapper tags, ready for `NormalizeUtil.errorKey`. */
   static errorText(text: string): string {
     return text.replace(/<\/?tool_use_error>/g, "");
   }

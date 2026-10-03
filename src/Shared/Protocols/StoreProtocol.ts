@@ -2,7 +2,6 @@ import type { Inventory } from "./HarnessProtocol.js";
 import type { SessionFacts } from "./SessionProtocol.js";
 
 export interface CachedFacts {
-  /** Changes when the transcript (or any of its subagent transcripts) changes. */
   signature: string;
   facts: SessionFacts;
 }

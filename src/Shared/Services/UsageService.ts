@@ -1,6 +1,3 @@
-// Per-piece usage: how often each agent, skill, command and MCP server ran, what it cost and
-// how often its steps failed. Answers "is this piece worth it?" and feeds before/after.
-
 import type { PieceUsage, SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
 import type { PriceTable } from "@/Shared/Protocols/ConfigProtocol.js";
 import type { SessionFacts, TokenUsage } from "@/Shared/Protocols/SessionProtocol.js";
@@ -86,7 +83,7 @@ export class UsageService {
       const threadPiece = SessionUtil.isMainThread(message.thread)
         ? AttributionService.MAIN_PIECE
         : `agent:${message.thread.agentType}`;
-      // A skill's tokens also count toward the thread it ran in; skill rows overlap main and agent rows.
+      // Why: a skill's tokens also count toward the thread it ran in; skill rows overlap main and agent rows.
       const skillPieces = message.skillInUse ? [this.attribution.pieceIdFor("skill", message.skillInUse)] : [];
       for (const piece of [threadPiece, ...skillPieces]) {
         const totals = this.totalsOf(pieceToTotals, piece);

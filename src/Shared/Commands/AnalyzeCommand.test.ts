@@ -1,5 +1,4 @@
-// Integration test: runs the command end to end against a fake Claude Code home, the only
-// provider today. Shared logic is exercised through a real provider on purpose.
+// Why: shared logic is tested through the real Claude Code provider on purpose.
 
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -303,7 +302,7 @@ describe("AnalyzeCommand on pieces that keep filling their context", () => {
 
   beforeAll(() => {
     contextFixture = ClaudeCodeFixtureUtil.makeFixture();
-    // Low thresholds so a small history.fixture shows the pattern: 1 token is about 4 characters.
+    // Why: low thresholds let a small fixture show the pattern (1 token is about 4 characters).
     mkdirSync(contextFixture.dataDir, { recursive: true });
     writeFileSync(join(contextFixture.dataDir, "config.json"), JSON.stringify({
       signalThresholds: { minHeavySourceTokens: 5000, minHeavySourceLoads: 3, minHugeResultTokens: 4000 },

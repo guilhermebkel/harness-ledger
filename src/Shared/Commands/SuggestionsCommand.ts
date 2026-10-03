@@ -7,7 +7,6 @@ import type { AddSuggestionsResult, Suggestion } from "@/Shared/Protocols/Sugges
 import { ContextService } from "@/Shared/Services/ContextService.js";
 import { SuggestionService } from "@/Shared/Services/SuggestionService.js";
 
-/** `imh suggestions list|add|set`: suggestion state, so the same problem is never suggested twice. */
 export class SuggestionsCommand {
   async list(options: ListSuggestionsOptions): Promise<Suggestion[]> {
     const context = await ContextService.create(options);
@@ -20,7 +19,6 @@ export class SuggestionsCommand {
     return new SuggestionService(context.store).add(newSuggestions);
   }
 
-  /** Applied suggestions also record the harness fingerprint after the change, for before/after. */
   async setStatus(options: SetSuggestionStatusOptions): Promise<Suggestion> {
     const context = await ContextService.create(options);
     let appliedFingerprint: string | undefined;

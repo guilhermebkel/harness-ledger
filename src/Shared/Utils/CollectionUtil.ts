@@ -1,5 +1,5 @@
 export class CollectionUtil {
-  /** The order of `Array.prototype.sort()` without a comparator (UTF-16 code units), stated explicitly. */
+  // Why: the default `sort()` order (UTF-16 code units), stated explicitly; suggestion ids depend on it.
   static readonly compareCodeUnits = (left: string, right: string): number => {
     if (left === right) {
       return 0;
@@ -19,14 +19,13 @@ export class CollectionUtil {
     return valueToCount;
   }
 
-  /** Appends to the list under `key`, creating it on first use. */
   static pushTo<Key, Item>(keyToItems: Map<Key, Item[]>, key: Key, item: Item): void {
     const items = keyToItems.get(key) ?? [];
     items.push(item);
     keyToItems.set(key, items);
   }
 
-  /** Runs async work over items with a concurrency limit, keeping the input order in the results. */
+  // Why: results keep the input order.
   static async mapWithConcurrency<Item, Result>(
     items: Item[],
     concurrency: number,

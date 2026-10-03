@@ -19,7 +19,7 @@ export class TokenUsageUtil {
     };
   }
 
-  /** Everything the model read: new input plus cache reads and writes. */
+  // Why: includes cache reads and writes.
   static input(usage: TokenUsage): number {
     return usage.input + usage.cacheRead + usage.cacheWrite;
   }

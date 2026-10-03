@@ -1,12 +1,5 @@
 #!/usr/bin/env node
-// Describes the shape of a folder of JSONL transcripts without printing their content: line types, keys,
-// content-block types, tool names and the keys of tool results, with counts. Use it to learn a new
-// provider's format, or, with two folders, to see what a newer export adds.
-//
-//   node scripts/survey-transcripts.mjs <folder>                 shape of one export
-//   node scripts/survey-transcripts.mjs <older> <newer>          only what <newer> adds
-//
-// Safe to run on real sessions: values are never printed, except line types, block types and tool names.
+// Why: it prints only line types, block types, tool names and keys, never values, so it is safe on real sessions; keep it that way.
 
 import { createReadStream } from "node:fs";
 import { readdir } from "node:fs/promises";
@@ -19,7 +12,7 @@ const MAX_NAME_CHARS = 60;
 const COUNT_COLUMN_WIDTH = 7;
 const FIRST_ARGUMENT_INDEX = 2;
 
-// Piping into `head` closes stdout early; that's not an error worth a stack trace.
+// Why: piping into `head` closes stdout early; that's not an error worth a stack trace.
 process.stdout.on("error", (error) => {
   if (error.code !== "EPIPE") {
     throw error;

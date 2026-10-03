@@ -5,7 +5,6 @@ import { ContextService } from "@/Shared/Services/ContextService.js";
 
 const DEFAULT_MAX_EVIDENCE = 50;
 
-/** `imh evidence <signal-id>`: all saved evidence for one signal of the last analysis. */
 export class EvidenceCommand {
   async run(options: EvidenceOptions): Promise<EvidenceResult> {
     const context = await ContextService.create(options);
@@ -13,7 +12,7 @@ export class EvidenceCommand {
     if (!analysis) {
       throw new Error("No analysis yet. Run `imh analyze` first.");
     }
-    // An exact id wins over a longer id that merely starts with it.
+    // Why: an exact id wins over a longer id that merely starts with it.
     const signal = analysis.signals.find((candidate) => candidate.id === options.signalId)
       ?? analysis.signals.find((candidate) => candidate.id.startsWith(options.signalId));
     if (!signal) {

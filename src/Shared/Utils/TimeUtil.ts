@@ -21,10 +21,7 @@ export class TimeUtil {
     m: DAYS_PER_MONTH * TimeUtil.MS_PER_DAY,
   };
 
-  /**
-   * Turns "14d", "2w", "6h", "3m" (months) or an ISO date into an epoch-ms point in time.
-   * A relative period is counted back from `nowAtMs`.
-   */
+  // Why: "3m" means months, not minutes.
   static parsePointInTime(value: string | undefined, nowAtMs = Date.now()): number | undefined {
     if (!value) {
       return undefined;
@@ -50,7 +47,7 @@ export class TimeUtil {
     return atMs === undefined ? undefined : new Date(atMs).toISOString();
   }
 
-  /** Sum of the gaps between consecutive events, skipping gaps longer than `idleMs` (the person was away). */
+  // Why: gaps longer than `idleMs` mean the person was away.
   static activeTime(sortedEventsAtMs: number[], idleMs: number): number {
     let activeMs = 0;
     for (let index = 1; index < sortedEventsAtMs.length; index++) {

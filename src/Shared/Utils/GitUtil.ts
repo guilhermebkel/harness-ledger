@@ -10,11 +10,11 @@ const BYTES_PER_MEBIBYTE = BYTES_PER_KIBIBYTE * BYTES_PER_KIBIBYTE;
 const GIT_MAX_OUTPUT_MEBIBYTES = 32;
 const GIT_MAX_OUTPUT_BYTES = GIT_MAX_OUTPUT_MEBIBYTES * BYTES_PER_MEBIBYTE;
 const COMMIT_MARKER = "__COMMIT__";
-/** `git status --porcelain` prints a two-letter status and a space before the path. */
+// Why: `git status --porcelain` prints a two-letter status and a space before the path.
 const PORCELAIN_PATH_OFFSET = 3;
 
 export class GitUtil {
-  /** Last commit date of each file under `paths`, in one `git log` call. Empty outside a git repository. */
+  // Why: one `git log` call for all paths; empty outside a git repository.
   static async readChangeDates(repositoryDir: string, paths: string[]): Promise<GitChangeDates> {
     const changeDates: GitChangeDates = {
       pathToCommittedAt: new Map(),
@@ -41,13 +41,13 @@ export class GitUtil {
           currentCommittedAt = line.slice(COMMIT_MARKER.length);
           continue;
         }
-        // `git log` lists newest first, so the first date seen for a path is its last change.
+        // Why: `git log` lists newest first, so the first date seen for a path is its last change.
         if (line && currentCommittedAt && !changeDates.pathToCommittedAt.has(line)) {
           changeDates.pathToCommittedAt.set(line, currentCommittedAt);
         }
       }
     } catch {
-      // Not a git repository, or git isn't installed: every piece falls back to its mtime.
+      // Why: not a git repository, or git isn't installed: every piece falls back to its mtime.
     }
     return changeDates;
   }

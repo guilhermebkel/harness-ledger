@@ -1,6 +1,3 @@
-// Detectors over session facts. Each one adds occurrences of one kind of pattern to the collector,
-// with the cost it estimates for each occurrence. Every number comes from the transcripts (ADR 0002).
-
 import type { SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
 import type { ApiError, SessionFacts, ToolCall, UserPrompt } from "@/Shared/Protocols/SessionProtocol.js";
 import type { Occurrence, SignalOptions, SignalType, StepCost } from "@/Shared/Protocols/SignalProtocol.js";
@@ -22,11 +19,11 @@ const ASKED_EXCERPT_CHARS = 90;
 const REPLY_EXCERPT_CHARS = 110;
 const TITLE_EXCERPT_CHARS = 80;
 const EXAMPLE_EXCERPT_CHARS = 200;
-/** A failure counts as recovered when one of the next few commands in the thread succeeds. */
+// Why: a failure counts as recovered only when one of the next few commands in the thread succeeds.
 const RECOVERY_WINDOW_CALLS = 3;
 const MIN_REQUEST_WORDS = 3;
 const MAX_REQUEST_CHARS = 600;
-/** Commands that change files on disk, so reading a file again afterwards is legitimate. */
+// Why: after these commands, reading a file again is legitimate.
 const FILE_CHANGING_COMMAND = /\b(git (checkout|pull|merge|rebase|stash)|sed -i|prettier|eslint --fix|npm run format)/;
 
 interface CandidateRequest {
@@ -42,7 +39,6 @@ export class SignalDetectorService {
     private readonly collector: OccurrenceCollectorService,
   ) {}
 
-  /** Runs every per-session detector. */
   detectInSession(session: SessionFacts, index: SessionIndex): void {
     this.detectToolFailures(session, index);
     this.detectRepeatedReads(session, index);
@@ -52,7 +48,6 @@ export class SignalDetectorService {
     this.detectCompactions(session);
   }
 
-  /** Greedy clustering of prompts by word-set similarity; a cluster seen in enough sessions is a repeated request. */
   detectRepeatedRequests(sessions: SessionFacts[]): void {
     const thresholds = this.options.thresholds;
     const clusters: CandidateRequest[][] = [];
@@ -101,7 +96,7 @@ export class SignalDetectorService {
     }
     for (const call of session.tools) {
       const result = call.result;
-      // Interrupted calls are counted with the user's interruptions.
+      // Why: interrupted calls are counted with the user's interruptions.
       if (!result?.isError || result.kind === "interrupted") {
         continue;
       }
@@ -116,7 +111,7 @@ export class SignalDetectorService {
       };
       const errorHead = result.errorHead ?? "error";
       if (result.kind === "user_rejected") {
-        // The person said no to the call (a plan, a command): that is a correction of the turn, not a failure.
+        // Why: the person said no to the call (a plan, a command): that is a correction of the turn, not a failure.
         const attributedTo = occurrence.pieces.join(",");
         const title = `User corrected the agent (${attributedTo})`;
         this.collector.add(`user_correction:${attributedTo}`, "user_correction", title, {
@@ -149,7 +144,6 @@ export class SignalDetectorService {
     }
   }
 
-  /** The conversation outgrew the context window: the work may need subagents, a skill, or separate sessions. */
   private detectCompactions(session: SessionFacts): void {
     for (const compaction of session.compactions) {
       const isSubagent = !SessionUtil.isMainThread(compaction.thread);
@@ -177,7 +171,6 @@ export class SignalDetectorService {
     }
   }
 
-  /** Failed model API requests: a wrong model name or expired credentials are harness problems. */
   private detectApiErrors(session: SessionFacts, index: SessionIndex): void {
     for (const apiError of session.apiErrors) {
       const isSubagent = !SessionUtil.isMainThread(apiError.thread);
@@ -203,7 +196,7 @@ export class SignalDetectorService {
       CollectionUtil.pushTo(threadFileToReads, `${call.thread.id}\u0000${call.filePath ?? ""}`, call);
     }
     for (const reads of threadFileToReads.values()) {
-      // One signal per agent: the finding is "this agent re-reads files"; which files is a detail.
+      // Why: one signal per agent: the finding is "this agent re-reads files"; which files is a detail.
       for (const read of this.extraReadsOf(session, reads)) {
         const agentType = read.thread.agentType;
         const filePath = read.filePath ?? "";
@@ -219,7 +212,6 @@ export class SignalDetectorService {
     }
   }
 
-  /** Reads of one file in one thread after the first, when there are enough and the file did not change in between. */
   private extraReadsOf(session: SessionFacts, reads: ToolCall[]): ToolCall[] {
     const thresholds = this.options.thresholds;
     const [firstRead] = reads;
@@ -307,7 +299,7 @@ export class SignalDetectorService {
     return call.category === "read" && call.filePath !== undefined && call.result?.isError !== true;
   }
 
-  /** Cost of a failed step: time until the agent reacted, and the tokens of the turn spent reacting. */
+  // Why: cost of a failed step: time until the agent reacted, and the tokens of the turn spent reacting.
   private reactionCost(call: ToolCall, index: SessionIndex): StepCost {
     const threadMessages = index.threadIdToMessages.get(call.thread.id) ?? [];
     const resultAtMs = call.result?.returnedAtMs ?? call.calledAtMs ?? 0;
@@ -323,7 +315,7 @@ export class SignalDetectorService {
     };
   }
 
-  /** Wait until the thread got a real answer after the failed request (retries and fallbacks). */
+  // Why: cost of a failed request: the wait until the thread got a real answer (retries and fallbacks).
   private apiErrorCost(apiError: ApiError, index: SessionIndex): StepCost {
     const failedAtMs = apiError.occurredAtMs ?? 0;
     const answer = (index.threadIdToMessages.get(apiError.thread.id) ?? []).find(
@@ -337,7 +329,7 @@ export class SignalDetectorService {
     };
   }
 
-  /** Cost of an unnecessary read: its duration and the tokens it added to the context. */
+  // Why: cost of an unnecessary read: its duration and the tokens it added to the context.
   private readCost(read: ToolCall, index: SessionIndex): StepCost {
     const durationMs = (read.result?.returnedAtMs ?? 0) - (read.calledAtMs ?? 0);
     return {
@@ -350,7 +342,7 @@ export class SignalDetectorService {
     };
   }
 
-  /** Cost of a turn the user corrected or interrupted (an upper bound): main-thread time and tokens in it. */
+  // Why: cost of a corrected or interrupted turn is an upper bound: all main-thread time and tokens in it.
   private correctedTurnCost(index: SessionIndex, turnStartAtMs?: number, turnEndAtMs?: number): StepCost {
     if (turnStartAtMs === undefined || turnEndAtMs === undefined) {
       return {
@@ -372,7 +364,7 @@ export class SignalDetectorService {
     };
   }
 
-  /** The command that worked after a failure: the next successful command in the thread, if it is a different one. */
+  // Why: only a different command counts as a recovery.
   private recoveryOf(failedCall: ToolCall, threadCommands: ToolCall[]): string | undefined {
     const failedIndex = threadCommands.indexOf(failedCall);
     const nextCommands = threadCommands.slice(failedIndex + 1, failedIndex + 1 + RECOVERY_WINDOW_CALLS);
@@ -382,7 +374,7 @@ export class SignalDetectorService {
   }
 
   /**
-   * A recovery does the same job another way (`npm test` → `pnpm test`). Looking around (`ls`, `cat`) or
+   * Why: A recovery does the same job another way (`npm test` → `pnpm test`). Looking around (`ls`, `cat`) or
    * moving on to other work (`git add` after a failed script) is not one.
    */
   private isPlausibleRecovery(failedCall: ToolCall, candidate: ToolCall): boolean {
@@ -396,7 +388,7 @@ export class SignalDetectorService {
     return candidate.key.split(" ")[0] === failedCall.key.split(" ")[0];
   }
 
-  /** Reading a file again is legitimate after it was edited or changed by a command in between. */
+  // Why: reading a file again is legitimate after it was edited or changed by a command in between.
   private wasChangedBetween(session: SessionFacts, firstRead: ToolCall, laterRead: ToolCall): boolean {
     const fromAtMs = firstRead.calledAtMs ?? 0;
     const toAtMs = laterRead.calledAtMs ?? 0;

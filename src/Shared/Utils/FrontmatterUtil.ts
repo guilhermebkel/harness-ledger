@@ -1,6 +1,4 @@
-// A minimal YAML frontmatter reader for skill, agent and rule files: top-level `key: value` pairs,
-// block and flow lists, and folded or literal text. Enough to read names and descriptions without
-// a YAML dependency (ADR 0004).
+// Why: no YAML dependency (ADR 0004); this reads only what skill, agent and rule files need.
 
 import type { Frontmatter, FrontmatterValue } from "@/Shared/Protocols/UtilProtocol.js";
 
@@ -34,7 +32,6 @@ export class FrontmatterUtil {
     };
   }
 
-  /** Applies one frontmatter line: a list item, a continuation of block text, or a new `key: value`. */
   private static readLine(state: ParseState, line: string): void {
     const isBlankOrComment = !line.trim() || line.trim().startsWith("#");
     if (isBlankOrComment) {
@@ -69,7 +66,7 @@ export class FrontmatterUtil {
     state.data[newKey] = isFlowList ? FrontmatterUtil.parseFlowList(value) : FrontmatterUtil.parseScalar(value);
   }
 
-  /** A list field written as a YAML list, a flow list or a comma/space separated string (`tools: Read, Bash`). */
+  // Why: a list can be a YAML list, a flow list or a comma- or space-separated string (`tools: Read, Bash`).
   static asList(value: FrontmatterValue | undefined): string[] | undefined {
     if (value === undefined || value === "") {
       return undefined;
@@ -97,7 +94,7 @@ export class FrontmatterUtil {
       .filter(Boolean);
   }
 
-  /** Splits on whitespace, keeping `Bash(git log *)` in one piece. */
+  // Why: `Bash(git log *)` must stay one entry.
   private static splitOutsideParentheses(value: string): string[] {
     const entries: string[] = [];
     let current = "";

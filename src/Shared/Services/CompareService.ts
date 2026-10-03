@@ -1,6 +1,4 @@
-// Before/after for one piece. Observational: it compares real sessions before and after a
-// change, which also differ in tasks. It reports deltas and refuses to call a winner when
-// either side has too few sessions.
+// Why: observational: sessions before and after also differ in tasks, so it reports deltas and refuses to call a winner when either side has too few sessions.
 
 import type {
   ComparedMetric,
@@ -26,7 +24,7 @@ const GLOBAL_PIECE_PREFIXES = ["instructions:", "hook:", "settings:"];
 type UsageCheck = (session: SessionFacts, name: string) => boolean;
 
 export class CompareService {
-  /** Instructions, hooks and settings apply to every session, so every session "uses" them. */
+  // Why: instructions, hooks and settings apply to every session, so every session "uses" them.
   private static readonly PIECE_KIND_TO_USAGE_CHECK: Partial<Record<PieceKind, UsageCheck>> = {
     agent: (session, name) =>
       session.threads.some((thread) => thread.thread.agentType === name)
@@ -37,7 +35,7 @@ export class CompareService {
     mcp: (session, name) => session.tools.some((call) => call.category === "mcp" && call.key === `mcp:${name}`),
   };
 
-  /** Already priced into usdPerInvocation, so they inform the report but don't vote in the verdict. */
+  // Why: already priced into usdPerInvocation, so they inform the report but don't vote in the verdict.
   private static readonly TOKEN_METRICS = new Set<ComparedMetric>(["inputTokensPerInvocation", "outputTokensPerInvocation"]);
 
   constructor(
@@ -98,7 +96,7 @@ export class CompareService {
   }
 
   /**
-   * Time counts as much as money: a change that keeps the cost but makes the work faster is an improvement.
+   * Why: Time counts as much as money: a change that keeps the cost but makes the work faster is an improvement.
    * Lower is better for every metric.
    */
   private significantMoves(before: SideMetrics, after: SideMetrics): MetricMove[] {
@@ -134,14 +132,13 @@ export class CompareService {
     return moves.every((move) => move.direction === "worse") ? "worse" : "mixed";
   }
 
-  /** Usage of a global piece is the usage of the main thread. */
   private usagePieceOf(piece: string): string {
     const isGlobalPiece = GLOBAL_PIECE_PREFIXES.some((prefix) => piece.startsWith(prefix));
     return isGlobalPiece ? AttributionService.MAIN_PIECE : piece;
   }
 
   private sideMetrics(sessions: SessionFacts[], piece: string): SideMetrics {
-    // Knowing the piece id lets slash commands that run a skill be attributed to "skill:<name>".
+    // Why: knowing the piece id lets slash commands that run a skill be attributed to "skill:<name>".
     const usage = new UsageService(this.config.prices, new Set([piece]))
       .pieceUsage(sessions)
       .find((entry) => entry.piece === this.usagePieceOf(piece));

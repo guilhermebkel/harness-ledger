@@ -1,7 +1,3 @@
-// Test-only. Builds a fake Claude Code home and project on disk, in the format Claude Code writes:
-// one JSON object per line, tool_use/tool_result blocks, the message usage repeated on every
-// content-block line, and subagent transcripts in <session>/subagents/.
-
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -58,9 +54,7 @@ export interface TranscriptOptions {
 export interface ToolStepOptions {
   secondsLater?: number;
   model?: string;
-  /** Extra fields on the assistant lines, e.g. `attributionSkill`. */
   lineFields?: Record<string, unknown>;
-  /** Replaces the default output tokens of the step. */
   outputTokens?: number;
 }
 
@@ -79,11 +73,9 @@ export interface ResultOptions {
   isError?: boolean;
   secondsLater?: number;
   toolUseResult?: unknown;
-  /** `toolDenialKind` on the result line, e.g. "user-rejected" or "automode-blocked". */
   denialKind?: string;
 }
 
-/** Fluent builder for one transcript file. */
 export class ClaudeCodeTranscriptBuilder {
   readonly lines: unknown[] = [];
   private currentAtMs: number;
@@ -120,7 +112,7 @@ export class ClaudeCodeTranscriptBuilder {
     return this;
   }
 
-  /** An assistant message with one tool_use, written as two lines (text, then tool_use) that share the usage. */
+  // Why: Claude Code writes text and tool_use as two lines that share the usage.
   tool(id: string, name: string, input: Record<string, unknown>, stepOptions: ToolStepOptions = {}): this {
     const messageId = `msg_${id}`;
     const model = stepOptions.model ?? DEFAULT_MODEL;
@@ -168,7 +160,6 @@ export class ClaudeCodeTranscriptBuilder {
     return this;
   }
 
-  /** A user line written by Claude Code rather than the person, e.g. a background-task notification. */
   systemUser(text: string, originKind: string, secondsLater = 5): this {
     this.lines.push({
       ...this.lineBase("user", secondsLater),
@@ -179,7 +170,6 @@ export class ClaudeCodeTranscriptBuilder {
     return this;
   }
 
-  /** A prompt sent while the agent was busy: Claude Code writes it as a `queued_command` attachment. */
   queued(prompt: string, commandMode: "prompt" | typeof TASK_NOTIFICATION, originKind = "human", secondsLater = 5): this {
     this.lines.push({
       ...this.lineBase("attachment", secondsLater),
@@ -188,7 +178,6 @@ export class ClaudeCodeTranscriptBuilder {
     return this;
   }
 
-  /** An API error, which Claude Code writes as an assistant message from the "<synthetic>" model. */
   apiError(text: string, secondsLater = 3, lineFields: Record<string, unknown> = {}): this {
     const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
     this.lines.push({
@@ -200,7 +189,6 @@ export class ClaudeCodeTranscriptBuilder {
     return this;
   }
 
-  /** A line without a message, such as `cost-state` or a `system` line. */
   record(type: string, fields: Record<string, unknown>, secondsLater = 1): this {
     this.lines.push({ ...this.lineBase(type, secondsLater), ...fields });
     return this;
@@ -227,7 +215,6 @@ export class ClaudeCodeTranscriptBuilder {
 
 type SubagentTypeSource = "meta" | "result" | "prompt";
 
-/** Test-only helpers for a fake Claude Code home and project. */
 export class ClaudeCodeFixtureUtil {
   static readonly FAKE_SECRETS = FAKE_SECRETS;
 
@@ -312,7 +299,6 @@ export class ClaudeCodeFixtureUtil {
     return join(projectFolder, sessionId, "subagents", `agent-${agentId}.jsonl`);
   }
 
-  /** A session where test-runner runs `npm test` (fails), then `pnpm test` (works). */
   private static testRunSession(
     fixture: Fixture,
     sessionId: string,
@@ -342,7 +328,7 @@ export class ClaudeCodeFixtureUtil {
   }
 
   /**
-   * A realistic history:
+   * Why: tests assert on each session of this history. A realistic history:
    * - s1..s3: the test-runner subagent runs `npm test` (fails), then `pnpm test` (works).
    * - s2: code-reviewer re-reads a file the main thread had just read.
    * - s2, s5, s6: "generate the changelog entry from the last PRs" (repeated request).
@@ -400,17 +386,12 @@ export class ClaudeCodeFixtureUtil {
         .write(ClaudeCodeFixtureUtil.sessionPath(fixture, sessionId));
     }
 
-    // A transcript from another project must be ignored.
     const otherProjectFile = join(fixture.claudeHome, "projects", "-somewhere-else", "other.jsonl");
     new ClaudeCodeTranscriptBuilder("other", "/somewhere/else", dayAt(0))
       .user("hello")
       .write(otherProjectFile);
   }
 
-  /**
-   * A session where test-runner runs one command, for before/after tests. `commandSeconds` is how long
-   * the command takes and `model` the subagent's model, to vary time and cost independently.
-   */
   static writeTestRunnerSession(
     fixture: Fixture,
     sessionId: string,
@@ -440,7 +421,7 @@ export class ClaudeCodeFixtureUtil {
   }
 
   /**
-   * Cases seen in real sessions (content is synthetic):
+   * Why: tests assert on each of these cases. Cases seen in real sessions (content is synthetic):
    * - the person rejects a plan (ExitPlanMode) with feedback;
    * - the auto-mode classifier blocks reading credentials, twice;
    * - a Python script fails with a FutureWarning printed before the traceback;
@@ -506,7 +487,7 @@ export class ClaudeCodeFixtureUtil {
   }
 
   /**
-   * Data Claude Code computes itself (content is synthetic):
+   * Why: tests assert on each of these cases. Data Claude Code computes itself (content is synthetic):
    * - two runs of the session (resumed), each ending with a `cost-state` total;
    * - `turn_duration` lines for the main thread's turns;
    * - a subagent whose type is known only from `attributionAgent` (no meta file), running a skill
@@ -550,7 +531,7 @@ export class ClaudeCodeFixtureUtil {
   }
 
   /**
-   * A session that ships a change by hand (content is synthetic): a look around, then the same five work
+   * Why: tests assert on each of these cases. A session that ships a change by hand (content is synthetic): a look around, then the same five work
    * commands every time; it auto-compacts near the context limit; and a model leaks text into a tool name.
    */
   static writeWorkflowSession(fixture: Fixture, sessionId: string, startedAt: string): void {
@@ -571,8 +552,6 @@ export class ClaudeCodeFixtureUtil {
       .write(ClaudeCodeFixtureUtil.sessionPath(fixture, sessionId));
   }
 
-  /** Points the reader at the fixture's Claude Code home. Returns a function that restores the environment. */
-  /** Registers `beforeAll`/`afterAll` hooks that build the harness and history fixture and point the env at it. */
   static useHistoryFixture(setUpMore?: (fixture: Fixture) => void): HistoryFixture {
     let current: Fixture | undefined;
     let restoreEnv: (() => void) | undefined;

@@ -1,6 +1,4 @@
-// Which harness piece was running when something happened. Subagent steps belong to the
-// subagent; main-thread steps after a skill or slash command (until the next prompt) belong
-// to that skill or command.
+// Why: subagent steps belong to the subagent; main-thread steps after a skill or slash command, until the next prompt, belong to that skill or command.
 
 import type { AttributedKind, SessionIndex } from "@/Shared/Protocols/AnalysisProtocol.js";
 import type { AssistantMessage, SessionFacts, ToolCall, UserPrompt } from "@/Shared/Protocols/SessionProtocol.js";
@@ -15,20 +13,18 @@ interface MainThreadEvent {
   call?: ToolCall;
 }
 
-/** Pieces driving the current turn, and the ones the next prompt inherits (they include an agent the turn started). */
+// Why: `last` is what the next prompt inherits; it includes an agent the turn started.
 interface TurnPieces {
   current: string[];
   last: string[];
 }
 
 export class AttributionService {
-  /** Attribution for steps no skill, command or subagent was driving. */
   static readonly MAIN_PIECE = "main";
-  /** Marks agents that aren't in the inventory (built-in ones like general-purpose or Explore). */
+  // Why: agents missing from the inventory are built-in ones (general-purpose, Explore).
   static readonly BUILT_IN_SUFFIX = " (built-in)";
   static readonly UNRESOLVED_SUBAGENT_PIECE = `agent:${UNKNOWN_SUBAGENT_TYPE}`;
 
-  /** `pieceIds` are the inventory ids; with none, every name is taken as is. */
   constructor(private readonly pieceIds: Set<string>) {}
 
   static withoutBuiltInSuffix(pieceId: string): string {
@@ -36,7 +32,6 @@ export class AttributionService {
     return pieceId.endsWith(suffix) ? pieceId.slice(0, -suffix.length) : pieceId;
   }
 
-  /** Signals may mark a piece as built-in ("agent:Explore (built-in)"); it's still the same piece. */
   static isSamePiece(signalPiece: string, piece: string): boolean {
     return signalPiece === piece || signalPiece.startsWith(`${piece} `);
   }
@@ -72,7 +67,6 @@ export class AttributionService {
     return index;
   }
 
-  /** The inventory id for a piece seen in a transcript; agents missing from the inventory are marked built-in. */
   pieceIdFor(kind: AttributedKind, name: string): string {
     const pieceId = `${kind}:${name}`;
     const isKnown = this.pieceIds.has(pieceId) || this.pieceIds.size === 0;
@@ -80,7 +74,7 @@ export class AttributionService {
     return isBuiltInAgent ? `${pieceId}${AttributionService.BUILT_IN_SUFFIX}` : pieceId;
   }
 
-  /** A slash command runs either a skill or a command file; prefer the skill when both exist. */
+  // Why: a slash command runs either a skill or a command file; the skill wins when both exist.
   commandPieceId(name: string): string {
     return this.pieceIds.has(`skill:${name}`) ? `skill:${name}` : `command:${name}`;
   }
@@ -100,9 +94,9 @@ export class AttributionService {
     }
   }
 
-  /** A call belongs to the pieces running in its turn; a skill it loads joins them, an agent it starts follows the turn. */
+  // Why: a skill a call loads joins the turn's pieces; an agent it starts is only inherited by the next prompt.
   private attributeCall(call: ToolCall, turn: TurnPieces, index: SessionIndex): void {
-    // The skill the provider says was running wins over the one inferred from the turn.
+    // Why: the skill the provider says was running wins over the one inferred from the turn.
     const skillName = call.skillInUse ?? call.skill;
     if (skillName) {
       turn.current = CollectionUtil.unique([...turn.current, this.pieceIdFor("skill", skillName)]);

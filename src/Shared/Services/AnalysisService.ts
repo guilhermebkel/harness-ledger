@@ -36,10 +36,9 @@ const MIN_COMMON_COMMAND_RUNS = 2;
 const MAX_COMMON_COMMANDS = 15;
 const EMPTY_COMMAND_KEY = "(empty)";
 const DEFAULT_MAX_EVIDENCE = 5;
-/** Evidence kept per signal in the saved analysis, for `imh evidence`. */
 const SAVED_EVIDENCE_PER_SIGNAL = 50;
 const MAX_USAGE_ENTRIES = 15;
-/** Searching instruction files for every failing command is slow; the top ones are enough. */
+// Why: searching instruction files for every failing command is slow; the top ones are enough.
 const MAX_FAILED_COMMANDS_TO_SEARCH = 15;
 const FAILED_COMMAND_PREFIX = "failed_command:";
 const WASTE_SIGNAL_TYPES = new Set<SignalType>([
@@ -57,7 +56,6 @@ const COST_METHOD
     + "and not added to session time. Failure cost = time until the agent reacted + tokens of the reaction turn. "
     + "Correction cost = the corrected turn (upper bound). Categories can overlap.";
 
-/** Maps the harness, reads the sessions and extracts signals. Saves the full result and returns a compact one. */
 export class AnalysisService {
   static readonly LAST_ANALYSIS_FILE = "last-analysis.json";
 
@@ -146,7 +144,6 @@ export class AnalysisService {
     return this.compact(analysis, options);
   }
 
-  /** Fewer signals and less evidence, to keep the agent's context small. */
   private compact(analysis: Analysis, options: AnalyzeOptions): CompactAnalysis {
     const maxSignals = options.maxSignals ?? DEFAULT_MAX_SIGNALS;
     const maxEvidence = options.maxEvidence ?? DEFAULT_MAX_EVIDENCE;
@@ -168,7 +165,7 @@ export class AnalysisService {
     );
   }
 
-  /** A signal with a suggestion (in any status) is never suggested again. */
+  // Why: a signal with a suggestion, in any status, is never suggested again.
   private markHandledSignals(signals: Signal[], suggestions: Suggestion[]): void {
     const signalIdToSuggestion = new Map<string, Suggestion>();
     for (const suggestion of suggestions) {
@@ -187,7 +184,6 @@ export class AnalysisService {
     }
   }
 
-  /** Where the harness already mentions a failing command or the one that worked instead. */
   private async addInstructionMentions(signals: Signal[], inventory: Inventory): Promise<void> {
     const mentionService = new MentionService(inventory);
     const failedCommandSignals = signals

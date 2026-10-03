@@ -1,6 +1,4 @@
-// Maps the Claude Code harness active for a project: instructions, skills, subagents, commands,
-// hooks, permissions, MCP servers and plugins. MCP and hook entries are reduced to names and
-// shapes (ADR 0007): env values, headers and arguments are hashed to detect changes but never stored.
+// Why: MCP and hook entries keep names and shapes only (ADR 0007); env values, headers and arguments are hashed to detect changes, never stored.
 
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, join, relative } from "node:path";
@@ -27,11 +25,11 @@ const MAX_COMPONENT_DEPTH = 4;
 const HARNESS_PATHS = ["CLAUDE.md", "CLAUDE.local.md", ".claude", ".mcp.json"];
 const MAX_SKILL_FILES = 50;
 const MAX_SKILL_FOLDER_DEPTH = 3;
-/** Larger files are listed but not hashed, to keep the inventory fast. */
+// Why: larger files are listed but not hashed, to keep the inventory fast.
 const MAX_HASHED_FILE_BYTES = 1_000_000;
 const SKIPPED_FOLDERS = new Set(["node_modules", ".git", "__pycache__", ".venv"]);
 
-/** Collects pieces for one inventory, skipping files already seen (e.g. when the project is the home directory). */
+// Why: files already seen are skipped, because the project can be the home directory.
 class InventoryBuilder {
   readonly pieces: HarnessPiece[] = [];
   readonly notes: string[] = [];
@@ -75,7 +73,7 @@ class InventoryBuilder {
       : {};
   }
 
-  /** A file's path and content, so renaming or editing a reference changes the skill's hash. */
+  // Why: path and content both go in, so renaming a reference changes the skill's hash.
   private async fileHash(file: string): Promise<string> {
     const fileStat = await stat(file).catch(() => undefined);
     const isHashable = fileStat !== undefined && fileStat.size <= MAX_HASHED_FILE_BYTES;
@@ -83,7 +81,7 @@ class InventoryBuilder {
     return HashUtil.sha(`${relative(this.projectDir, file)}\n${content.toString("base64")}`);
   }
 
-  /** Same name in two scopes (a user and a project skill, say): keep both and disambiguate the id. */
+  // Why: the same name can exist in two scopes (a user and a project skill); both are kept, with distinct ids.
   uniqueId(kind: PieceKind, name: string, scope: PieceScope): string {
     const baseId = `${kind}:${name}`;
     const isTaken = this.pieces.some((piece) => piece.id === baseId);
@@ -197,7 +195,6 @@ export class ClaudeCodeInventoryService {
     }
   }
 
-  /** Skills in `<base>/skills/<name>/SKILL.md`, agents in `<base>/agents/**.md`, commands in `<base>/commands/**.md`. */
   private async addComponents(
     builder: InventoryBuilder,
     baseDir: string,
@@ -259,12 +256,11 @@ export class ClaudeCodeInventoryService {
     return FrontmatterUtil.asText(FrontmatterUtil.parse(text).data.name);
   }
 
-  /** `agents/review/security.md` → `review:security`, the way Claude Code names nested components. */
+  // Why: Claude Code names nested components with `:` (`agents/review/security.md` → `review:security`).
   private nameFromPath(baseDir: string, file: string): string {
     return relative(baseDir, file).replace(/\.md$/, "").replace(/[\\/]/g, ":");
   }
 
-  /** Everything in a skill's folder besides SKILL.md, sorted, so the agent knows what to read. */
   private async skillFolderFiles(dir: string, depth = 0): Promise<string[]> {
     if (depth > MAX_SKILL_FOLDER_DEPTH) {
       return [];
@@ -303,7 +299,7 @@ export class ClaudeCodeInventoryService {
     return files;
   }
 
-  /** Hooks, permissions, enabled plugins and retention, read from lowest to highest precedence so later files win. */
+  // Why: settings are read from lowest to highest precedence, so later files win.
   private async addSettings(builder: InventoryBuilder, shouldIncludeUser: boolean): Promise<SettingsSummary> {
     const projectDir = builder.projectDir;
     const settingsFiles: SettingsFile[] = [];
@@ -396,7 +392,7 @@ export class ClaudeCodeInventoryService {
         const groupRecord = GuardUtil.asRecord(group);
         const declaredMatcher = GuardUtil.asString(groupRecord?.matcher);
         const matcher = declaredMatcher === undefined || declaredMatcher === "" ? "*" : declaredMatcher;
-        // Only the shape is kept: handler type and program name, never the command line or its arguments.
+        // Why: only the shape is kept (handler type and program name), never the command line or its arguments (ADR 0007).
         const handlerShapes = GuardUtil.asArray(groupRecord?.hooks).map((handler) => {
           const handlerRecord = GuardUtil.asRecord(handler);
           const program = GuardUtil.asString(handlerRecord?.command)?.split(/\s+/)[0] ?? "";
@@ -421,7 +417,6 @@ export class ClaudeCodeInventoryService {
     return pieces;
   }
 
-  /** Project servers from `.mcp.json`; user and local servers from the user-level `.claude.json`. */
   private async addMcpServers(builder: InventoryBuilder, shouldIncludeUser: boolean): Promise<void> {
     const projectMcpFile = join(builder.projectDir, ".mcp.json");
     const projectMcp = await this.readJsonFile(projectMcpFile);
@@ -455,7 +450,7 @@ export class ClaudeCodeInventoryService {
       const configRecord = GuardUtil.asRecord(config);
       const transport = GuardUtil.asString(configRecord?.type) ?? (configRecord?.url === undefined ? "stdio" : "http");
       const command = GuardUtil.asString(configRecord?.command);
-      // The full config is hashed so changes are detected, but none of it is stored.
+      // Why: the full config is hashed to detect changes, but none of it is stored (ADR 0007).
       const serialized = JSON.stringify(config ?? {});
       return {
         id: `mcp:${name}`,
@@ -473,7 +468,7 @@ export class ClaudeCodeInventoryService {
     });
   }
 
-  /** Plugins are read-only for the user: findings about them become recommendations, never edits. */
+  // Why: plugins are read-only for the user, so findings about them become recommendations, never edits.
   private async addPlugins(builder: InventoryBuilder, pluginIdToIsEnabled: Map<string, boolean>): Promise<void> {
     for (const [pluginId, installPath] of await this.readInstalledPlugins()) {
       if (pluginIdToIsEnabled.get(pluginId) === false) {
@@ -507,7 +502,7 @@ export class ClaudeCodeInventoryService {
     }
   }
 
-  /** Plugin id → install path, from `installed_plugins.json` (accepts both the older and the versioned shape). */
+  // Why: `installed_plugins.json` has an older and a versioned shape; both are accepted.
   private async readInstalledPlugins(): Promise<Map<string, string>> {
     const pluginIdToInstallPath = new Map<string, string>();
     const installedFile = join(this.homeDir, "plugins", "installed_plugins.json");

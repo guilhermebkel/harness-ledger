@@ -48,6 +48,7 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 - Rebuild and commit `dist/` in the same commit as any change to `src/`.
 - Use pnpm, never npm: commit `pnpm-lock.yaml`, never `package-lock.json` (ADR 0004).
 - Runtime code uses only Node built-ins (Node 20+). No runtime dependencies (ADR 0004).
+- No comments by default. Write one only for a hidden rule someone could break by changing the code, starting with `Why:` (enforced by lint).
 - Follow `docs/code-standards.md`. `pnpm lint` enforces most of it; review checks the rest.
 - Numbers come only from the script; the skill never estimates them (ADR 0002). New signals must carry evidence (session, line, thread) and an `isPartial` flag with reasons when the evidence is incomplete.
 - Every string that can reach output passes through `RedactUtil.redact()` / `RedactUtil.excerpt()`. Hook and MCP entries keep names and shapes only (ADR 0007). Add a test with a fake secret for any new output path.

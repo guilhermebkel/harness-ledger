@@ -1,8 +1,6 @@
 import type { CompactPiece, HarnessPiece, Inventory, InventoryChange } from "@/Shared/Protocols/HarnessProtocol.js";
 
-/** Operations on inventories that don't depend on the provider that produced them. */
 export class InventoryService {
-  /** Enough to identify and locate a piece, without hashes and sizes. */
   static compactPiece(piece: HarnessPiece): CompactPiece {
     return {
       id: piece.id,

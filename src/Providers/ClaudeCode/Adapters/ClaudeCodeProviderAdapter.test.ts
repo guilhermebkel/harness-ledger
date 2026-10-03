@@ -101,7 +101,6 @@ describe("parseSession", () => {
     expect(slashCommand).toMatchObject({ command: "changelog", text: "for v2" });
     expect(correction?.isCorrection).toBe(true);
     expect(interruption?.isInterruption).toBe(true);
-    // A delegation prompt is not something the person typed.
     expect(factsOf("s1").prompts.map((prompt) => prompt.text)).not.toContain("Run the test suite for s1");
   });
 

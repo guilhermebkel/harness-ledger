@@ -7,7 +7,7 @@ import { parseArgs } from "node:util";
 
 // src/Shared/Utils/CollectionUtil.ts
 var CollectionUtil = class {
-  /** The order of `Array.prototype.sort()` without a comparator (UTF-16 code units), stated explicitly. */
+  // Why: the default `sort()` order (UTF-16 code units), stated explicitly; suggestion ids depend on it.
   static compareCodeUnits = (left, right) => {
     if (left === right) {
       return 0;
@@ -24,13 +24,12 @@ var CollectionUtil = class {
     }
     return valueToCount;
   }
-  /** Appends to the list under `key`, creating it on first use. */
   static pushTo(keyToItems, key, item) {
     const items = keyToItems.get(key) ?? [];
     items.push(item);
     keyToItems.set(key, items);
   }
-  /** Runs async work over items with a concurrency limit, keeping the input order in the results. */
+  // Why: results keep the input order.
   static async mapWithConcurrency(items, concurrency, work) {
     const results = [];
     let nextIndex = 0;
@@ -88,7 +87,6 @@ var RedactUtil = class _RedactUtil {
     );
     return _RedactUtil.withoutHomeFolder(withoutSecrets);
   }
-  /** The home folder carries the user's name; reports show it as `~`. */
   static withoutHomeFolder(text) {
     const home = homedir();
     const isUsableHome = home.length > 1 && home !== "/";
@@ -98,7 +96,6 @@ var RedactUtil = class _RedactUtil {
     const escapedHome = home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     return text.replace(new RegExp(`${escapedHome}(?![\\w.-])`, "g"), "~");
   }
-  /** Redacts and collapses to a single line of at most `maxChars`. */
   static excerpt(text, maxChars = DEFAULT_EXCERPT_CHARS) {
     const oneLine = _RedactUtil.redact(text).replace(/\s+/g, " ").trim();
     return oneLine.length > maxChars ? `${oneLine.slice(0, maxChars - 1)}\u2026` : oneLine;
@@ -244,10 +241,6 @@ var STOPWORDS = new Set(
   "the and for with that this from you your are was were can could would should please into have has had not but all any some what when where which who how why its it's our out then than them they there here tamb\xE9m para com que uma umas uns dos das por pelo pela isso isto esse essa este esta voc\xEA voce seu sua nos nas n\xE3o nao mais muito pode poderia favor ser ter tem foi vai fazer faz como quando onde qual quais".split(" ")
 );
 var NormalizeUtil = class _NormalizeUtil {
-  /**
-   * A short grouping key for a shell command, e.g.
-   * `cd app && CI=1 npm run test -- --watch=false` → `npm run test`.
-   */
   static commandKey(command) {
     const segments = command.split(/&&|\|\||;|\n/).map((segment) => segment.trim()).filter(Boolean);
     let tokens = [];
@@ -279,7 +272,6 @@ var NormalizeUtil = class _NormalizeUtil {
     }
     return RedactUtil.redact(keyParts.join(" "));
   }
-  /** The stage of work a shell command belongs to, from its grouping key; undefined when it says nothing. */
   static commandStage(commandKey) {
     if (_NormalizeUtil.isExplorationCommand(commandKey)) {
       return "exploration";
@@ -292,11 +284,9 @@ var NormalizeUtil = class _NormalizeUtil {
     }
     return VALIDATION_COMMAND.test(commandKey) ? "validation" : void 0;
   }
-  /** True for a command key whose program only reads or prints (`ls`, `cat`, `grep`). */
   static isExplorationCommand(commandKey) {
     return EXPLORATION_PROGRAMS.has(commandKey.split(" ")[0] ?? "");
   }
-  /** The first meaningful line of an error, normalized so the same error groups across sessions. */
   static errorKey(text) {
     const lines = text.replace(ANSI_ESCAPE, "").split(/\r?\n/).map((line) => line.replace(LEADING_CLOCK_TIME, "").trim()).filter((line) => line && !/^exit code \d+$/i.test(line) && !/^<\/?[\w-]+\s*\/?>$/.test(line)).filter((line) => /[A-Za-z]/.test(line));
     const nonWarningLines = lines.filter((line) => !WARNING_LINE.test(line));
@@ -310,11 +300,10 @@ var NormalizeUtil = class _NormalizeUtil {
     const errorText = structuredReason ? `reason: ${structuredReason}` : head;
     return RedactUtil.redact(errorText).replace(/(["'`]).{1,200}?\1/g, "'\u2026'").replace(/(?:[A-Za-z]:)?[~.]?\/[\w@.+-]+(?:\/[\w@.+-]+)*/g, "<path>").replace(/\b\d+(\.\d+)*\b/g, "N").replace(/\s+/g, " ").slice(0, MAX_ERROR_KEY_CHARS).trim();
   }
-  /** Heuristic (English and Portuguese): the message opens by pushing back on what the agent did. */
+  // Why: a heuristic, for English and Portuguese.
   static isCorrection(text) {
     return CORRECTION_START.test(text.trim().slice(0, CORRECTION_PREFIX_CHARS));
   }
-  /** The set of meaningful words in a prompt, used to cluster repeated requests. */
   static wordSet(text) {
     const words = text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/https?:\/\/\S+/g, " ").replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((word) => word.length >= MIN_WORD_CHARS && !STOPWORDS.has(word));
     return new Set(words);
@@ -331,7 +320,6 @@ var NormalizeUtil = class _NormalizeUtil {
     }
     return sharedCount / (left.size + right.size - sharedCount);
   }
-  /** Skips variable assignments and wrappers (`sudo`, `timeout 300`), with the wrappers' flags and durations. */
   static programIndexOf(tokens) {
     let isAfterWrapper = false;
     for (const [index, token] of tokens.entries()) {
@@ -344,7 +332,6 @@ var NormalizeUtil = class _NormalizeUtil {
     }
     return -1;
   }
-  /** A Python traceback ends with the exception that was raised; everything above it is the stack. */
   static pythonException(lines) {
     const tracebackIndex = lines.findIndex((line) => line.startsWith(PYTHON_TRACEBACK));
     if (tracebackIndex === -1) {
@@ -385,7 +372,7 @@ var NumberUtil = class {
     const factor = DECIMAL_BASE ** digits;
     return Math.round(value * factor) / factor;
   }
-  /** A rough token estimate from text length, good enough to compare sizes. */
+  // Why: a rough estimate from text length, good enough to compare sizes.
   static approxTokens(text) {
     return Math.ceil(text.length / CHARS_PER_TOKEN);
   }
@@ -396,7 +383,6 @@ var NumberUtil = class {
 
 // src/Shared/Utils/SessionUtil.ts
 var SessionUtil = class _SessionUtil {
-  /** Thread id (and agent type) of a session's main thread. */
   static MAIN_THREAD_ID = "main";
   static mainThread() {
     return {
@@ -426,10 +412,7 @@ var TimeUtil = class _TimeUtil {
     w: DAYS_PER_WEEK * _TimeUtil.MS_PER_DAY,
     m: DAYS_PER_MONTH * _TimeUtil.MS_PER_DAY
   };
-  /**
-   * Turns "14d", "2w", "6h", "3m" (months) or an ISO date into an epoch-ms point in time.
-   * A relative period is counted back from `nowAtMs`.
-   */
+  // Why: "3m" means months, not minutes.
   static parsePointInTime(value, nowAtMs = Date.now()) {
     if (!value) {
       return void 0;
@@ -452,7 +435,7 @@ var TimeUtil = class _TimeUtil {
   static toIso(atMs) {
     return atMs === void 0 ? void 0 : new Date(atMs).toISOString();
   }
-  /** Sum of the gaps between consecutive events, skipping gaps longer than `idleMs` (the person was away). */
+  // Why: gaps longer than `idleMs` mean the person was away.
   static activeTime(sortedEventsAtMs, idleMs) {
     let activeMs = 0;
     for (let index = 1; index < sortedEventsAtMs.length; index++) {
@@ -484,7 +467,7 @@ var TokenUsageUtil = class {
       cacheWrite: left.cacheWrite + right.cacheWrite
     };
   }
-  /** Everything the model read: new input plus cache reads and writes. */
+  // Why: includes cache reads and writes.
   static input(usage) {
     return usage.input + usage.cacheRead + usage.cacheWrite;
   }
@@ -495,27 +478,24 @@ var TokenUsageUtil = class {
 
 // src/Shared/Utils/VersionUtil.ts
 var VersionUtil = class {
-  /** Replaced by the package version at build time; "dev" when running from source. */
+  // Why: esbuild replaces it at build time; "dev" when running from source.
   static VERSION = true ? "0.1.0" : "dev";
 };
 
 // src/Shared/Services/AttributionService.ts
 var UNKNOWN_SUBAGENT_TYPE = "subagent";
 var AttributionService = class _AttributionService {
-  /** `pieceIds` are the inventory ids; with none, every name is taken as is. */
   constructor(pieceIds) {
     this.pieceIds = pieceIds;
   }
-  /** Attribution for steps no skill, command or subagent was driving. */
   static MAIN_PIECE = "main";
-  /** Marks agents that aren't in the inventory (built-in ones like general-purpose or Explore). */
+  // Why: agents missing from the inventory are built-in ones (general-purpose, Explore).
   static BUILT_IN_SUFFIX = " (built-in)";
   static UNRESOLVED_SUBAGENT_PIECE = `agent:${UNKNOWN_SUBAGENT_TYPE}`;
   static withoutBuiltInSuffix(pieceId) {
     const suffix = _AttributionService.BUILT_IN_SUFFIX;
     return pieceId.endsWith(suffix) ? pieceId.slice(0, -suffix.length) : pieceId;
   }
-  /** Signals may mark a piece as built-in ("agent:Explore (built-in)"); it's still the same piece. */
   static isSamePiece(signalPiece, piece) {
     return signalPiece === piece || signalPiece.startsWith(`${piece} `);
   }
@@ -547,14 +527,13 @@ var AttributionService = class _AttributionService {
     this.attributeMainThread(mainEvents, index);
     return index;
   }
-  /** The inventory id for a piece seen in a transcript; agents missing from the inventory are marked built-in. */
   pieceIdFor(kind, name) {
     const pieceId = `${kind}:${name}`;
     const isKnown = this.pieceIds.has(pieceId) || this.pieceIds.size === 0;
     const isBuiltInAgent = !isKnown && kind === "agent" && name !== UNKNOWN_SUBAGENT_TYPE;
     return isBuiltInAgent ? `${pieceId}${_AttributionService.BUILT_IN_SUFFIX}` : pieceId;
   }
-  /** A slash command runs either a skill or a command file; prefer the skill when both exist. */
+  // Why: a slash command runs either a skill or a command file; the skill wins when both exist.
   commandPieceId(name) {
     return this.pieceIds.has(`skill:${name}`) ? `skill:${name}` : `command:${name}`;
   }
@@ -572,7 +551,7 @@ var AttributionService = class _AttributionService {
       }
     }
   }
-  /** A call belongs to the pieces running in its turn; a skill it loads joins them, an agent it starts follows the turn. */
+  // Why: a skill a call loads joins the turn's pieces; an agent it starts is only inherited by the next prompt.
   attributeCall(call, turn, index) {
     const skillName = call.skillInUse ?? call.skill;
     if (skillName) {
@@ -606,7 +585,7 @@ var CostService = class _CostService {
   constructor(prices) {
     this.prices = prices;
   }
-  /** List prices that may be outdated; override them in .imh/config.json. */
+  // Why: list prices may be outdated; .imh/config.json overrides them.
   static DEFAULT_PRICES = {
     opus: {
       input: 5,
@@ -626,7 +605,7 @@ var CostService = class _CostService {
     }
   };
   /**
-   * The price-table key for a model: a listed family it contains, "default" for an unnamed model or an
+   * Why: The price-table key for a model: a listed family it contains, "default" for an unnamed model or an
    * unlisted Claude model, and undefined for anything else, which is left unpriced rather than guessed.
    * Add a key to `prices` in .imh/config.json (e.g. "glm") to price other models.
    */
@@ -644,7 +623,7 @@ var CostService = class _CostService {
   isPriced(model) {
     return this.modelFamily(model) !== void 0;
   }
-  /** 0 for an unpriced model; callers report those models so the gap is visible. */
+  // Why: 0 for an unpriced model; callers report those models so the gap is visible.
   costUsd(usage, model) {
     const family = this.modelFamily(model);
     if (family === void 0) {
@@ -677,8 +656,7 @@ var OccurrenceCollectorService = class {
     this.idToGroup.set(id, group);
     return group;
   }
-  /** Counts a value (an error, a recovery command, a file) seen with an occurrence of the group. */
-  /** Adds `amount` (1 by default) to `value`; amounts other than 1 weigh a value, e.g. by tokens. */
+  // Why: amounts other than 1 weigh a value, e.g. by tokens.
   count(group, detail, value, amount = 1) {
     const valueToCount = group.counters[detail] ?? /* @__PURE__ */ new Map();
     valueToCount.set(value, (valueToCount.get(value) ?? 0) + amount);
@@ -693,7 +671,6 @@ var OccurrenceCollectorService = class {
 import { createHash } from "node:crypto";
 var DEFAULT_HASH_CHARS = 12;
 var HashUtil = class {
-  /** A short sha256, enough to detect changes and build stable ids. */
   static sha(text, length = DEFAULT_HASH_CHARS) {
     return createHash("sha256").update(text).digest("hex").slice(0, length);
   }
@@ -717,7 +694,6 @@ var SignalDetectorService = class {
     this.attribution = attribution;
     this.collector = collector;
   }
-  /** Runs every per-session detector. */
   detectInSession(session, index) {
     this.detectToolFailures(session, index);
     this.detectRepeatedReads(session, index);
@@ -726,7 +702,6 @@ var SignalDetectorService = class {
     this.detectApiErrors(session, index);
     this.detectCompactions(session);
   }
-  /** Greedy clustering of prompts by word-set similarity; a cluster seen in enough sessions is a repeated request. */
   detectRepeatedRequests(sessions) {
     const thresholds = this.options.thresholds;
     const clusters = [];
@@ -819,7 +794,6 @@ var SignalDetectorService = class {
       }
     }
   }
-  /** The conversation outgrew the context window: the work may need subagents, a skill, or separate sessions. */
   detectCompactions(session) {
     for (const compaction of session.compactions) {
       const isSubagent = !SessionUtil.isMainThread(compaction.thread);
@@ -842,7 +816,6 @@ var SignalDetectorService = class {
       group.details.maxContextTokens = Math.max(group.details.maxContextTokens ?? 0, contextTokens) || void 0;
     }
   }
-  /** Failed model API requests: a wrong model name or expired credentials are harness problems. */
   detectApiErrors(session, index) {
     for (const apiError of session.apiErrors) {
       const isSubagent = !SessionUtil.isMainThread(apiError.thread);
@@ -879,7 +852,6 @@ var SignalDetectorService = class {
       }
     }
   }
-  /** Reads of one file in one thread after the first, when there are enough and the file did not change in between. */
   extraReadsOf(session, reads) {
     const thresholds = this.options.thresholds;
     const [firstRead] = reads;
@@ -954,7 +926,7 @@ var SignalDetectorService = class {
   isSuccessfulRead(call) {
     return call.category === "read" && call.filePath !== void 0 && call.result?.isError !== true;
   }
-  /** Cost of a failed step: time until the agent reacted, and the tokens of the turn spent reacting. */
+  // Why: cost of a failed step: time until the agent reacted, and the tokens of the turn spent reacting.
   reactionCost(call, index) {
     const threadMessages = index.threadIdToMessages.get(call.thread.id) ?? [];
     const resultAtMs = call.result?.returnedAtMs ?? call.calledAtMs ?? 0;
@@ -969,7 +941,7 @@ var SignalDetectorService = class {
       model: reaction?.model
     };
   }
-  /** Wait until the thread got a real answer after the failed request (retries and fallbacks). */
+  // Why: cost of a failed request: the wait until the thread got a real answer (retries and fallbacks).
   apiErrorCost(apiError, index) {
     const failedAtMs = apiError.occurredAtMs ?? 0;
     const answer = (index.threadIdToMessages.get(apiError.thread.id) ?? []).find(
@@ -982,7 +954,7 @@ var SignalDetectorService = class {
       model: answer?.model
     };
   }
-  /** Cost of an unnecessary read: its duration and the tokens it added to the context. */
+  // Why: cost of an unnecessary read: its duration and the tokens it added to the context.
   readCost(read, index) {
     const durationMs = (read.result?.returnedAtMs ?? 0) - (read.calledAtMs ?? 0);
     return {
@@ -994,7 +966,7 @@ var SignalDetectorService = class {
       model: index.threadIdToMessages.get(read.thread.id)?.[0]?.model
     };
   }
-  /** Cost of a turn the user corrected or interrupted (an upper bound): main-thread time and tokens in it. */
+  // Why: cost of a corrected or interrupted turn is an upper bound: all main-thread time and tokens in it.
   correctedTurnCost(index, turnStartAtMs, turnEndAtMs) {
     if (turnStartAtMs === void 0 || turnEndAtMs === void 0) {
       return {
@@ -1014,7 +986,7 @@ var SignalDetectorService = class {
       model: turnMessages[0]?.model
     };
   }
-  /** The command that worked after a failure: the next successful command in the thread, if it is a different one. */
+  // Why: only a different command counts as a recovery.
   recoveryOf(failedCall, threadCommands) {
     const failedIndex = threadCommands.indexOf(failedCall);
     const nextCommands = threadCommands.slice(failedIndex + 1, failedIndex + 1 + RECOVERY_WINDOW_CALLS);
@@ -1022,7 +994,7 @@ var SignalDetectorService = class {
     return firstSuccess && firstSuccess.key !== failedCall.key ? firstSuccess.key : void 0;
   }
   /**
-   * A recovery does the same job another way (`npm test` → `pnpm test`). Looking around (`ls`, `cat`) or
+   * Why: A recovery does the same job another way (`npm test` → `pnpm test`). Looking around (`ls`, `cat`) or
    * moving on to other work (`git add` after a failed script) is not one.
    */
   isPlausibleRecovery(failedCall, candidate) {
@@ -1035,7 +1007,7 @@ var SignalDetectorService = class {
     }
     return candidate.key.split(" ")[0] === failedCall.key.split(" ")[0];
   }
-  /** Reading a file again is legitimate after it was edited or changed by a command in between. */
+  // Why: reading a file again is legitimate after it was edited or changed by a command in between.
   wasChangedBetween(session, firstRead, laterRead) {
     const fromAtMs = firstRead.calledAtMs ?? 0;
     const toAtMs = laterRead.calledAtMs ?? 0;
@@ -1102,7 +1074,6 @@ var WorkflowDetectorService = class {
       }
     }
   }
-  /** Every run of distinct work commands, per thread, keeping the first time each session ran it. */
   candidatesOf(sessions) {
     const gramToCandidate = /* @__PURE__ */ new Map();
     for (const session of sessions) {
@@ -1112,7 +1083,6 @@ var WorkflowDetectorService = class {
     }
     return [...gramToCandidate.values()];
   }
-  /** Every contiguous slice of a thread's commands with an allowed workflow length. */
   windowsOf(calls) {
     const windows = [];
     for (let length = this.options.thresholds.minWorkflowSteps; length <= MAX_WORKFLOW_STEPS; length++) {
@@ -1122,7 +1092,6 @@ var WorkflowDetectorService = class {
     }
     return windows;
   }
-  /** Records one window of commands as a run of its n-gram, unless it repeats a step, spreads too long or overlaps the last run. */
   addWindow(gramToCandidate, sessionId, window) {
     const steps = window.map((call) => call.key);
     const isTooSpread = this.spanOf(window) > MAX_WORKFLOW_SPAN_MINUTES * TimeUtil.MS_PER_MINUTE;
@@ -1154,7 +1123,7 @@ var WorkflowDetectorService = class {
     return [...threadIdToCalls.values()];
   }
   /**
-   * Longest workflows first, so the whole procedure wins over its pieces: a shorter sequence inside a kept
+   * Why: Longest workflows first, so the whole procedure wins over its pieces: a shorter sequence inside a kept
    * one is dropped when the kept one happens in about as many sessions. Then the most widespread first.
    */
   withoutSubsumed(candidates) {
@@ -1187,7 +1156,6 @@ var WorkflowDetectorService = class {
     const endedAtMs = lastCall?.result?.returnedAtMs ?? lastCall?.calledAtMs ?? 0;
     return endedAtMs - (calls[0]?.calledAtMs ?? endedAtMs);
   }
-  /** Time from the first step until the last one returned, and the tokens of the messages that issued the steps. */
   workflowCost(calls, index) {
     const messageIds = new Set(calls.map((call) => call.messageId));
     const stepMessages = (index.threadIdToMessages.get(calls[0]?.thread.id ?? "") ?? []).filter((message) => messageIds.has(message.id));
@@ -1220,7 +1188,7 @@ var ContextLoadDetectorService = class {
           },
           pieces: [loads.piece],
           activeMs: 0,
-          // Counted once as input; in practice it is re-read on every later turn of the thread.
+          // Why: counted once as input; in practice it is re-read on every later turn of the thread.
           usage: {
             input: tokens,
             output: 0,
@@ -1233,7 +1201,6 @@ var ContextLoadDetectorService = class {
       }
     }
   }
-  /** Sources over the token threshold that were loaded repeatedly, or that once returned a huge result. */
   heavySources(sessions, sessionIdToIndex) {
     const thresholds = this.options.thresholds;
     const keyToLoads = /* @__PURE__ */ new Map();
@@ -1269,7 +1236,7 @@ var ContextLoadDetectorService = class {
     });
   }
   /**
-   * The material a call loads: a file for reads; for shell, the exact command when it only looks around
+   * Why: The material a call loads: a file for reads; for shell, the exact command when it only looks around
    * (`cat a.ts` and `cat b.ts` are different material), otherwise its key (every `git diff` prints a diff).
    */
   sourceOf(call) {
@@ -1303,7 +1270,6 @@ var SignalService = class _SignalService {
     this.options = options;
     this.costService = new CostService(options.prices);
   }
-  /** When a group of occurrences is strong enough to report. Piece signals (unused, large) are built separately. */
   static SIGNAL_TYPE_TO_THRESHOLD = {
     failed_command: { minOccurrences: "minFailures", minSessions: "minFailureSessions" },
     tool_error: { minOccurrences: "minFailures", minSessions: "minFailureSessions" },
@@ -1427,7 +1393,7 @@ var SignalService = class _SignalService {
     const score = signal.cost.activeMinutes * SCORE_WEIGHTS.perActiveMinute + signal.cost.usd * SCORE_WEIGHTS.perUsd + signal.sessions * SCORE_WEIGHTS.perSession + countedOccurrences * SCORE_WEIGHTS.perOccurrence - (signal.isPartial ? SCORE_WEIGHTS.partialPenalty : 0);
     return NumberUtil.round(score);
   }
-  /** Pieces nobody used during the period. Needs enough sessions for absence to mean something. */
+  // Why: needs enough sessions for absence to mean something.
   unusedPieceSignals(sessions, inventory) {
     if (sessions.length < this.options.minSessionsForUnused) {
       return [];
@@ -1482,7 +1448,7 @@ var SignalService = class _SignalService {
       ...call.category === "mcp" ? [call.key] : []
     ];
   }
-  /** Editable pieces large enough to be worth trimming; instructions are loaded on every turn. */
+  // Why: instructions are loaded on every turn, so their size costs every time.
   largePieceSignals(inventory) {
     return inventory.pieces.filter((piece) => piece.isEditable && SIZE_KINDS.has(piece.kind)).filter((piece) => piece.approxTokens >= this.options.largePieceTokens).map(
       (piece) => this.pieceSignal(piece, {
@@ -1518,7 +1484,7 @@ var SignalService = class _SignalService {
       score: 0
     };
   }
-  /** A piece changed after the newest evidence may already be fixed: mark the signal partial. */
+  // Why: a piece changed after the newest evidence may already be fixed, so the signal is partial.
   markPiecesChangedAfterEvidence(signals, inventory) {
     const pieceIdToPiece = new Map(inventory.pieces.map((piece) => [piece.id, piece]));
     for (const signal of signals) {
@@ -1541,7 +1507,7 @@ var SignalService = class _SignalService {
       }
     }
   }
-  /** Evidence picked round-robin across sessions, so it shows the spread instead of the first N. */
+  // Why: round-robin across sessions shows the spread instead of the first N.
   spreadEvidence(sortedOccurrences) {
     const maxEvidence = this.options.maxEvidence;
     const sessionIdToOccurrences = /* @__PURE__ */ new Map();
@@ -1687,14 +1653,14 @@ var CompareService = class _CompareService {
     this.config = config;
     this.idleMs = idleMs;
   }
-  /** Instructions, hooks and settings apply to every session, so every session "uses" them. */
+  // Why: instructions, hooks and settings apply to every session, so every session "uses" them.
   static PIECE_KIND_TO_USAGE_CHECK = {
     agent: (session, name) => session.threads.some((thread) => thread.thread.agentType === name) || session.tools.some((call) => call.subagentType === name),
     skill: (session, name) => session.tools.some((call) => call.skill === name) || session.prompts.some((prompt) => prompt.command === name),
     command: (session, name) => session.prompts.some((prompt) => prompt.command === name),
     mcp: (session, name) => session.tools.some((call) => call.category === "mcp" && call.key === `mcp:${name}`)
   };
-  /** Already priced into usdPerInvocation, so they inform the report but don't vote in the verdict. */
+  // Why: already priced into usdPerInvocation, so they inform the report but don't vote in the verdict.
   static TOKEN_METRICS = /* @__PURE__ */ new Set(["inputTokensPerInvocation", "outputTokensPerInvocation"]);
   static usesPiece(session, piece) {
     const [kind = "", ...nameParts] = piece.split(":");
@@ -1746,7 +1712,7 @@ var CompareService = class _CompareService {
     };
   }
   /**
-   * Time counts as much as money: a change that keeps the cost but makes the work faster is an improvement.
+   * Why: Time counts as much as money: a change that keeps the cost but makes the work faster is an improvement.
    * Lower is better for every metric.
    */
   significantMoves(before, after) {
@@ -1778,7 +1744,6 @@ var CompareService = class _CompareService {
     }
     return moves.every((move) => move.direction === "worse") ? "worse" : "mixed";
   }
-  /** Usage of a global piece is the usage of the main thread. */
   usagePieceOf(piece) {
     const isGlobalPiece = GLOBAL_PIECE_PREFIXES.some((prefix) => piece.startsWith(prefix));
     return isGlobalPiece ? AttributionService.MAIN_PIECE : piece;
@@ -1819,7 +1784,6 @@ var CompareService = class _CompareService {
 
 // src/Shared/Services/InventoryService.ts
 var InventoryService = class _InventoryService {
-  /** Enough to identify and locate a piece, without hashes and sizes. */
   static compactPiece(piece) {
     return {
       id: piece.id,
@@ -1870,7 +1834,7 @@ import { isAbsolute, join } from "node:path";
 // src/Shared/Utils/PathUtil.ts
 import { homedir as homedir2 } from "node:os";
 var PathUtil = class {
-  /** Replaces the home directory prefix with `~`, so outputs don't leak usernames. */
+  // Why: outputs must not leak usernames.
   static tildify(path) {
     const home = homedir2();
     return path.startsWith(home) ? `~${path.slice(home.length)}` : path;
@@ -2103,7 +2067,6 @@ var AnalysisService = class _AnalysisService {
     await store.writeJson(_AnalysisService.LAST_ANALYSIS_FILE, analysis);
     return this.compact(analysis, options);
   }
-  /** Fewer signals and less evidence, to keep the agent's context small. */
   compact(analysis, options) {
     const maxSignals = options.maxSignals ?? DEFAULT_MAX_SIGNALS;
     const maxEvidence = options.maxEvidence ?? DEFAULT_MAX_EVIDENCE;
@@ -2123,7 +2086,7 @@ var AnalysisService = class _AnalysisService {
       (signalPiece) => pieces.some((piece) => AttributionService.isSamePiece(signalPiece, piece))
     );
   }
-  /** A signal with a suggestion (in any status) is never suggested again. */
+  // Why: a signal with a suggestion, in any status, is never suggested again.
   markHandledSignals(signals, suggestions) {
     const signalIdToSuggestion = /* @__PURE__ */ new Map();
     for (const suggestion of suggestions) {
@@ -2141,7 +2104,6 @@ var AnalysisService = class _AnalysisService {
       }
     }
   }
-  /** Where the harness already mentions a failing command or the one that worked instead. */
   async addInstructionMentions(signals, inventory) {
     const mentionService = new MentionService(inventory);
     const failedCommandSignals = signals.filter((signal) => signal.type === "failed_command").slice(0, MAX_FAILED_COMMANDS_TO_SEARCH);
@@ -2265,7 +2227,6 @@ import { resolve } from "node:path";
 
 // src/Shared/Adapters/BaseProviderAdapter.ts
 var BaseProviderAdapter = class {
-  /** A sentence about the provider's own transcript retention, for reports. */
   retentionNote(retentionDays) {
     return `${this.displayName} deletes transcripts older than ${retentionDays} days. improve-my-harness never changes this setting.`;
   }
@@ -2296,7 +2257,6 @@ var FrontmatterUtil = class _FrontmatterUtil {
       body: text.slice(match[0].length)
     };
   }
-  /** Applies one frontmatter line: a list item, a continuation of block text, or a new `key: value`. */
   static readLine(state, line) {
     const isBlankOrComment = !line.trim() || line.trim().startsWith("#");
     if (isBlankOrComment) {
@@ -2330,7 +2290,7 @@ var FrontmatterUtil = class _FrontmatterUtil {
     const isFlowList = value.startsWith("[") && value.endsWith("]");
     state.data[newKey] = isFlowList ? _FrontmatterUtil.parseFlowList(value) : _FrontmatterUtil.parseScalar(value);
   }
-  /** A list field written as a YAML list, a flow list or a comma/space separated string (`tools: Read, Bash`). */
+  // Why: a list can be a YAML list, a flow list or a comma- or space-separated string (`tools: Read, Bash`).
   static asList(value) {
     if (value === void 0 || value === "") {
       return void 0;
@@ -2350,7 +2310,7 @@ var FrontmatterUtil = class _FrontmatterUtil {
   static parseFlowList(value) {
     return value.slice(1, -1).split(",").map((entry) => _FrontmatterUtil.unquote(entry.trim())).filter(Boolean);
   }
-  /** Splits on whitespace, keeping `Bash(git log *)` in one piece. */
+  // Why: `Bash(git log *)` must stay one entry.
   static splitOutsideParentheses(value) {
     const entries = [];
     let current = "";
@@ -2385,7 +2345,7 @@ var GIT_MAX_OUTPUT_BYTES = GIT_MAX_OUTPUT_MEBIBYTES * BYTES_PER_MEBIBYTE;
 var COMMIT_MARKER = "__COMMIT__";
 var PORCELAIN_PATH_OFFSET = 3;
 var GitUtil = class {
-  /** Last commit date of each file under `paths`, in one `git log` call. Empty outside a git repository. */
+  // Why: one `git log` call for all paths; empty outside a git repository.
   static async readChangeDates(repositoryDir, paths) {
     const changeDates = {
       pathToCommittedAt: /* @__PURE__ */ new Map(),
@@ -2437,7 +2397,7 @@ var GuardUtil = class _GuardUtil {
   static asArray(value) {
     return Array.isArray(value) ? value : [];
   }
-  /** The first of several possible keys that holds a string. Agents rename fields between versions. */
+  // Why: agents rename fields between versions.
   static firstString(record, keys) {
     for (const key of keys) {
       const value = _GuardUtil.asString(record?.[key]);
@@ -2501,7 +2461,7 @@ var InventoryBuilder = class {
       modifiedSource: "mtime"
     } : {};
   }
-  /** A file's path and content, so renaming or editing a reference changes the skill's hash. */
+  // Why: path and content both go in, so renaming a reference changes the skill's hash.
   async fileHash(file) {
     const fileStat = await stat(file).catch(() => void 0);
     const isHashable = fileStat !== void 0 && fileStat.size <= MAX_HASHED_FILE_BYTES;
@@ -2509,7 +2469,7 @@ var InventoryBuilder = class {
     return HashUtil.sha(`${relative(this.projectDir, file)}
 ${content.toString("base64")}`);
   }
-  /** Same name in two scopes (a user and a project skill, say): keep both and disambiguate the id. */
+  // Why: the same name can exist in two scopes (a user and a project skill); both are kept, with distinct ids.
   uniqueId(kind, name, scope) {
     const baseId = `${kind}:${name}`;
     const isTaken = this.pieces.some((piece) => piece.id === baseId);
@@ -2614,7 +2574,6 @@ var ClaudeCodeInventoryService = class {
       await builder.addFile(instructionFile);
     }
   }
-  /** Skills in `<base>/skills/<name>/SKILL.md`, agents in `<base>/agents/**.md`, commands in `<base>/commands/**.md`. */
   async addComponents(builder, baseDir, scope, componentOptions = {}) {
     const prefix = componentOptions.namePrefix ?? "";
     const plugin = componentOptions.plugin;
@@ -2669,11 +2628,10 @@ var ClaudeCodeInventoryService = class {
     const text = await readFile2(file, "utf8").catch(() => "");
     return FrontmatterUtil.asText(FrontmatterUtil.parse(text).data.name);
   }
-  /** `agents/review/security.md` → `review:security`, the way Claude Code names nested components. */
+  // Why: Claude Code names nested components with `:` (`agents/review/security.md` → `review:security`).
   nameFromPath(baseDir, file) {
     return relative(baseDir, file).replace(/\.md$/, "").replace(/[\\/]/g, ":");
   }
-  /** Everything in a skill's folder besides SKILL.md, sorted, so the agent knows what to read. */
   async skillFolderFiles(dir, depth = 0) {
     if (depth > MAX_SKILL_FOLDER_DEPTH) {
       return [];
@@ -2710,7 +2668,7 @@ var ClaudeCodeInventoryService = class {
     }
     return files;
   }
-  /** Hooks, permissions, enabled plugins and retention, read from lowest to highest precedence so later files win. */
+  // Why: settings are read from lowest to highest precedence, so later files win.
   async addSettings(builder, shouldIncludeUser) {
     const projectDir = builder.projectDir;
     const settingsFiles = [];
@@ -2814,7 +2772,6 @@ var ClaudeCodeInventoryService = class {
     }
     return pieces;
   }
-  /** Project servers from `.mcp.json`; user and local servers from the user-level `.claude.json`. */
   async addMcpServers(builder, shouldIncludeUser) {
     const projectMcpFile = join2(builder.projectDir, ".mcp.json");
     const projectMcp = await this.readJsonFile(projectMcpFile);
@@ -2858,7 +2815,7 @@ var ClaudeCodeInventoryService = class {
       };
     });
   }
-  /** Plugins are read-only for the user: findings about them become recommendations, never edits. */
+  // Why: plugins are read-only for the user, so findings about them become recommendations, never edits.
   async addPlugins(builder, pluginIdToIsEnabled) {
     for (const [pluginId, installPath] of await this.readInstalledPlugins()) {
       if (pluginIdToIsEnabled.get(pluginId) === false) {
@@ -2891,7 +2848,7 @@ var ClaudeCodeInventoryService = class {
       });
     }
   }
-  /** Plugin id → install path, from `installed_plugins.json` (accepts both the older and the versioned shape). */
+  // Why: `installed_plugins.json` has an older and a versioned shape; both are accepted.
   async readInstalledPlugins() {
     const pluginIdToInstallPath = /* @__PURE__ */ new Map();
     const installedFile = join2(this.homeDir, "plugins", "installed_plugins.json");
@@ -2920,7 +2877,7 @@ import { basename as basename2, isAbsolute as isAbsolute2, join as join4, relati
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 var JsonlUtil = class _JsonlUtil {
-  /** Streams a JSONL file line by line, so transcripts of any size are read with bounded memory. */
+  // Why: streams line by line, so transcripts of any size use bounded memory.
   static async read(file, handlers) {
     const lines = createInterface({
       input: createReadStream(file, { encoding: "utf8" }),
@@ -2954,7 +2911,7 @@ import { join as join3 } from "node:path";
 
 // src/Shared/Utils/EnvUtil.ts
 var EnvUtil = class {
-  /** Returns the variable's value, treating an empty string as unset. */
+  // Why: an empty string counts as unset.
   static read(name) {
     const value = process.env[name];
     return value === "" ? void 0 : value;
@@ -2963,17 +2920,16 @@ var EnvUtil = class {
 
 // src/Providers/ClaudeCode/Utils/ClaudeCodePathUtil.ts
 var ClaudeCodePathUtil = class {
-  /** Claude Code's config directory. `IMH_CLAUDE_HOME` exists for tests. */
+  // Why: `IMH_CLAUDE_HOME` exists so tests can point at a fixture.
   static homeDir() {
     return EnvUtil.read("IMH_CLAUDE_HOME") ?? EnvUtil.read("CLAUDE_CONFIG_DIR") ?? join3(homedir3(), ".claude");
   }
-  /** The user-level `.claude.json`, which holds user and per-project MCP servers. */
   static claudeJsonPath() {
     const configDir = EnvUtil.read("CLAUDE_CONFIG_DIR");
     const defaultPath = configDir ? join3(configDir, ".claude.json") : join3(homedir3(), ".claude.json");
     return EnvUtil.read("IMH_CLAUDE_JSON") ?? defaultPath;
   }
-  /** Claude Code keeps a project's transcripts in `projects/<cwd with every non-alphanumeric replaced by "-">`. */
+  // Why: Claude Code keeps a project's transcripts in `projects/<cwd with every non-alphanumeric character replaced by "-">`.
   static encodeProjectDir(projectDir) {
     return projectDir.replace(/[^a-zA-Z0-9]/g, "-");
   }
@@ -2994,7 +2950,6 @@ var HOOK_BLOCKED = /(hook (?:error|blocked|denied)|blocked by (?:a |the )?(?:\w+
 var COMPACTION_CAVEAT = /^Caveat: The messages below were generated/i;
 var RESULT_HEAD_CHARS = 600;
 var ClaudeCodeTranscriptUtil = class _ClaudeCodeTranscriptUtil {
-  /** Strips harness-injected blocks from a user message, leaving what the person typed. */
   static cleanPrompt(rawText) {
     const commandName = /<command-name>\s*\/?([^<\s]+)\s*<\/command-name>/.exec(rawText)?.[1];
     const commandArguments = /<command-args>([\s\S]*?)<\/command-args>/.exec(rawText)?.[1];
@@ -3008,7 +2963,7 @@ var ClaudeCodeTranscriptUtil = class _ClaudeCodeTranscriptUtil {
   static isInterruption(text) {
     return text.trim().startsWith(INTERRUPTION_PREFIX);
   }
-  /** Claude Code writes this notice when it compacts a conversation; it isn't something the person typed. */
+  // Why: Claude Code writes this notice when it compacts a conversation; the person didn't type it.
   static isCompactionCaveat(text) {
     return COMPACTION_CAVEAT.test(text);
   }
@@ -3032,7 +2987,6 @@ var ClaudeCodeTranscriptUtil = class _ClaudeCodeTranscriptUtil {
     }
     return isMarkedError || wasInterrupted ? "error" : "ok";
   }
-  /** The person's words after "the user said:", when they rejected a call with feedback. */
   static rejectionFeedback(text) {
     const marker = REJECTION_FEEDBACK_MARKER.exec(text);
     if (!marker) {
@@ -3041,7 +2995,6 @@ var ClaudeCodeTranscriptUtil = class _ClaudeCodeTranscriptUtil {
     const feedback = text.slice(marker.index + marker[0].length).trim();
     return feedback === "" ? void 0 : feedback;
   }
-  /** Error text without Claude Code's wrapper tags, ready for `NormalizeUtil.errorKey`. */
   static errorText(text) {
     return text.replace(/<\/?tool_use_error>/g, "");
   }
@@ -3187,7 +3140,6 @@ var ClaudeCodeSessionService = class {
       }
     });
   }
-  /** A subagent's type, found through the delegation whose result named it or whose prompt it received. */
   typeFromDelegation(context, agentId) {
     const delegations = context.facts.tools.filter((call) => call.subagentType !== void 0);
     const firstPromptHash = context.threadIdToFirstPromptHash.get(agentId);
@@ -3422,7 +3374,7 @@ var ClaudeCodeSessionService = class {
       occurredAtMs: line.occurredAtMs
     });
   }
-  /** Older transcripts have no environment record; the working directory's shape still tells the platform. */
+  // Why: older transcripts have no environment record; the working directory's shape still tells the platform.
   platformFromPath(projectDir) {
     if (projectDir === void 0) {
       return void 0;
@@ -3435,13 +3387,13 @@ var ClaudeCodeSessionService = class {
     }
     return projectDir.startsWith("/home/") ? "linux" : void 0;
   }
-  /** Claude Code records the platform and shell in an `environment` attachment; the first one wins. */
+  // Why: Claude Code records the platform and shell in an `environment` attachment; the first one wins.
   readEnvironment(context, snapshot) {
     const environment = context.facts.environment;
     environment.platform ??= GuardUtil.asString(snapshot?.platform);
     environment.shell ??= GuardUtil.asString(snapshot?.shell);
   }
-  /** Claude Code's own running cost; the last line of each run holds that run's total. */
+  // Why: `cost-state` is a running total; the last line of each run holds that run's total.
   handleCostState(context, line) {
     const costUsd = GuardUtil.asNumber(line.record.totalCostUSD);
     if (costUsd === void 0) {
@@ -3486,11 +3438,7 @@ var ClaudeCodeSessionService = class {
     }
     return GuardUtil.asArray(message.content).map((item) => GuardUtil.asString(GuardUtil.asRecord(item)?.text) ?? "").join("\n");
   }
-  /**
-   * A prompt the person typed while the agent was busy is written as a `queued_command` attachment,
-   * never as a user line. Other queued commands (finished background tasks, messages from other
-   * sessions) are not the person's words.
-   */
+  // Why: a prompt typed while the agent is busy is written as a `queued_command` attachment, never as a user line; other queued commands (finished background tasks, other sessions) are not the person's words.
   handleAttachment(context, line) {
     const attachment = GuardUtil.asRecord(line.record.attachment);
     if (attachment?.type === "environment") {
@@ -3571,7 +3519,6 @@ var ClaudeCodeSessionService = class {
       returnedAtMs: line.occurredAtMs
     };
   }
-  /** What the person wrote when they rejected a call, without Claude Code's fixed wording around it. */
   resultExcerptText(text, kind) {
     if (kind === "ok") {
       return void 0;
@@ -3702,7 +3649,7 @@ var ClaudeCodeProviderAdapter = class extends BaseProviderAdapter {
   retentionNote(retentionDays) {
     return `Claude Code deletes transcripts older than ${retentionDays} days at startup. improve-my-harness never changes this setting.`;
   }
-  /** Paths are resolved on every call, so an environment change (as in tests) is picked up. */
+  // Why: paths are resolved on every call, so an environment change (as in tests) is picked up.
   sessionService() {
     return new ClaudeCodeSessionService(this.paths().homeDir);
   }
@@ -3825,20 +3772,20 @@ var StoreService = class _StoreService {
   constructor(root) {
     this.root = root;
   }
-  /** Bump when the parser's output shape changes, so cached facts are re-parsed. */
+  // Why: bump when the parser's output shape changes, so cached facts are re-parsed.
   static FACTS_VERSION = 5;
   static forProject(projectDir, dataDir) {
     return new _StoreService(dataDir ?? join5(projectDir, DATA_DIR_NAME));
   }
   /**
-   * Reads a file this tool wrote. Its shape is trusted because only this tool writes it;
+   * Why: Reads a file this tool wrote. Its shape is trusted because only this tool writes it;
    * files people may edit by hand (config.json) are validated by their reader.
    */
   async readJson(relativePath) {
     const text = await readFile4(join5(this.root, relativePath), "utf8").catch(() => void 0);
     return text === void 0 ? void 0 : GuardUtil.parseJson(text);
   }
-  /** Writes atomically (temp file + rename), so a crash never leaves a half-written file. */
+  // Why: writes atomically (temp file + rename), so a crash never leaves a half-written file.
   async writeJson(relativePath, value, shouldIndent = true) {
     const file = join5(this.root, relativePath);
     await mkdir(dirname2(file), { recursive: true });
@@ -3861,7 +3808,6 @@ var StoreService = class _StoreService {
   async saveFactsCache(cache) {
     await this.writeJson(FACTS_CACHE_FILE, cache, false);
   }
-  /** Always updates the latest inventory; keeps a dated snapshot only when the harness changed. */
   async saveInventory(inventory) {
     const previous = await this.readJson(LATEST_INVENTORY_FILE);
     const hasChanged = previous?.fingerprint !== inventory.fingerprint;
@@ -3946,13 +3892,13 @@ var SessionLoaderService = class {
       unparsedLines: sessions.reduce((total, facts) => total + facts.unparsedLines, 0)
     };
   }
-  /** Changes when the transcript or any of its subagent transcripts changes, or when the idle threshold changes. */
+  // Why: also changes when the idle threshold changes, since it is part of the parsed facts.
   cacheSignature(transcript, idleMs) {
     const subagentSignature = transcript.subagentFiles.map((subagentFile) => `${subagentFile.file}:${subagentFile.modifiedAtMs}:${subagentFile.bytes}`).join("|");
     return `${this.provider.type}:${transcript.modifiedAtMs}:${transcript.bytes}:${idleMs}:${subagentSignature}`;
   }
   /**
-   * A transcript in the project's own folder always belongs to it, even if the project moved since.
+   * Why: A transcript in the project's own folder always belongs to it, even if the project moved since.
    * One in a prefix-matched folder (`my-app-2`, a subfolder) belongs only when its cwd is inside the project.
    */
   belongsToProject(facts, transcript, options) {
@@ -4035,7 +3981,7 @@ var CompareCommand = class {
       changePoint.source
     );
   }
-  /** `--at` first, then the last applied suggestion for the piece, then the piece's last change. */
+  // Why: `--at` first, then the last applied suggestion for the piece, then the piece's last change.
   async findChangePoint(context, options) {
     const explicitAtMs = TimeUtil.parsePointInTime(options.changedAt);
     if (explicitAtMs !== void 0) {
@@ -4153,7 +4099,6 @@ var SuggestionService = class _SuggestionService {
   static isFindingClass(value) {
     return _SuggestionService.FINDING_CLASSES.includes(value);
   }
-  /** Validates suggestions written by the agent (from a file or stdin) before they are stored. */
   static parse(value) {
     const items = Array.isArray(value) ? value : [value];
     return items.map((item, itemIndex) => {
@@ -4187,7 +4132,7 @@ var SuggestionService = class _SuggestionService {
     const suggestions = await this.store.loadSuggestions();
     return status ? suggestions.filter((suggestion) => suggestion.status === status) : suggestions;
   }
-  /** Stores new suggestions; one whose id already exists is reported with its status and left as is. */
+  // Why: a suggestion whose id already exists is left as is.
   async add(newSuggestions) {
     const suggestions = await this.store.loadSuggestions();
     const createdAt = (/* @__PURE__ */ new Date()).toISOString();
@@ -4224,7 +4169,6 @@ var SuggestionService = class _SuggestionService {
     result.total = suggestions.length;
     return result;
   }
-  /** `appliedFingerprint` is the harness fingerprint right after the change, recorded for before/after. */
   async setStatus(id, status, note, appliedFingerprint) {
     const suggestions = await this.store.loadSuggestions();
     const suggestion = suggestions.find((candidate) => candidate.id === id);
@@ -4256,7 +4200,6 @@ var SuggestionsCommand = class {
     const context = await ContextService.create(options);
     return new SuggestionService(context.store).add(newSuggestions);
   }
-  /** Applied suggestions also record the harness fingerprint after the change, for before/after. */
   async setStatus(options) {
     const context = await ContextService.create(options);
     let appliedFingerprint;
@@ -4338,10 +4281,7 @@ var CLIModule = class _CLIModule {
       options: ARGUMENT_SPEC
     });
   }
-  /**
-   * Runs the CLI and sets the exit code: 0 on success, 1 on error. It never calls `process.exit()`, which
-   * would cut stdout short when it's a pipe (how agents run the script) and the JSON is larger than 64 KB.
-   */
+  // Why: never call `process.exit()`: it cuts stdout short when it is a pipe (how agents run the script) and the JSON is larger than 64 KB.
   run(argv) {
     this.main(argv).then(
       () => {

@@ -1,5 +1,4 @@
-// The composition root for providers: the only Shared module allowed to import from
-// src/Providers/ (ADR 0008). Adding a provider means adding one entry here.
+// Why: the only Shared module allowed to import from src/Providers/ (ADR 0008); adding a provider means adding one entry here.
 
 import { ClaudeCodeProviderAdapter } from "@/Providers/ClaudeCode/Adapters/ClaudeCodeProviderAdapter.js";
 import type { BaseProviderAdapter } from "@/Shared/Adapters/BaseProviderAdapter.js";

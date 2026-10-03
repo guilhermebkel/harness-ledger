@@ -4,7 +4,7 @@ import type { JsonLineHandlers } from "@/Shared/Protocols/UtilProtocol.js";
 import { GuardUtil } from "./GuardUtil.js";
 
 export class JsonlUtil {
-  /** Streams a JSONL file line by line, so transcripts of any size are read with bounded memory. */
+  // Why: streams line by line, so transcripts of any size use bounded memory.
   static async read(file: string, handlers: JsonLineHandlers): Promise<void> {
     const lines = createInterface({
       input: createReadStream(file, { encoding: "utf8" }),
@@ -28,7 +28,7 @@ export class JsonlUtil {
     try {
       handlers.onRecord(record, lineNumber);
     } catch {
-      // A line in a shape we don't understand must never stop the analysis (format drift).
+      // Why: a line in a shape we don't understand must never stop the analysis (format drift).
       handlers.onBadLine();
     }
   }

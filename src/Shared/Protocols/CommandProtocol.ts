@@ -5,7 +5,6 @@ import type { ProviderType } from "./ProviderProtocol.js";
 import type { Signal } from "./SignalProtocol.js";
 import type { SuggestionStatus } from "./SuggestionProtocol.js";
 
-/** Options every command accepts. */
 export interface CommonOptions {
   projectDir?: string;
   dataDir?: string;
@@ -13,7 +12,6 @@ export interface CommonOptions {
   isProjectOnly?: boolean;
   shouldReadAllProjects?: boolean;
   shouldSkipCache?: boolean;
-  /** Session ids to leave out, such as the session running the analysis. */
   excludedSessionIds?: string[];
 }
 
@@ -27,13 +25,13 @@ export interface AnalyzeOptions extends CommonOptions {
 
 export interface CompareOptions extends CommonOptions {
   piece: string;
-  /** When the piece changed. Defaults to an applied suggestion's date, then the piece's last change. */
+  // Why: defaults to an applied suggestion's date, then the piece's last change.
   changedAt?: string;
   since?: string;
 }
 
 export interface EvidenceOptions extends CommonOptions {
-  /** A signal id, or a unique prefix of one. */
+  // Why: a unique prefix of a signal id is accepted.
   signalId: string;
   maxEvidence?: number;
 }
@@ -41,7 +39,7 @@ export interface EvidenceOptions extends CommonOptions {
 export interface ListSuggestionsOptions extends CommonOptions { status?: SuggestionStatus }
 
 export interface AddSuggestionsOptions extends CommonOptions {
-  /** Raw input; validated where it enters the program. */
+  // Why: raw input; validated where it enters the program.
   items: unknown;
 }
 

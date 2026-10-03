@@ -13,7 +13,6 @@ import { ClaudeCodeInventoryService } from "@/Providers/ClaudeCode/Services/Clau
 import { ClaudeCodeSessionService } from "@/Providers/ClaudeCode/Services/ClaudeCodeSessionService.js";
 import { ClaudeCodePathUtil } from "@/Providers/ClaudeCode/Utils/ClaudeCodePathUtil.js";
 
-/** Claude Code: transcripts in `~/.claude/projects/`, harness in CLAUDE.md, `.claude/`, `.mcp.json` and plugins. */
 export class ClaudeCodeProviderAdapter extends BaseProviderAdapter {
   readonly type: ProviderType = "claude-code";
   readonly displayName = "Claude Code";
@@ -40,7 +39,7 @@ export class ClaudeCodeProviderAdapter extends BaseProviderAdapter {
       + "improve-my-harness never changes this setting.";
   }
 
-  /** Paths are resolved on every call, so an environment change (as in tests) is picked up. */
+  // Why: paths are resolved on every call, so an environment change (as in tests) is picked up.
   private sessionService(): ClaudeCodeSessionService {
     return new ClaudeCodeSessionService(this.paths().homeDir);
   }

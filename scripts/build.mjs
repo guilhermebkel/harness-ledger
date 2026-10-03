@@ -1,5 +1,4 @@
-// Bundles the CLI into a single file with no runtime dependencies.
-// dist/ is committed so the plugin works right after install, without npm install.
+// Why: dist/ is committed so the plugin works right after install, without npm install (ADR 0004).
 import { build } from "esbuild";
 import { readFileSync } from "node:fs";
 

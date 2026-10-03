@@ -11,7 +11,6 @@ import { StoreService } from "./StoreService.js";
 const MIN_PARSE_CONCURRENCY = 2;
 const MAX_PARSE_CONCURRENCY = 8;
 
-/** Finds a provider's transcripts, parses only new or changed ones, and keeps the sessions of this project and period. */
 export class SessionLoaderService {
   constructor(
     private readonly provider: BaseProviderAdapter,
@@ -49,7 +48,7 @@ export class SessionLoaderService {
       return facts;
     });
 
-    // Transcripts deleted by the provider's retention cleanup leave the cache too.
+    // Why: transcripts deleted by the provider's retention cleanup leave the cache too.
     const liveFiles = new Set(transcripts.map((transcript) => transcript.file));
     for (const file of Object.keys(cache.fileToEntry)) {
       if (!liveFiles.has(file)) {
@@ -83,7 +82,7 @@ export class SessionLoaderService {
     };
   }
 
-  /** Changes when the transcript or any of its subagent transcripts changes, or when the idle threshold changes. */
+  // Why: also changes when the idle threshold changes, since it is part of the parsed facts.
   private cacheSignature(transcript: TranscriptFile, idleMs: number): string {
     const subagentSignature = transcript.subagentFiles
       .map((subagentFile) => `${subagentFile.file}:${subagentFile.modifiedAtMs}:${subagentFile.bytes}`)
@@ -92,7 +91,7 @@ export class SessionLoaderService {
   }
 
   /**
-   * A transcript in the project's own folder always belongs to it, even if the project moved since.
+   * Why: A transcript in the project's own folder always belongs to it, even if the project moved since.
    * One in a prefix-matched folder (`my-app-2`, a subfolder) belongs only when its cwd is inside the project.
    */
   private belongsToProject(facts: SessionFacts, transcript: TranscriptFile | undefined, options: LoadOptions): boolean {

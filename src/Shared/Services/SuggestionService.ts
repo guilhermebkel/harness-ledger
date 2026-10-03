@@ -15,7 +15,6 @@ const MAX_TITLE_CHARS = 200;
 const MAX_CHANGE_CHARS = 2000;
 const MAX_NOTE_CHARS = 500;
 
-/** Suggestion state in `.imh/`, so the same problem is never suggested twice. */
 export class SuggestionService {
   static readonly FINDING_CLASSES: FindingClass[] = [
     "rule_ignored",
@@ -44,7 +43,6 @@ export class SuggestionService {
     return (SuggestionService.FINDING_CLASSES as string[]).includes(value);
   }
 
-  /** Validates suggestions written by the agent (from a file or stdin) before they are stored. */
   static parse(value: unknown): NewSuggestion[] {
     const items = Array.isArray(value) ? value : [value];
     return items.map((item, itemIndex) => {
@@ -83,7 +81,7 @@ export class SuggestionService {
     return status ? suggestions.filter((suggestion) => suggestion.status === status) : suggestions;
   }
 
-  /** Stores new suggestions; one whose id already exists is reported with its status and left as is. */
+  // Why: a suggestion whose id already exists is left as is.
   async add(newSuggestions: NewSuggestion[]): Promise<AddSuggestionsResult> {
     const suggestions = await this.store.loadSuggestions();
     const createdAt = new Date().toISOString();
@@ -121,7 +119,6 @@ export class SuggestionService {
     return result;
   }
 
-  /** `appliedFingerprint` is the harness fingerprint right after the change, recorded for before/after. */
   async setStatus(
     id: string,
     status: SuggestionStatus,

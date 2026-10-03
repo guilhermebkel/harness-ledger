@@ -3,7 +3,6 @@ import { ContextService } from "@/Shared/Services/ContextService.js";
 import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.js";
 import { VersionUtil } from "@/Shared/Utils/VersionUtil.js";
 
-/** `imh status`: how much history exists, what the harness holds and how the tool is configured. */
 export class StatusCommand {
   async run(options: CommonOptions): Promise<StatusResult> {
     const context = await ContextService.create(options);

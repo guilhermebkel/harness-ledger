@@ -4,7 +4,6 @@ import { CompareService } from "@/Shared/Services/CompareService.js";
 import { ContextService } from "@/Shared/Services/ContextService.js";
 import { TimeUtil } from "@/Shared/Utils/TimeUtil.js";
 
-/** `imh compare --piece <id>`: before/after metrics for one piece. */
 export class CompareCommand {
   async run(options: CompareOptions): Promise<CompareResult> {
     const context = await ContextService.create(options);
@@ -21,7 +20,7 @@ export class CompareCommand {
     );
   }
 
-  /** `--at` first, then the last applied suggestion for the piece, then the piece's last change. */
+  // Why: `--at` first, then the last applied suggestion for the piece, then the piece's last change.
   private async findChangePoint(context: ContextService, options: CompareOptions): Promise<ChangePoint | undefined> {
     const explicitAtMs = TimeUtil.parsePointInTime(options.changedAt);
     if (explicitAtMs !== undefined) {

@@ -1,5 +1,3 @@
-// Integration test against a fake Claude Code home (see AnalyzeCommand.test.ts).
-
 import { rmSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ClaudeCodeFixtureUtil, type Fixture, type TestRunOptions } from "@/Providers/ClaudeCode/Utils/ClaudeCodeFixtureUtil.js";
@@ -104,7 +102,7 @@ describe("CompareCommand counts time as much as cost", () => {
     const result = await compareAt("2026-09-18");
     expect(result.verdict).toBe("mixed");
     const metricToDirection = Object.fromEntries(result.moves.map((move) => [move.metric, move.direction]));
-    // Before the change: the slow and the fast sessions; after: fast, on a pricier model.
+    // Why: before the change there are slow and fast sessions; after, only fast ones, on a pricier model.
     expect(metricToDirection).toEqual({ activeMinutesPerInvocation: "better", usdPerInvocation: "worse" });
   });
 });

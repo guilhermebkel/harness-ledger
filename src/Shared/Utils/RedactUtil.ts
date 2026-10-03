@@ -1,5 +1,4 @@
-// Masks secret-looking values before anything leaves the parser (ADR 0007).
-// Reports, cached facts and stdout only ever see redacted text.
+// Why: everything leaves the parser redacted (ADR 0007): reports, cached facts and stdout.
 
 import { homedir } from "node:os";
 
@@ -25,7 +24,6 @@ const SECRET_PATTERNS: [RegExp, string][] = [
 const SENSITIVE_KEY_WORDS = ["pass", "secret", "token", "api[_-]?key", "access[_-]?key", "private[_-]?key", "credential", "auth"];
 const MAX_KEY_AFFIX_CHARS = 40;
 const KEY_AFFIX = `[\\w.-]{0,${MAX_KEY_AFFIX_CHARS}}`;
-/** `key=value`, `key: value` or `"key": "value"` where the key contains a sensitive word. */
 const SENSITIVE_ASSIGNMENT = new RegExp(
   `(["']?${KEY_AFFIX}(?:${SENSITIVE_KEY_WORDS.join("|")})${KEY_AFFIX}["']?\\s{0,4}[:=]\\s{0,4})(["']?)([^\\s"',;&]{4,})\\2`,
   "gi",
@@ -47,19 +45,17 @@ export class RedactUtil {
     return RedactUtil.withoutHomeFolder(withoutSecrets);
   }
 
-  /** The home folder carries the user's name; reports show it as `~`. */
   private static withoutHomeFolder(text: string): string {
     const home = homedir();
     const isUsableHome = home.length > 1 && home !== "/";
     if (!isUsableHome) {
       return text;
     }
-    // A longer folder that starts with the same name (/home/ana2 for /home/ana) is someone else's.
+    // Why: a longer folder that starts with the same name (/home/ana2 for /home/ana) is someone else's.
     const escapedHome = home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     return text.replace(new RegExp(`${escapedHome}(?![\\w.-])`, "g"), "~");
   }
 
-  /** Redacts and collapses to a single line of at most `maxChars`. */
   static excerpt(text: string, maxChars = DEFAULT_EXCERPT_CHARS): string {
     const oneLine = RedactUtil.redact(text).replace(/\s+/g, " ").trim();
     return oneLine.length > maxChars ? `${oneLine.slice(0, maxChars - 1)}…` : oneLine;

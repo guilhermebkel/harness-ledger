@@ -5,7 +5,6 @@ import type {
   SignalType,
 } from "@/Shared/Protocols/SignalProtocol.js";
 
-/** Collects occurrences of patterns into groups by signal id, before they become signals. */
 export class OccurrenceCollectorService {
   private readonly idToGroup = new Map<string, OccurrenceGroup>();
 
@@ -23,8 +22,7 @@ export class OccurrenceCollectorService {
     return group;
   }
 
-  /** Counts a value (an error, a recovery command, a file) seen with an occurrence of the group. */
-  /** Adds `amount` (1 by default) to `value`; amounts other than 1 weigh a value, e.g. by tokens. */
+  // Why: amounts other than 1 weigh a value, e.g. by tokens.
   count(group: OccurrenceGroup, detail: CountedDetail, value: string, amount = 1): void {
     const valueToCount = group.counters[detail] ?? new Map<string, number>();
     valueToCount.set(value, (valueToCount.get(value) ?? 0) + amount);

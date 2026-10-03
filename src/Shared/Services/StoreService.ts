@@ -1,6 +1,4 @@
-// Local state in <project>/.imh/. Only derived data lives here: redacted facts, inventory
-// snapshots, suggestion status and the last analysis (ADR 0007). Transcripts are read in
-// place and never copied.
+// Why: only derived, redacted data lives in .imh/; transcripts are read in place and never copied (ADR 0007).
 
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -16,7 +14,7 @@ const LATEST_INVENTORY_FILE = "inventory/latest.json";
 const SUGGESTIONS_FILE = "suggestions.json";
 
 export class StoreService {
-  /** Bump when the parser's output shape changes, so cached facts are re-parsed. */
+  // Why: bump when the parser's output shape changes, so cached facts are re-parsed.
   static readonly FACTS_VERSION = 5;
 
   constructor(readonly root: string) {}
@@ -26,7 +24,7 @@ export class StoreService {
   }
 
   /**
-   * Reads a file this tool wrote. Its shape is trusted because only this tool writes it;
+   * Why: Reads a file this tool wrote. Its shape is trusted because only this tool writes it;
    * files people may edit by hand (config.json) are validated by their reader.
    */
   async readJson<Shape>(relativePath: string): Promise<Shape | undefined> {
@@ -34,7 +32,7 @@ export class StoreService {
     return text === undefined ? undefined : (GuardUtil.parseJson(text) as Shape | undefined);
   }
 
-  /** Writes atomically (temp file + rename), so a crash never leaves a half-written file. */
+  // Why: writes atomically (temp file + rename), so a crash never leaves a half-written file.
   async writeJson(relativePath: string, value: unknown, shouldIndent = true): Promise<void> {
     const file = join(this.root, relativePath);
     await mkdir(dirname(file), { recursive: true });
@@ -61,7 +59,6 @@ export class StoreService {
     await this.writeJson(FACTS_CACHE_FILE, cache, false);
   }
 
-  /** Always updates the latest inventory; keeps a dated snapshot only when the harness changed. */
   async saveInventory(inventory: Inventory): Promise<SavedInventory> {
     const previous = await this.readJson<Inventory>(LATEST_INVENTORY_FILE);
     const hasChanged = previous?.fingerprint !== inventory.fingerprint;
