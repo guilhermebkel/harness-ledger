@@ -86,7 +86,7 @@ The layout and its reasons are in ADR 0008.
 
 ## Before committing
 
-Commit once per task, not per file: make all the edits, then verify once. Before the commit, `pnpm lint`, `pnpm typecheck` (tsc), `pnpm quality` and `pnpm test` must pass, and `dist/` must be rebuilt with `pnpm build`. `pnpm check` runs all of this and fails on a stale `dist/`; CI runs the same. `pnpm quality` runs knip (unused files, exports and dependencies; `knip.json`), dpdm (import cycles) and jscpd (code duplicated across files in `src/` and `scripts/`, tests and fixtures included; `.jscpd.json`). A finding there means delete the dead code or extract the shared part, not add an ignore. While iterating, run only the relevant test or file (`pnpm exec vitest run <file>`).
+Commit once per task, not per file: make all the edits, then verify once. Before the commit, `pnpm lint`, `pnpm typecheck` (tsc), `pnpm quality` and `pnpm test` must pass. `pnpm check` runs all of this plus a build to a scratch file; CI runs the same. `pnpm quality` runs knip (unused files, exports and dependencies; `knip.json`), dpdm (import cycles) and jscpd (code duplicated across files in `src/` and `scripts/`, tests and fixtures included; `.jscpd.json`). A finding there means delete the dead code or extract the shared part, not add an ignore. While iterating, run only the relevant test or file (`pnpm exec vitest run <file>`).
 
 ## Dependencies
 
@@ -98,7 +98,7 @@ Commit once per task, not per file: make all the edits, then verify once. Before
   ```
 
 - **No runtime dependencies.** Runtime code uses Node built-ins only. Dev dependencies are fine.
-- **Rebuild `dist/` in the same commit** as any change to `src/` (`pnpm check` fails otherwise).
+- **Don't commit `dist/`.** CI rebuilds and commits it on `master` after each merge (ADR 0004).
 
 ## Tests
 

@@ -21,8 +21,8 @@ SCRATCH=<a folder outside the repo>
 SESSIONS_HOME=<a folder whose projects/ holds the copy>
 PROJECT=<the project dir those sessions belong to, as recorded in them>
 
-git show HEAD:dist/imh.mjs > "$SCRATCH/imh-before.mjs"
-pnpm build && cp dist/imh.mjs "$SCRATCH/imh-after.mjs"
+node scripts/build.mjs --outfile "$SCRATCH/imh-after.mjs"
+git stash && node scripts/build.mjs --outfile "$SCRATCH/imh-before.mjs"; git stash pop
 
 for version in before after; do
   IMH_CLAUDE_HOME="$SESSIONS_HOME" node "$SCRATCH/imh-$version.mjs" analyze \

@@ -6,7 +6,8 @@ Claude Code runs `npm ci` for plugins that ship `package-lock.json`, which would
 
 ## Consequences
 
-- `dist/` must be rebuilt in the same commit as any change to `src/`. `pnpm check` (and CI) fails when it is stale.
+- Contributors never commit `dist/`. After each push to `master`, once the checks pass, the `publish-dist` job in `ci.yml` rebuilds it and commits it as `github-actions[bot]` with `[skip ci]`. Pull requests carry only source, and `pnpm check` builds to a scratch file to prove the bundle builds.
+- Between a merge and that job finishing (a few minutes), `master` holds new `src/` with the previous `dist/`. Installs in that window get the previous script, which still works on its own.
 - Runtime code may only use Node built-ins. Dev dependencies (TypeScript, esbuild, ESLint, Vitest) are fine.
 - Never commit `package-lock.json` (it is gitignored): it would make Claude Code run `npm ci` on install.
 - `pnpm-lock.yaml` only changes together with `package.json`.
@@ -15,3 +16,5 @@ Claude Code runs `npm ci` for plugins that ship `package-lock.json`, which would
 ## Status
 
 Revised 2026-10-02: originally "no lockfile" with npm; switched to pnpm with a committed lockfile.
+
+Revised 2026-10-03: `dist/` was rebuilt and committed by hand with every change to `src/`, and `pnpm check` failed when it was stale. That put a generated diff in every pull request and conflicts in every rebase, so CI now builds and commits it on `master` only.

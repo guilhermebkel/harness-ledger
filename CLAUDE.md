@@ -16,7 +16,7 @@ ADR 0008 has the reasons; `docs/code-standards.md` ("Architecture") has the rule
   - `Protocols/`: types only. `Utils/`: static helper classes (guards, env, time, redaction, JSONL, git).
 - `src/Providers/<Provider>/`: one agentic coding tool (Claude Code today), with the same folders as Shared. `Adapters/<Provider>ProviderAdapter.ts` extends `BaseProviderAdapter`; `Utils/<Provider>FixtureUtil.ts` builds a fake home and project in the tool's real format, for tests.
 - Tests sit next to the file they test (`*.test.ts`). There is no `test/` folder.
-- `dist/imh.mjs`: the bundled script the skill runs. Generated, committed (ADR 0004).
+- `dist/imh.mjs`: the bundled script the skill runs. Generated; CI rebuilds and commits it on `master` after each merge (ADR 0004). Never commit it by hand.
 - `.github/workflows/`: `ci.yml` (shared checks) and one workflow per provider (`claude-code.yml` validates the plugin and skill).
 - `scripts/`: `build.mjs` (bundle), `survey-transcripts.mjs` (the shape of a folder of transcripts, without their content) and `eslint-local-rules.mjs` (this repo's own lint rules, tested next to it).
 - Adding a provider (Codex, Cursor, ...): follow `docs/adding-a-provider.md`. It covers finding the sessions, exporting a sample of the last 7 days, learning the format, mapping it to the shared model and checking it on real sessions.
@@ -30,7 +30,7 @@ pnpm typecheck
 pnpm lint           # pnpm lint:fix for autofixable rules; includes complexity limits (sonarjs)
 pnpm quality        # knip (dead code, unused exports and deps), dpdm (import cycles) and jscpd (duplicated code)
 pnpm build          # src/ -> dist/imh.mjs
-pnpm check          # all of the above, and fails if dist/ is stale (CI runs this)
+pnpm check          # all of the above, building to a scratch file so dist/ is untouched (CI runs this)
 node dist/imh.mjs --help
 claude plugin validate .claude-plugin/plugin.json && claude plugin validate skills
 ```
@@ -38,7 +38,7 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 ## Rules
 
 - **Commit once per task, not per file.** Make all the edits a task needs, then verify once and commit everything together.
-- **Before every commit, run `pnpm lint`, `pnpm typecheck` (tsc), `pnpm quality` and `pnpm test`, and fix everything they report.** Then `pnpm build` and stage `dist/`. `pnpm check` runs all of this in one go and also fails on a stale `dist/`; CI runs the same. Never commit with lint errors, type errors, quality findings or failing tests; fix the code instead of raising a limit or adding an ignore.
+- **Before every commit, run `pnpm lint`, `pnpm typecheck` (tsc), `pnpm quality` and `pnpm test`, and fix everything they report.** `pnpm check` runs all of this in one go, plus a build to a scratch file; CI runs the same. Never commit with lint errors, type errors, quality findings or failing tests; fix the code instead of raising a limit or adding an ignore.
 - The v1 work is in PR #1 (`feat/v1-insights`), not merged yet: start new work from that branch, not from `master`.
 - While iterating, run only what you need (`pnpm exec vitest run <file>`, `pnpm exec eslint <file>`); keep the full run for the end.
 - Provider-specific code (paths, transcript and settings formats, tool names, prompt tags, env variables) lives only in `src/Providers/<Provider>/`. `src/Shared/` never imports a provider except through `ProviderModule`, and providers never import each other (ADR 0008, enforced by lint). If shared code needs provider knowledge, extend the shared model or `BaseProviderAdapter` instead.
@@ -47,7 +47,7 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 - Layers import only the ones below them: Protocols < Utils < Services/Adapters < Commands < Modules (enforced by lint; `docs/code-standards.md`).
 - Put each test next to the file it tests, named `<File>.test.ts`, and follow `docs/test-standards.md`: expected values written by hand, exact assertions, no logic in tests, doubles only at the process's edges (lint enforces part of it).
 - Import with the `@/` alias and the `.ts` file name (`@/Shared/Utils/TimeUtil.ts`), in the same folder too; never `../`, `./` or `.js` (enforced by lint). The alias is defined in `tsconfig.json` (`paths`) and mirrored in `vitest.config.mjs`.
-- Rebuild and commit `dist/` in the same commit as any change to `src/`.
+- Don't commit `dist/`: the `publish-dist` job in `ci.yml` rebuilds it and commits it on `master` once the checks pass. If a local `pnpm build` changed it, discard that (`git checkout dist/`).
 - Use pnpm, never npm: commit `pnpm-lock.yaml`, never `package-lock.json` (ADR 0004).
 - Runtime code uses only Node built-ins (Node 20+). No runtime dependencies (ADR 0004).
 - No comments by default. Write one only for a hidden rule someone could break by changing the code, starting with `Why:` (enforced by lint).
