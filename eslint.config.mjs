@@ -7,6 +7,52 @@ import tseslint from "typescript-eslint";
 
 // Imports go through the `@/` alias (tsconfig `paths`), never up the tree with `../`.
 const NO_PARENT_IMPORTS = { group: ["../*", "../**"], message: "Import from \"@/...\" instead of a relative parent path." };
+const NO_PROVIDER_IMPORTS = {
+  group: ["@/Providers/**", "**/Providers/**"],
+  message: "Shared code must not import a provider. Go through ProviderModule (ADR 0008).",
+};
+const NO_OTHER_PROVIDER_IMPORTS = {
+  group: ["@/Providers/*/**", "**/Providers/*/**", "!@/Providers/ClaudeCode/**", "!**/Providers/ClaudeCode/**"],
+  message: "A provider must not import another provider (ADR 0008).",
+};
+
+// Layers, lowest first: Protocols, Utils, Services and Adapters, Commands, Modules (docs/code-standards.md).
+const LAYER_TO_FORBIDDEN_LAYERS = {
+  Protocols: ["Utils", "Services", "Adapters", "Commands", "Modules"],
+  Utils: ["Services", "Adapters", "Commands", "Modules"],
+  Services: ["Commands", "Modules"],
+  Adapters: ["Commands", "Modules"],
+  Commands: ["Modules"],
+};
+const SCOPES = [
+  { dir: "src/Shared", patterns: [NO_PARENT_IMPORTS, NO_PROVIDER_IMPORTS] },
+  { dir: "src/Providers/ClaudeCode", patterns: [NO_PARENT_IMPORTS, NO_OTHER_PROVIDER_IMPORTS] },
+];
+// ContextService creates the provider for every command, so it reaches ProviderModule (ADR 0008).
+const LAYER_EXCEPTIONS = { "src/Shared/Services/ContextService.ts": ["Commands"] };
+
+function layerPattern(layer, forbiddenLayers) {
+  return {
+    group: forbiddenLayers.map((forbidden) => `@/**/${forbidden}/**`),
+    message: `${layer} must not import ${forbiddenLayers.join(", ")}: layers only import the ones below them.`,
+  };
+}
+
+const layerConfigs = SCOPES.flatMap(({ dir, patterns }) =>
+  Object.entries(LAYER_TO_FORBIDDEN_LAYERS).map(([layer, forbiddenLayers]) => ({
+    files: [`${dir}/${layer}/**/*.ts`],
+    ignores: ["src/**/*.test.ts", ...Object.keys(LAYER_EXCEPTIONS)],
+    rules: { "no-restricted-imports": ["error", { patterns: [...patterns, layerPattern(layer, forbiddenLayers)] }] },
+  })),
+);
+const layerExceptionConfigs = Object.entries(LAYER_EXCEPTIONS).map(([file, forbiddenLayers]) => ({
+  files: [file],
+  rules: {
+    "no-restricted-imports": ["error", {
+      patterns: [NO_PARENT_IMPORTS, NO_PROVIDER_IMPORTS, layerPattern("Services", forbiddenLayers)],
+    }],
+  },
+}));
 
 // Complexity limits (SonarSource's default for cognitive complexity).
 const MAX_COGNITIVE_COMPLEXITY = 15;
@@ -143,20 +189,18 @@ export default tseslint.config(
     files: ["src/Shared/**/*.ts"],
     ignores: ["src/Shared/Modules/ProviderModule.ts", "src/Shared/**/*.test.ts"],
     rules: {
-      "no-restricted-imports": ["error", {
-        patterns: [NO_PARENT_IMPORTS, { group: ["@/Providers/**", "**/Providers/**"], message: "Shared code must not import a provider. Go through ProviderModule (ADR 0008)." }],
-      }],
+      "no-restricted-imports": ["error", { patterns: [NO_PARENT_IMPORTS, NO_PROVIDER_IMPORTS] }],
     },
   },
   {
     // A provider never reaches into another provider.
     files: ["src/Providers/ClaudeCode/**/*.ts"],
     rules: {
-      "no-restricted-imports": ["error", {
-        patterns: [NO_PARENT_IMPORTS, { group: ["@/Providers/*/**", "**/Providers/*/**", "!@/Providers/ClaudeCode/**", "!**/Providers/ClaudeCode/**"], message: "A provider must not import another provider (ADR 0008)." }],
-      }],
+      "no-restricted-imports": ["error", { patterns: [NO_PARENT_IMPORTS, NO_OTHER_PROVIDER_IMPORTS] }],
     },
   },
+  ...layerConfigs,
+  ...layerExceptionConfigs,
   {
     files: ["src/**/*.test.ts", "src/Providers/*/Utils/*FixtureUtil.ts"],
     rules: {

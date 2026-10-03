@@ -28,7 +28,7 @@ pnpm install
 pnpm test           # vitest
 pnpm typecheck
 pnpm lint           # pnpm lint:fix for autofixable rules; includes complexity limits (sonarjs)
-pnpm quality        # knip (dead code, unused exports and deps) and jscpd (duplicated code)
+pnpm quality        # knip (dead code, unused exports and deps), dpdm (import cycles) and jscpd (duplicated code)
 pnpm build          # src/ -> dist/imh.mjs
 pnpm check          # all of the above, and fails if dist/ is stale (CI runs this)
 node dist/imh.mjs --help
@@ -42,6 +42,7 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 - While iterating, run only what you need (`pnpm exec vitest run <file>`, `pnpm exec eslint <file>`); keep the full run for the end.
 - Provider-specific code (paths, transcript and settings formats, tool names, prompt tags, env variables) lives only in `src/Providers/<Provider>/`. `src/Shared/` never imports a provider except through `ProviderModule`, and providers never import each other (ADR 0008, enforced by lint). If shared code needs provider knowledge, extend the shared model or `BaseProviderAdapter` instead.
 - Write classes: static-only Utils, Services with constructor-injected dependencies, Commands with `run`. Protocols hold only types.
+- Layers import only the ones below them: Protocols < Utils < Services/Adapters < Commands < Modules (enforced by lint; `docs/code-standards.md`).
 - Put each test next to the file it tests, named `<File>.test.ts`.
 - Import across folders with the `@/` alias (`@/Shared/Utils/TimeUtil.js`), never `../`; same-folder imports use `./` (enforced by lint). The alias is defined in `tsconfig.json` (`paths`) and mirrored in `vitest.config.mjs`.
 - Rebuild and commit `dist/` in the same commit as any change to `src/`.
@@ -52,7 +53,7 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 - Every string that can reach output passes through `RedactUtil.redact()` / `RedactUtil.excerpt()`. Hook and MCP entries keep names and shapes only (ADR 0007). Add a test with a fake secret for any new output path.
 - Transcript formats are internal: parse defensively, count unknown lines, never throw on a bad line. Add new format cases to the provider's fixture (`ClaudeCodeFixtureUtil`).
 - `skills/improve-my-harness/SKILL.md` description is loaded in every user session: keep it short.
-- Bump `version` in `.claude-plugin/plugin.json` and `package.json` together on release.
+- Bump `version` in `.claude-plugin/plugin.json` and `package.json` together on release, and run `pnpm release:check` (adds publint: `package.json` matches what gets packed).
 
 ## Agent skills
 
