@@ -86,7 +86,11 @@ Costs are the script's numbers for the whole analyzed period, adding up every oc
 # Harness report — <YYYY-MM-DD>
 
 Analyzed <N> sessions (<period>) · <K> suggestions
-Estimated cost of the problems found, for the whole period: failures ~<lostToFailures> · fix loops ~<inFixLoops> · re-reads ~<lostToRereads> · corrected or interrupted turns, at most ~<inCorrectedOrInterruptedTurns> (each as min · input tokens · output tokens · $)
+Estimated cost of the problems found, for the whole period (min · input tokens · output tokens · $; the four don't overlap):
+- Failures ~<lostToFailures>: from each first error until a call doing the same job worked, reasoning and retries included.
+- Fix loops ~<inFixLoops>: rerunning a check after fixing the code until it passed; work, but the share a check after each edit would shorten.
+- Re-reads ~<lostToRereads>: files read again with nothing changed, or after a compaction dropped them.
+- Corrected or interrupted turns, at most ~<inCorrectedOrInterruptedTurns>: the whole turn before you corrected or stopped the agent; some of it may have been useful.
 History: <transcriptsAvailable> transcripts since <oldestAt>; retention <retentionDays> days.
 
 ## Suggestions
@@ -100,6 +104,7 @@ _Time, tokens and cost add up the whole period (<N> sessions), not one session; 
 ### 1. <title>
 **What to do:** … · **Where:** `<path>` · **Evidence:** session 3f2a91bc · line 14 · test-runner; … +4 more
 **What happens:** one or two sentences, with the numbers from the script, time first when it is the bigger cost.
+**How we measured:** one plain sentence, from the signal's `cost.method` and `cost.bound`, saying what the numbers count and how sure they are ("from the first error until the command that worked, reasoning included; an estimate").
 **Why:** one sentence on why this is the right kind of fix (e.g. "CLAUDE.md line 3 already says to use pnpm, so more text won't help").
 **Change:** the exact text, diff, hook or file to add.
 (**Partial:** reason — only when partial.)
@@ -114,6 +119,6 @@ _Time, tokens and cost add up the whole period (<N> sessions), not one session; 
 - <file>: <verdict> — <moves, e.g. "same cost, 40% faster">, only for files with an applied suggestion.
 ```
 
-When `totals.reportedByProvider.costUsd` exists, show it next to the estimate as the agent's own figure ("the agent reports $X"); never add the two. The totals don't overlap, so they can be listed side by side. A signal's `cost.bound` decides the wording: `lower` → "at least", `upper` → "at most", `estimate` → "about"; `cost.method` says what was counted when the person asks. Failure costs run until the call that worked (`details.chains`: chains, how many recovered, attempts), so "3 attempts, ~4 min until it worked" is the way to put them. Skill rows in `usage` overlap the main and agent rows.
+When `totals.reportedByProvider.costUsd` exists, show it next to the estimate as the agent's own figure ("the agent reports $X"); never add the two. The totals don't overlap, so they can be listed side by side. A signal's `cost.bound` decides the wording: `lower` → "at least", `upper` → "at most", `estimate` → "about". **How we measured** restates `cost.method` in the person's words and language, never in the script's terms (no field names); when a suggestion combines signals, say what each part counts. Failure costs run until the call that worked (`details.chains`: chains, how many recovered, attempts), so "3 attempts, ~4 min until it worked" is the way to put them. Skill rows in `usage` overlap the main and agent rows.
 
 Leave out empty sections.
