@@ -137,7 +137,7 @@ Issues and PRs are welcome. For larger changes, please open an issue first to di
 pnpm install
 pnpm test         # tests next to the code, end to end on synthetic transcripts
 pnpm lint         # ESLint (typescript-eslint + stylistic); see docs/code-standards.md and docs/test-standards.md
-pnpm build        # bundles src/ into dist/imh.mjs (CI commits it on master, so the plugin needs no install step)
+pnpm build        # bundles src/ into dist/imh.mjs (committed by the Release workflow, so the plugin needs no install step)
 pnpm check        # typecheck + lint + quality + tests + a build to a scratch file
 ```
 

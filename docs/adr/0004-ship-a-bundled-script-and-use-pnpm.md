@@ -6,15 +6,15 @@ Claude Code runs `npm ci` for plugins that ship `package-lock.json`, which would
 
 ## Consequences
 
-- Contributors never commit `dist/`. After each push to `master`, once the checks pass, the `publish-dist` job in `ci.yml` rebuilds it and commits it as `github-actions[bot]` with `[skip ci]`. Pull requests carry only source, and `pnpm check` builds to a scratch file to prove the bundle builds.
-- Between a merge and that job finishing (a few minutes), `master` holds new `src/` with the previous `dist/`. Installs in that window get the previous script, which still works on its own.
+- The marketplace entry serves the plugin from a tag (`"ref": "vX.Y.Z"` in `.claude-plugin/marketplace.json`), not from `master`. A fresh install and an update both get a released commit, where `skills/` and `dist/` come from the same source.
+- Contributors never commit `dist/`, `version` or the marketplace `ref`. Pull requests carry only source, and `pnpm check` builds to a scratch file to prove the bundle builds. Between releases, `dist/` on `master` lags behind `src/`; nobody installs from there.
 - Runtime code may only use Node built-ins. Dev dependencies (TypeScript, esbuild, ESLint, Vitest) are fine.
 - Never commit `package-lock.json` (it is gitignored): it would make Claude Code run `npm ci` on install.
 - `pnpm-lock.yaml` only changes together with `package.json`.
-- `version` in `.claude-plugin/plugin.json` pins what users get: with the string unchanged, installed copies stay cached whatever lands on `master`. Pull requests never change it. The `Release` workflow (`release.yml`, run by hand) bumps it together with `package.json` and rebuilds `dist/` in the same commit, so no one can install a new version with an old bundle, then tags `vX.Y.Z` and publishes a GitHub Release.
+- `version` in `.claude-plugin/plugin.json` decides when installed copies update: with the string unchanged, they stay cached. The `Release` workflow (`release.yml`, run by hand) bumps it with `package.json`, points the marketplace `ref` at the new tag and rebuilds `dist/` in one commit, then tags it `vX.Y.Z` and publishes a GitHub Release. A merge reaches no one until then.
 
 ## Status
 
 Revised 2026-10-02: originally "no lockfile" with npm; switched to pnpm with a committed lockfile.
 
-Revised 2026-10-03: `dist/` was rebuilt and committed by hand with every change to `src/`, and `pnpm check` failed when it was stale. That put a generated diff in every pull request and conflicts in every rebase, so CI now builds and commits it on `master` only. Versions are cut by the `Release` workflow, which puts the new `version` and its `dist/` in one commit.
+Revised 2026-10-03: `dist/` was rebuilt and committed by hand with every change to `src/`, and `pnpm check` failed when it was stale. That put a generated diff in every pull request and conflicts in every rebase, so only the `Release` workflow builds and commits it now, in the same commit as the new `version`, and the marketplace serves that tag instead of `master`.

@@ -16,8 +16,8 @@ ADR 0008 has the reasons; `docs/code-standards.md` ("Architecture") has the rule
   - `Protocols/`: types only. `Utils/`: static helper classes (guards, env, time, redaction, JSONL, git).
 - `src/Providers/<Provider>/`: one agentic coding tool (Claude Code today), with the same folders as Shared. `Adapters/<Provider>ProviderAdapter.ts` extends `BaseProviderAdapter`; `Utils/<Provider>FixtureUtil.ts` builds a fake home and project in the tool's real format, for tests.
 - Tests sit next to the file they test (`*.test.ts`). There is no `test/` folder.
-- `dist/imh.mjs`: the bundled script the skill runs. Generated; CI rebuilds and commits it on `master` after each merge (ADR 0004). Never commit it by hand.
-- `.github/workflows/`: `ci.yml` (shared checks, and `dist/` on `master`), `release.yml` (cuts a version, by hand) and one workflow per provider (`claude-code.yml` validates the plugin and skill).
+- `dist/imh.mjs`: the bundled script the skill runs. Generated; only the `Release` workflow commits it (ADR 0004).
+- `.github/workflows/`: `ci.yml` (shared checks), `release.yml` (cuts a version, by hand) and one workflow per provider (`claude-code.yml` validates the plugin and skill).
 - `scripts/`: `build.mjs` (bundle), `survey-transcripts.mjs` (the shape of a folder of transcripts, without their content) and `eslint-local-rules.mjs` (this repo's own lint rules, tested next to it).
 - Adding a provider (Codex, Cursor, ...): follow `docs/adding-a-provider.md`. It covers finding the sessions, exporting a sample of the last 7 days, learning the format, mapping it to the shared model and checking it on real sessions.
 
@@ -47,7 +47,7 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 - Layers import only the ones below them: Protocols < Utils < Services/Adapters < Commands < Modules (enforced by lint; `docs/code-standards.md`).
 - Put each test next to the file it tests, named `<File>.test.ts`, and follow `docs/test-standards.md`: expected values written by hand, exact assertions, no logic in tests, doubles only at the process's edges (lint enforces part of it).
 - Import with the `@/` alias and the `.ts` file name (`@/Shared/Utils/TimeUtil.ts`), in the same folder too; never `../`, `./` or `.js` (enforced by lint). The alias is defined in `tsconfig.json` (`paths`) and mirrored in `vitest.config.mjs`.
-- Don't commit `dist/`: the `publish-dist` job in `ci.yml` rebuilds it and commits it on `master` once the checks pass. If a local `pnpm build` changed it, discard that (`git checkout dist/`).
+- Don't commit `dist/`, and don't change `version` or the marketplace `ref` (ADR 0004): users install from the tag in `.claude-plugin/marketplace.json`, not from `master`, so these change only in a release commit. If a local `pnpm build` changed `dist/`, discard that (`git checkout dist/`).
 - Use pnpm, never npm: commit `pnpm-lock.yaml`, never `package-lock.json` (ADR 0004).
 - Runtime code uses only Node built-ins (Node 20+). No runtime dependencies (ADR 0004).
 - No comments by default. Write one only for a hidden rule someone could break by changing the code, starting with `Why:` (enforced by lint).
@@ -58,7 +58,7 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 - Every string that can reach output passes through `RedactUtil.redact()` / `RedactUtil.excerpt()`. Hook and MCP entries keep names and shapes only (ADR 0007). Add a test with a fake secret for any new output path.
 - Transcript formats are internal: parse defensively, count unknown lines, never throw on a bad line. Add new format cases to the provider's fixture (`ClaudeCodeFixtureUtil`).
 - `skills/improve-my-harness/SKILL.md` description is loaded in every user session: keep it short.
-- Never change `version` in a pull request. Users get an update only when `version` in `.claude-plugin/plugin.json` changes, so a release is cut by the `Release` workflow (`.github/workflows/release.yml`, run by hand from the Actions tab on `master`, choosing patch, minor or major): in one commit it bumps `plugin.json` and `package.json`, runs `pnpm release:check` (adds publint), rebuilds `dist/`, then tags `vX.Y.Z` and publishes a GitHub Release with generated notes.
+- A merge reaches no one until a release. Cut one with the `Release` workflow (`.github/workflows/release.yml`, run by hand from the Actions tab on `master`, choosing patch, minor or major): in one commit it bumps `version` in `plugin.json` and `package.json`, points the marketplace `ref` at `vX.Y.Z`, runs `pnpm release:check` (adds publint) and rebuilds `dist/`; then it tags `vX.Y.Z` and publishes a GitHub Release with generated notes.
 
 ## Agent skills
 

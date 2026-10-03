@@ -1,9 +1,10 @@
 name: Release
 
-# Users get a new version only when `version` in .claude-plugin/plugin.json changes (ADR 0004), so the version
-# and the dist/ built from the same source must land in one commit. Run this from the Actions tab on master:
-# it bumps plugin.json and package.json, rebuilds dist/, commits, tags vX.Y.Z and publishes a GitHub Release
-# with notes generated from the merged pull requests. Pull requests never change `version`.
+# The marketplace serves the plugin from the tag in marketplace.json ("ref"), not from master, and installed
+# copies update only when `version` in plugin.json changes (ADR 0004). Run this from the Actions tab on master:
+# in one commit it bumps plugin.json and package.json, points the marketplace at the new tag and rebuilds dist/;
+# then it tags vX.Y.Z and publishes a GitHub Release with notes from the merged pull requests. Nothing else
+# changes `version`, the marketplace ref or dist/.
 
 on:
   workflow_dispatch:
@@ -48,6 +49,9 @@ jobs:
             const pluginPath = ".claude-plugin/plugin.json";
             const plugin = fs.readFileSync(pluginPath, "utf8");
             fs.writeFileSync(pluginPath, plugin.replace(/"version": "[^"]*"/, `"version": "${version}"`));
+            const marketplacePath = ".claude-plugin/marketplace.json";
+            const marketplace = fs.readFileSync(marketplacePath, "utf8");
+            fs.writeFileSync(marketplacePath, marketplace.replace(/"ref": "[^"]*"/, `"ref": "v${version}"`));
           '
           VERSION=$(node -p 'require("./package.json").version')
           if git rev-parse -q --verify "refs/tags/v$VERSION" > /dev/null; then
@@ -61,7 +65,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json .claude-plugin/plugin.json dist/
+          git add package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json dist/
           if ! git diff --cached --quiet; then
             git commit -m "release: v$VERSION [skip ci]"
           fi

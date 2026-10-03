@@ -1,9 +1,8 @@
 name: CI
 
 # Shared checks for every change: types, lint, dead and duplicated code, tests and a build. Provider-specific
-# checks live in their own workflow (claude-code.yml). On master, once the checks pass, publish-dist rebuilds
-# dist/imh.mjs and commits it: the plugin installs from master with no build step (ADR 0004), and pull requests
-# never carry the bundle.
+# checks live in their own workflow (claude-code.yml).
+# dist/ is built only by release.yml (ADR 0004).
 
 on:
   push:
@@ -25,34 +24,3 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
-
-  publish-dist:
-    needs: check
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    concurrency:
-      group: master-writes
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - name: Commit dist/ when it changed
-        run: |
-          if git diff --quiet -- dist/; then
-            echo "dist/ is already up to date."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add dist/
-          git commit -m "build: dist [skip ci]"
-          git pull --rebase origin master
-          git push origin HEAD:master

@@ -98,7 +98,7 @@ Commit once per task, not per file: make all the edits, then verify once. Before
   ```
 
 - **No runtime dependencies.** Runtime code uses Node built-ins only. Dev dependencies are fine.
-- **Don't commit `dist/`.** CI rebuilds and commits it on `master` after each merge (ADR 0004).
+- **Don't commit `dist/`.** Only the `Release` workflow rebuilds and commits it (ADR 0004).
 
 ## Tests
 

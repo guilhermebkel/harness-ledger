@@ -8,7 +8,11 @@
   "plugins": [
     {
       "name": "improve-my-harness",
-      "source": "./",
+      "source": {
+        "source": "github",
+        "repo": "guilhermebkel/improve-my-harness",
+        "ref": "v0.1.0"
+      },
       "description": "Reads the sessions your coding agent already saves, maps your harness and suggests evidence-based improvements.",
       "category": "productivity",
       "tags": ["harness", "insights", "transcripts"]
