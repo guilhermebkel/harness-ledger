@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { HarnessPiece, Inventory } from "@/Shared/Protocols/HarnessProtocol.ts";
 import { SessionFactsBuilder } from "@/Shared/Utils/SessionFactsBuilder.ts";
 import { ConfigService } from "@/Shared/Services/ConfigService.ts";
 import { SignalService } from "@/Shared/Services/SignalService.ts";
@@ -28,6 +29,43 @@ const turnService = new SignalService({
     minRepeatedEvents: 1,
   },
 });
+const unusedService = new SignalService({
+  idleMs: config.idleMinutes * 60_000,
+  modelFamilyToPrice: config.modelFamilyToPrice,
+  maxEvidence: 5,
+  minSessionsForUnused: 1,
+  largePieceTokens: Infinity,
+  thresholds: config.signalThresholds,
+});
+
+function piece(id: string, fields: Partial<HarnessPiece> = {}): HarnessPiece {
+  const [kind, name] = id.split(":") as [HarnessPiece["kind"], string];
+  return {
+    id,
+    kind,
+    name,
+    scope: "project",
+    path: `.claude/${kind}s/${name}.md`,
+    hash: "h",
+    bytes: 0,
+    approxTokens: 0,
+    isEditable: true,
+    ...fields,
+  };
+}
+
+function inventoryOf(pieces: HarnessPiece[]): Inventory {
+  return {
+    pieces,
+    provider: "test",
+    projectDir: "/work/my-app",
+    takenAt: "2026-09-01T10:00:00.000Z",
+    fingerprint: "f",
+    retention: { days: 30, source: "default" },
+    notes: [],
+  };
+}
+
 const SUBAGENT = {
   id: "agent1",
   agentType: "researcher",
@@ -189,6 +227,26 @@ describe("SignalService.extract()", () => {
       const large = turnService.extract([session], inventory).find((signal) => signal.type === "large_piece");
       expect(large?.cost.inputTokens).toBe(3 * 3000);
       expect(large?.sessions).toBe(1);
+    });
+  });
+
+  describe("on unused pieces", () => {
+    it("counts a skill as used when it runs inside an agent, is preloaded by one, or has its SKILL.md read", () => {
+      const session = new SessionFactsBuilder()
+        .inThread(SUBAGENT)
+        .call("Bash", { skillInUse: "deploy" })
+        .call("Read", { category: "read", filePath: ".claude/skills/design-critique/SKILL.md" })
+        .build();
+      session.threads.push({ thread: SUBAGENT, activeMs: 0 });
+      const inventory = inventoryOf([
+        piece("agent:researcher", { preloadedSkills: ["glossary"] }),
+        piece("skill:deploy"),
+        piece("skill:glossary"),
+        piece("skill:design-critique", { path: ".claude/skills/design-critique/SKILL.md" }),
+        piece("skill:never-run"),
+      ]);
+      const unused = unusedService.extract([session], inventory).filter((signal) => signal.type === "unused_piece");
+      expect(unused.map((signal) => signal.pieces)).toStrictEqual([["skill:never-run"]]);
     });
   });
 });

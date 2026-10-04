@@ -23,6 +23,7 @@ export interface CallOptions {
   kind?: ToolResultKind;
   runSeconds?: number;
   filePath?: string;
+  skillInUse?: string;
   usage?: TokenUsage;
 }
 
@@ -97,6 +98,7 @@ export class SessionFactsBuilder {
       category: callOptions.category ?? "shell",
       summary: key,
       filePath: callOptions.filePath,
+      skillInUse: callOptions.skillInUse,
       thread: this.thread,
       ref: this.ref(),
       messageId: message.id,

@@ -68,7 +68,7 @@ In a project that already has a harness, a stage with many failures or rejection
 
 ## Report format
 
-Write the report in the language the person uses with you. Translate the labels below; keep ids, paths, commands and code as they are. The report is for the person, not for this skill: never show internal terms such as "class", "piece" or piece ids (`agent:x`) as column names or values.
+Write the report in the language the person uses with you. When the request is empty or only a command, use the language of the person's own prompts in the analyzed sessions (the corrections and requests in the evidence), not English by default. Translate the labels below; keep ids, paths, commands and code as they are. The report is for the person, not for this skill: never show internal terms such as "class", "piece" or piece ids (`agent:x`) as column names or values.
 
 | Class | "What to do" label |
 | --- | --- |
@@ -144,6 +144,7 @@ The numbers are the reason to trust the report and the easiest part to oversell.
 - **Never add numbers with different bounds.** An "at least" plus an "at most" is not a number. Totals stay split by kind, as in the header above.
 - **The agent's own figure sits beside the estimate.** When `totals.reportedByProvider.costUsd` exists, show it next to the script's estimate for the same sessions; when they differ by more than half, say so in one line. Never add the two.
 - **Round to what the method can tell.** Minutes as whole numbers, hours with one decimal (`~1.8 h`), money with cents below $10 and whole dollars above, tokens as `340k` / `1.2M`.
+- **Negligible time is a dash.** When a suggestion's cost is in tokens and money, write `—` in the time column, not `~0 min`.
 - **No size words.** Never call a figure small, big, low or high. Give its share instead: "16 min of the 4.6 h lost to failures", "$0.75 of the ~$14 the problems cost". When money is undercounted (unpriced models), say so next to it and lead with time.
 - **Partial means the number may move.** When a signal is partial, say why in the person's words ("only 2 sessions so far"), and that the figure may change with more history.
 

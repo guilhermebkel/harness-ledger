@@ -302,11 +302,19 @@ export class SignalService {
     return NumberUtil.round(score);
   }
 
+  private static isReadOf(piece: HarnessPiece, filePath: string | undefined): boolean {
+    if (filePath === undefined) {
+      return false;
+    }
+    const isLinkedRead = piece.linkedPath?.endsWith(`/${filePath}`) === true || piece.linkedPath === filePath;
+    return piece.path === filePath || isLinkedRead;
+  }
+
   private unusedPieceSignals(sessions: SessionFacts[], inventory: Inventory): Signal[] {
     if (sessions.length < this.options.minSessionsForUnused) {
       return [];
     }
-    const usedPieceIds = this.usedPieceIdsIn(sessions);
+    const usedPieceIds = this.usedPieceIdsIn(sessions, inventory);
     const periodStartAtMs = Math.min(...sessions.map((session) => session.startedAtMs ?? Date.now()));
     const unusedPieces = inventory.pieces.filter((piece) => {
       const isTrackedKind = USAGE_KINDS.has(piece.kind);
@@ -334,10 +342,11 @@ export class SignalService {
     });
   }
 
-  private usedPieceIdsIn(sessions: SessionFacts[]): Set<string> {
+  private usedPieceIdsIn(sessions: SessionFacts[], inventory: Inventory): Set<string> {
     const usedPieceIds = new Set<string>();
+    const skillPieces = inventory.pieces.filter((piece) => piece.kind === "skill");
     for (const session of sessions) {
-      for (const pieceId of session.tools.flatMap((call) => this.piecesCalledBy(call))) {
+      for (const pieceId of session.tools.flatMap((call) => this.piecesCalledBy(call, skillPieces))) {
         usedPieceIds.add(pieceId);
       }
       for (const threadFacts of session.threads.filter((thread) => !SessionUtil.isMainThread(thread.thread))) {
@@ -348,13 +357,23 @@ export class SignalService {
         usedPieceIds.add(`command:${command}`);
       }
     }
+    // Why: a skill an agent preloads runs whenever the agent does, without a Skill call of its own.
+    for (const agent of inventory.pieces.filter((piece) => usedPieceIds.has(piece.id))) {
+      for (const skillName of agent.preloadedSkills ?? []) {
+        usedPieceIds.add(`skill:${skillName}`);
+      }
+    }
     return usedPieceIds;
   }
 
-  private piecesCalledBy(call: ToolCall): string[] {
+  private piecesCalledBy(call: ToolCall, skillPieces: HarnessPiece[]): string[] {
+    // Why: subagents without the Skill tool run a skill by reading its SKILL.md.
+    const readSkills = skillPieces.filter((piece) => SignalService.isReadOf(piece, call.filePath));
     return [
       ...(call.subagentType ? [`agent:${call.subagentType}`] : []),
       ...(call.skill ? [`skill:${call.skill}`] : []),
+      ...(call.skillInUse ? [`skill:${call.skillInUse}`] : []),
+      ...readSkills.map((piece) => piece.id),
       ...(SessionUtil.MCP_CATEGORIES.has(call.category) ? [call.key] : []),
     ];
   }
