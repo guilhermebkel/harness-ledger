@@ -74,7 +74,7 @@ Accept a suggestion and later runs compare the piece before and after the change
 
 ```text
 /plugin marketplace add guilhermebkel/improve-my-harness
-/plugin install improve-my-harness@improve-my-harness
+/plugin install improve-my-harness@guilhermebkel
 ```
 
 Requires Node.js 20+. Nothing else is installed: the analysis script ships prebuilt.
@@ -239,10 +239,6 @@ Reject it (it won't come back), and if the rule behind it seems off, ask for a r
 - [ ] **Cross-agent comparison:** when a project uses more than one agent, compare which harness fails less on similar tasks.
 - [ ] **Team mode:** aggregate sessions across a team.
 - [ ] **Scheduled runs:** periodic analysis that opens a PR with suggested changes for human review.
-
-## Background
-
-This project applies the ideas behind *Test-Driven Prompting* (CBSoft 2026): define what success looks like first, then choose the prompt, model and harness that meet it at the lowest cost.
 
 ## Contributing
 
