@@ -1,11 +1,12 @@
 import { readFile, realpath, stat } from "node:fs/promises";
-import { dirname, relative } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import type { HarnessPiece, PieceKind, PieceScope } from "@/Shared/Protocols/HarnessProtocol.ts";
 import type { GitChangeDates } from "@/Shared/Protocols/UtilProtocol.ts";
 import { FrontmatterUtil } from "@/Shared/Utils/FrontmatterUtil.ts";
 import { HashUtil } from "@/Shared/Utils/HashUtil.ts";
 import { NumberUtil } from "@/Shared/Utils/NumberUtil.ts";
 import { PathUtil } from "@/Shared/Utils/PathUtil.ts";
+import { RedactUtil } from "@/Shared/Utils/RedactUtil.ts";
 import type { FileChange, FilePiece } from "@/Providers/ClaudeCode/Protocols/ClaudeCodeProtocol.ts";
 
 const PROJECT_SCOPES = new Set<PieceScope>(["project", "local"]);
@@ -13,6 +14,7 @@ const PROJECT_SCOPES = new Set<PieceScope>(["project", "local"]);
 const KINDS_WITH_SKILLS = new Set<PieceKind>(["agent"]);
 const READ_ONLY_SCOPES = new Set<PieceScope>(["plugin", "managed"]);
 const MAX_DESCRIPTION_CHARS = 300;
+const CLAUDE_FOLDER = ".claude";
 const MAX_HASHED_FILE_BYTES = 1_000_000;
 
 export class ClaudeCodePieceCollectorService {
@@ -35,6 +37,27 @@ export class ClaudeCodePieceCollectorService {
     }
     this.seenRealPaths.add(realPath);
     return true;
+  }
+
+  private async linkedPathOf(file: string): Promise<string | undefined> {
+    const anchor = this.anchorOf(file);
+    if (anchor === undefined) {
+      return undefined;
+    }
+    const realFile = await realpath(file).catch(() => file);
+    const realAnchor = await realpath(anchor).catch(() => anchor);
+    // Why: compare against the anchor's real path, so a symlinked temp or home folder (macOS /var) isn't a link.
+    const isLinked = realFile !== join(realAnchor, relative(anchor, file));
+    return isLinked ? RedactUtil.redact(PathUtil.tildify(realFile)) : undefined;
+  }
+
+  private anchorOf(file: string): string | undefined {
+    const isInsideProject = !relative(this.projectDir, file).startsWith("..");
+    if (isInsideProject) {
+      return this.projectDir;
+    }
+    const claudeFolderIndex = file.lastIndexOf(`${sep}${CLAUDE_FOLDER}${sep}`);
+    return claudeFolderIndex === -1 ? undefined : file.slice(0, claudeFolderIndex);
   }
 
   displayPath(file: string, scope: PieceScope): string {
@@ -91,12 +114,14 @@ export class ClaudeCodePieceCollectorService {
       .filter((change) => change.modifiedAt !== undefined)
       .sort((left, right) => (right.modifiedAt ?? "").localeCompare(left.modifiedAt ?? ""))[0];
     const pieceFolder = dirname(filePiece.file);
+    const linkedPath = await this.linkedPathOf(filePiece.file);
     this.pieces.push({
       id: this.uniqueId(filePiece.kind, filePiece.name, filePiece.scope),
       kind: filePiece.kind,
       name: filePiece.name,
       scope: filePiece.scope,
       path: this.displayPath(filePiece.file, filePiece.scope),
+      linkedPath,
       hash: extraFiles.length ? HashUtil.sha([text, ...extraHashes].join("\n")) : HashUtil.sha(text),
       bytes: Buffer.byteLength(text),
       approxTokens: NumberUtil.approxTokens(text),

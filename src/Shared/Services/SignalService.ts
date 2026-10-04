@@ -5,6 +5,7 @@ import type { AssistantMessage, SessionFacts, TokenUsage, ToolCall } from "@/Sha
 import type {
   CostFigures,
   CountedDetail,
+  CostBound,
   CountedValue,
   Occurrence,
   OccurrenceCost,
@@ -38,6 +39,13 @@ const USAGE_KINDS = new Set<PieceKind>(["skill", "agent", "command", "mcp"]);
 const SIZE_KINDS = new Set<PieceKind>(["instructions", "skill", "agent"]);
 
 // Why: estimated waste ranks first, then how widespread the pattern is; partial evidence ranks lower.
+// Why: an upper bound counts whole turns, much of which may have been useful; at full weight it would outrank
+// failures measured precisely.
+const BOUND_TO_COST_WEIGHT: Record<CostBound, number> = {
+  lower: 1,
+  estimate: 1,
+  upper: 0.5,
+};
 const SCORE_WEIGHTS = {
   perActiveMinute: 1,
   perUsd: 2,
@@ -285,8 +293,9 @@ export class SignalService {
 
   private scoreOf(signal: Signal): number {
     const countedOccurrences = Math.min(signal.occurrences, SCORE_WEIGHTS.maxCountedOccurrences);
-    const score = signal.cost.activeMinutes * SCORE_WEIGHTS.perActiveMinute
-      + signal.cost.usd * SCORE_WEIGHTS.perUsd
+    const costWeight = BOUND_TO_COST_WEIGHT[signal.cost.bound];
+    const score = signal.cost.activeMinutes * SCORE_WEIGHTS.perActiveMinute * costWeight
+      + signal.cost.usd * SCORE_WEIGHTS.perUsd * costWeight
       + signal.sessions * SCORE_WEIGHTS.perSession
       + countedOccurrences * SCORE_WEIGHTS.perOccurrence
       - (signal.isPartial ? SCORE_WEIGHTS.partialPenalty : 0);

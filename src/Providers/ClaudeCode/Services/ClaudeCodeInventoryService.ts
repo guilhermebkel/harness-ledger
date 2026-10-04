@@ -1,3 +1,4 @@
+import type { Dirent } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
 import type { HarnessPiece, Inventory, PieceScope } from "@/Shared/Protocols/HarnessProtocol.ts";
@@ -11,6 +12,7 @@ import { PathUtil } from "@/Shared/Utils/PathUtil.ts";
 import { ClaudeCodePieceCollectorService } from "@/Providers/ClaudeCode/Services/ClaudeCodePieceCollectorService.ts";
 import type {
   ComponentOptions,
+  EntryKind,
   FileChange,
   FilePiece,
   SettingsFile,
@@ -174,15 +176,25 @@ export class ClaudeCodeInventoryService {
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
       const entryPath = join(dir, entry.name);
       const isHidden = entry.name.startsWith(".");
-      if (entry.isDirectory() && !isHidden && !SKIPPED_FOLDERS.has(entry.name)) {
+      const { isDirectory, isFile } = await this.entryKindOf(entry, entryPath);
+      if (isDirectory && !isHidden && !SKIPPED_FOLDERS.has(entry.name)) {
         files.push(...(await this.skillFolderFiles(entryPath, depth + 1)));
       }
       const isSkillEntryFile = depth === 0 && entry.name === "SKILL.md";
-      if (entry.isFile() && !isHidden && !isSkillEntryFile) {
+      if (isFile && !isHidden && !isSkillEntryFile) {
         files.push(entryPath);
       }
     }
     return files.slice(0, MAX_SKILL_FILES);
+  }
+
+  private async entryKindOf(entry: Dirent, entryPath: string): Promise<EntryKind> {
+    if (!entry.isSymbolicLink()) {
+      return { isDirectory: entry.isDirectory(), isFile: entry.isFile() };
+    }
+    // Why: teams share agents and skills by symlinking them in from another repository; follow the link.
+    const target = await stat(entryPath).catch(() => undefined);
+    return { isDirectory: target?.isDirectory() ?? false, isFile: target?.isFile() ?? false };
   }
 
   private async listMarkdownFiles(dir: string, depth = 0): Promise<string[]> {
@@ -193,10 +205,11 @@ export class ClaudeCodeInventoryService {
     const files: string[] = [];
     for (const entry of entries) {
       const entryPath = join(dir, entry.name);
-      if (entry.isDirectory()) {
+      const { isDirectory, isFile } = await this.entryKindOf(entry, entryPath);
+      if (isDirectory) {
         files.push(...(await this.listMarkdownFiles(entryPath, depth + 1)));
       }
-      if (entry.isFile() && entry.name.endsWith(".md")) {
+      if (isFile && entry.name.endsWith(".md")) {
         files.push(entryPath);
       }
     }

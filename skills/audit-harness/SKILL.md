@@ -22,7 +22,7 @@ All data comes from the bundled script. Run it with Bash from the project root:
 node "${CLAUDE_PLUGIN_ROOT}/dist/harness-ledger.mjs" <command> [options]
 ```
 
-It needs Node.js 20+. If `node` is missing or older, tell the user and stop. It reads transcripts in place, prints JSON, and writes only to `.harness-ledger/` in the project.
+It needs Node.js 20+. If `node` is missing or older, look for a newer one the person already has (`nvm`, `fnm`, `volta`, `mise`, or `~/.nvm/versions/node/*/bin/node`), use it and say which in one line; stop only if there is none. It reads transcripts in place, prints JSON, and writes only to `.harness-ledger/` in the project.
 
 Always pass `--exclude-session ${CLAUDE_SESSION_ID}` to `analyze`, `compare` and `status`, so the session running this analysis isn't counted.
 
@@ -51,11 +51,11 @@ Before any flow, read `references/findings.md` in this skill's folder (`${CLAUDE
 
 ## Flow 1 and 2: analyze
 
-1. Run `analyze` with the options from the request. Read the JSON.
+1. Run `analyze` with the options from the request. Read the JSON. If `omittedSignals` is above 0, run it again with `--max-signals 200`: triage needs every signal, not the first 25.
 2. Tell the user in one line what was analyzed: sessions, period, and how much history exists (`history`). If `history.transcriptsAvailable` is small or `history.oldestAt` is close to `retentionDays` ago, say that older sessions were already deleted by the agent's retention setting. Never change that setting.
 3. If `analyzed.sessions` is 0, say so, suggest a wider period or `--all-projects`, and stop.
    If `inventory.pieces` has no `instructions:*` piece, the project has no harness yet: follow "Starting a harness" in the reference as well. When a suggestion creates a skill, subagent or command, or a signal points to a problem a plugin solves (exploration taking most of the context, agents guessing paths), read `references/community-extensions.md` first. When `checks.missing` isn't empty and there are corrections about code quality or fix loops, read `references/deterministic-checks.md`.
-4. Go through `signals` in order. For each one worth reporting:
+4. Triage. **Examine** every signal that meets any of these: at least 5 active minutes, 3 or more sessions, or among the first 15 by `score`. Rank and judge by time as much as money, never by money alone; when `totals.unpricedModels` isn't empty, money is undercounted, so time decides. Signals below the bar aren't examined; the report counts them. For each examined signal:
    - Read what shapes that behavior today, not only the piece the signal names (paths are in `inventory.pieces`):
      - `main`: the instruction files (`instructions:*` pieces), since they guide the main thread.
      - A skill: its `SKILL.md` and, from its `files`, the references or scripts the failing step uses. The change often belongs there.
@@ -64,12 +64,14 @@ Before any flow, read `references/findings.md` in this skill's folder (`${CLAUDE
    - Before writing a change, look in what you read for other instructions about the same thing. If two pieces disagree, the conflict is the finding (see rule 8 in the reference).
    - Use `details.mentions` when present: a failure the harness already has an instruction for is **Rule exists, but is ignored**.
    - If you need more evidence, run `evidence <signal-id>`. Don't read whole transcripts; if you must check one step, read only the cited line (`sed -n '<line>p' <file> | cut -c1-2000`).
-   - If `changedAfterEvidence` is set, the piece changed after the newest evidence: report it under "Changed since this evidence", not as a new suggestion.
+   - If `changedAfterEvidence` is set, the piece changed after the newest evidence. Look at what changed (`git log -p --since=<lastSeenAt> -- <path>`, or the file itself when it isn't in git). Only when the change touches the cause does the signal go under "Changed since this evidence"; a change elsewhere in the file (a new model, an unrelated section) leaves it a finding like any other.
+   - Before you set an examined signal aside as ordinary work, a decision of the person's, or noise, run `evidence <signal-id>` and read it. The reason you give cites what the evidence showed ("the 3 corrections are about the button's color, not a rule"), never a guess.
    - If `handledBy` is set, it goes under **Already handled** with its status. Never suggest it again.
    - Also treat as already handled anything an open branch or PR already changes: check `git branch --list` and, if `gh` works, `gh pr list --state open --limit 20 --json title,headRefName,files`. Skip this silently when not a git repo or `gh` isn't available.
-   - Classify it with exactly one class and write the change, following the rules in the reference.
+   - Classify it with exactly one class and write the change, following the rules in the reference. If you don't turn it into a suggestion, it goes under "Examined, not suggested" with its time and the reason.
+   - When the piece has `linkedPath`, its file lives elsewhere (often a shared repository the project links in). Say so; a change there reaches everyone who links it, so it is made in that repository, on a branch, leaving any uncommitted work there alone.
 5. Group signals that share a cause into one finding (for example, `failed_command:npm test` and a correction saying "use pnpm").
-6. Write the report in the format from the reference, save it to `.harness-ledger/reports/<YYYY-MM-DD>.md`, and show it to the user. Keep it short: at most 7 suggestions, ordered by estimated cost (the script's `score`, which weighs time and money).
+6. Write the report in the format from the reference, save it to `.harness-ledger/reports/<YYYY-MM-DD-HHMM>.md` (never overwrite an earlier report), and show it to the user. At most 7 new suggestions, ordered by `score`. In the chat, show besides them: the pending suggestions from earlier runs (one line each, largest first), the examined signals you didn't suggest (one line each, with time and reason), and how many smaller signals weren't examined. The person shouldn't have to ask what else there is.
 7. Register all suggestions in one `suggestions add --file <tmp.json>` call (an array of `{title, class, piece, signals, occurrences, change}`; `signals` are the signal ids the finding came from). When two suggestions come from the same signal, split it: in each, list in `occurrences` the evidence (`{sessionId, line}`, from `evidence <signal-id>`) that its change would have prevented; each occurrence goes to one suggestion, and at most one of them may leave `occurrences` out to take the rest. The script refuses overlaps. Use the returned ids, and take each suggestion's time, tokens and money from the returned `costs` (and `covered` for their sum), never from the signals.
 8. Ask which suggestions, if any, the user wants applied (see "Applying").
 

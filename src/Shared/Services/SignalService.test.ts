@@ -131,6 +131,22 @@ describe("SignalService.extract()", () => {
       expect(correction?.cost.tokens).toBe(4 * 1100);
     });
 
+    it("ranks a measured failure above a corrected turn that only bounds its cost from above", () => {
+      const builder = new SessionFactsBuilder()
+        .prompt("Fix the tests")
+        .call("npm test", { isError: true });
+      for (let minute = 0; minute < 4; minute++) {
+        builder.wait(60).say();
+      }
+      builder.call("pnpm test").prompt("Write the changelog");
+      for (let minute = 0; minute < 6; minute++) {
+        builder.wait(60).say();
+      }
+      const session = builder.prompt("no, shorter", { isCorrection: true }).build();
+      const signals = turnService.extract([session]);
+      expect(signals.map((signal) => signal.type).slice(0, 2)).toStrictEqual(["failed_command", "user_correction"]);
+    });
+
     it("charges re-reads after a compaction to the compaction, not to the agent", () => {
       const session = new SessionFactsBuilder()
         .call("Read", { category: "read", filePath: "src/a.ts" })
