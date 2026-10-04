@@ -77,7 +77,7 @@ Accept a suggestion and later runs compare the piece before and after the change
 /plugin install harness-ledger@guilhermebkel
 ```
 
-Requires Node.js 20+. Nothing else is installed: the analysis script ships prebuilt.
+Requires Node.js 20+.
 
 ### 2. Analyze your sessions
 
