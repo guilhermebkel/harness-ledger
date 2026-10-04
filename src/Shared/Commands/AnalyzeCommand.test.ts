@@ -383,4 +383,33 @@ describe("AnalyzeCommand.run()", () => {
       expect(heavy.details.sources?.some((source) => source.value.startsWith("cat"))).toBe(false);
     });
   });
+
+  describe("on skills that are called but own no turns", () => {
+    let skillsFixture: Fixture;
+    let restoreSkillsEnv: () => void;
+    const skillNames = Array.from({ length: 20 }, (_unused, index) => `helper-${index}`);
+
+    beforeAll(() => {
+      skillsFixture = ClaudeCodeFixtureUtil.makeFixture();
+      const transcript = new ClaudeCodeTranscriptBuilder("k1", skillsFixture.projectDir, "2026-09-20T10:00:00.000Z")
+        .user("Prepare the release");
+      for (const skill of skillNames) {
+        transcript.tool(`s_${skill}`, "Skill", { skill }).result(`s_${skill}`, `Launching skill: ${skill}`);
+      }
+      transcript.write(ClaudeCodeTranscriptBuilder.sessionPath(skillsFixture, "k1"));
+      restoreSkillsEnv = ClaudeCodeFixtureUtil.useFixtureEnv(skillsFixture);
+    });
+
+    afterAll(() => {
+      restoreSkillsEnv();
+      rmSync(skillsFixture.root, { recursive: true, force: true });
+    });
+
+    it("lists every called skill in usage, however little it cost", async () => {
+      const analysis = await command.run({ projectDir: skillsFixture.projectDir, dataDir: skillsFixture.dataDir });
+      const skillPieces = analysis.usage.map((usage) => usage.piece).filter((piece) => piece.startsWith("skill:"));
+      const expectedPieces = skillNames.map((skill) => `skill:${skill}`);
+      expect(new Set(skillPieces)).toStrictEqual(new Set(expectedPieces));
+    });
+  });
 });

@@ -40,7 +40,6 @@ const MAX_COMMON_COMMANDS = 15;
 const EMPTY_COMMAND_KEY = "(empty)";
 const DEFAULT_MAX_EVIDENCE = 5;
 const SAVED_EVIDENCE_PER_SIGNAL = 50;
-const MAX_USAGE_ENTRIES = 15;
 // Why: searching instruction files for every failing command is slow; the top ones are enough.
 const MAX_FAILED_COMMANDS_TO_SEARCH = 15;
 const FAILED_COMMAND_PREFIX = "failed_command:";
@@ -185,7 +184,6 @@ export class AnalysisService {
     const maxEvidence = options.maxEvidence ?? DEFAULT_MAX_EVIDENCE;
     return {
       ...analysis,
-      usage: analysis.usage.slice(0, MAX_USAGE_ENTRIES),
       signals: analysis.signals.slice(0, maxSignals).map((signal) => ({
         ...signal,
         evidence: signal.evidence.slice(0, maxEvidence),
