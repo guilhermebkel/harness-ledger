@@ -1,22 +1,108 @@
-# improve-my-harness
+<h1 align="center">improve-my-harness</h1>
 
-**Improve your coding-agent harness with evidence from your own sessions.**
+<p align="center">
+  <strong>Your coding agent's sessions already know what to fix in its harness. This plugin reads them and tells you.</strong>
+  <br />
+  <em>Evidence from your own sessions, not opinions. Built for Claude Code; Codex and Cursor are next.</em>
+</p>
 
-Your harness — the instructions file, skills, subagents, commands, hooks and MCP servers around your coding agent — decides how well the agent works. But most changes to it are made by gut feeling: a skill gets added because it seemed useful, an agent gets a stronger model "just in case", an instruction grows every time something goes wrong.
+<p align="center">
+  <a href="#quick-start"><img src="https://img.shields.io/badge/Quick_start-d4a574" alt="Quick start" /></a>
+  <a href="https://github.com/guilhermebkel/improve-my-harness/releases/latest"><img src="https://img.shields.io/github/v/release/guilhermebkel/improve-my-harness?color=d4a574&label=release" alt="Latest release" /></a>
+  <a href="https://github.com/guilhermebkel/improve-my-harness/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/guilhermebkel/improve-my-harness/ci.yml?branch=master&label=CI" alt="CI" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow" alt="License: MIT" /></a>
+  <a href="https://code.claude.com/docs/en/plugins"><img src="https://img.shields.io/badge/Claude_Code-plugin-8A2BE2" alt="Claude Code plugin" /></a>
+  <img src="https://img.shields.io/badge/Telemetry-none-2ea44f" alt="No telemetry" />
+</p>
 
-`improve-my-harness` reads the sessions your coding agent already saves on your machine, maps your current harness, and tells you **which piece is causing which problem, how much time and tokens it cost you, and what to change** — with a link to the exact session and step behind every suggestion.
-
-> Status: v1 in development. Supported agents and upcoming features are listed in the [Roadmap](#roadmap).
+<p align="center">
+  <img src="docs/assets/banner.png" alt="improve-my-harness: reads your agent's sessions, maps your harness and suggests evidence-based changes" width="820" />
+</p>
 
 ---
 
-## How it works
+**You added a skill because it seemed useful. You gave a subagent a stronger model "just in case". Your CLAUDE.md grows every time something goes wrong. Which of those changes actually helped?**
 
-1. **Maps your harness.** Every run takes a snapshot of what's active: project and user instructions, skills, subagents, commands, hooks, MCP servers and enabled plugins.
-2. **Reads your history.** It parses the session transcripts your agent already writes locally, including subagent transcripts — so it works on the sessions you already have, from the first run. No extra logging.
-3. **Finds patterns, deterministically.** A local script extracts failed commands, repeated file reads, permission denials, repeated requests, and tokens and time per agent and skill. Numbers never come from the model.
-4. **Turns them into suggestions.** Your agent maps each pattern to the piece of the harness that should change, classifies it, and proposes the change.
-5. **Checks if it helped.** When you accept a suggestion, the next runs compare before vs. after for that piece.
+Your harness is everything around your coding agent: the instructions file, skills, subagents, commands, hooks, MCP servers and plugins. It decides how well the agent works, yet it is usually tuned by gut feeling.
+
+`improve-my-harness` reads the session transcripts your agent already saves on your machine, maps your current harness, and tells you **which piece is causing which problem, what it cost you in time and tokens, and what to change**, with the exact session and step behind every suggestion. Then it checks whether the change helped.
+
+> **More text is rarely the fix.** When a rule is already written and the agent ignores it, the answer is a hook or a check, not a longer prompt. The plugin tells those cases apart.
+
+---
+
+## What you get
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**Findings with evidence**
+
+Every finding points to the session, the transcript line and the thread it came from. No evidence, no finding.
+
+</td>
+<td width="50%" valign="top">
+
+**A cost on every suggestion**
+
+Time, tokens and money per suggestion, counted by a local script, never estimated by the model. Two suggestions never share the same cost.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+**The right kind of fix**
+
+Each finding gets a class (rule ignored, instruction missing, structure change...) and the class decides the fix: enforce, rewrite, add, restructure or remove.
+
+</td>
+<td valign="top">
+
+**Before and after**
+
+Accept a suggestion and later runs compare the piece before and after the change, in errors, corrections, time and cost.
+
+</td>
+</tr>
+</table>
+
+## Quick start
+
+### 1. Install the plugin
+
+```text
+/plugin marketplace add guilhermebkel/improve-my-harness
+/plugin install improve-my-harness@improve-my-harness
+```
+
+Requires Node.js 20+. Nothing else is installed: the analysis script ships prebuilt.
+
+### 2. Analyze your sessions
+
+Open Claude Code in your project, pick your strongest reasoning model with `/model`, and run:
+
+```text
+/improve-my-harness
+```
+
+It works on the sessions you already have, from the first run. No extra logging, no setup.
+
+### 3. Keep going
+
+```text
+# Focus on one piece or period
+/improve-my-harness only the code-reviewer subagent, last 2 weeks
+
+# Check whether a change helped
+/improve-my-harness did my change to code-reviewer help?
+
+# Review what was suggested before
+/improve-my-harness show pending suggestions
+```
+
+Suggestions are never applied on their own. Applying one always asks first and only touches harness files.
 
 ## Example
 
@@ -42,84 +128,115 @@ Analyzed 41 sessions (last 30 days) · 9 findings · ~1h50 and ~$14 estimated lo
     Suggestion: turn it into a skill. [draft SKILL.md]
 ```
 
-## Installation
-
-### Claude Code
-
-```text
-/plugin marketplace add guilhermebkel/improve-my-harness
-/plugin install improve-my-harness@improve-my-harness
-```
-
-Requires Node.js 20+ for the local analysis script.
-
-Other agents: see the [Roadmap](#roadmap).
-
-### Recommended model
-
-Run the skill on the most capable reasoning model you have (in Claude Code, pick it with `/model` first). The local script does the reading and the counting, so the model only gets a compact summary; what it adds is judgment: grouping signals by cause, telling real friction from ordinary work, and choosing the fix. That's the part a smaller model gets wrong. It's a recommendation: the skill runs on any model and says so once when it isn't the strongest.
-
-To see what a run cost you, check the skill's own row the next time you analyze: `node dist/imh.mjs analyze --piece skill:improve-my-harness` (the session running an analysis is left out, so earlier runs are what you see).
-
-## Usage
-
-Run `/improve-my-harness` and pick what you want, or just ask in plain text:
-
-| Flow | Example |
-| --- | --- |
-| **Analyze history** (default) | `/improve-my-harness` |
-| **Focus on a piece or period** | `/improve-my-harness only the code-reviewer subagent, last 2 weeks` |
-| **Compare a change** | `/improve-my-harness did my change to code-reviewer help?` |
-| **Manage suggestions** | `/improve-my-harness show pending suggestions` |
-
-Suggestions are never applied on their own. Applying one is optional, always asks for confirmation, and only touches harness files.
-
 ## What it finds
-
-Not every failure needs more instructions. Each finding falls into one class, and the class decides the fix:
 
 | Class | When | Suggested fix |
 | --- | --- | --- |
-| **Rule exists, but is ignored** | The instruction is already there; the agent doesn't follow it | Enforce it deterministically: a script, hook or check |
+| **Rule exists, but is ignored** | The instruction is there; the agent doesn't follow it | Enforce it: a script, hook or check |
 | **Partial or outdated instruction** | It exists but is incomplete or contradicts the repo today | Fix the text in the right piece |
-| **Missing instruction** | Nothing in the harness covers it | Add it, in the piece where it belongs |
-| **Structure change** | A pattern repeats across sessions | Turn it into a skill, subagent or script — or remove an unused piece |
+| **Missing instruction** | Nothing in the harness covers it | Add it where it belongs |
+| **Structure change** | A pattern repeats across sessions | Turn it into a skill, subagent or script, or remove an unused piece |
 | **Out of scope** | The problem is in a piece you don't control | Recommendation only |
-| **Already handled** | Already suggested, rejected, or changed in an open branch | Listed, never repeated |
+| **Already handled** | Already suggested, rejected or changed | Listed, never repeated |
 
-## Principles
+The signals behind them: failed commands and the fix loops around them, wrong commands that a different one fixed, repeated file reads, subagents re-reading what the main thread just read, corrections and rejected plans, permission denials, repeated requests, procedures done by hand again and again, files and outputs that keep filling the context, unused or oversized pieces, and API errors.
 
-- **Evidence over opinion.** Every finding links to the session and step it came from. No evidence, no finding.
-- **Enforcement over more text.** If a rule is written and ignored, a longer prompt is rarely the fix.
-- **Honest numbers.** Time and cost are estimates, idle time is excluded, partial evidence is marked as partial, and before/after comparisons need a minimum sample.
-- **Self-contained pieces.** Suggested text for a subagent or skill describes the condition itself — never who calls it or another file's step numbers.
-- **Stay in scope.** Anything noticed outside the evidence (unrelated bugs, secrets) never becomes a suggestion, and sensitive values never appear in a report.
+## How it works
+
+```text
+  your sessions ──▶ 1. READ ──▶ 2. MAP ──▶ 3. SUGGEST ──▶ 4. COMPARE
+  (already saved)    local       your        classified     before vs after,
+                     script      harness     and costed     once you change it
+```
+
+The work is split on purpose:
+
+| Part | Does | Why |
+| --- | --- | --- |
+| **Local script** (`dist/imh.mjs`) | Parses transcripts, inventories the harness, extracts signals, counts time, tokens and cost, compares before and after | Numbers must be reproducible. The model never estimates one. |
+| **Your agent**, running the skill | Groups signals by cause, tells real friction from ordinary work, classifies each finding and writes the change | That's judgment, and it's where a weaker model goes wrong. |
+
+Run it on the most capable reasoning model you have. The script does the reading and counting, so the model only sees a compact summary; it's a recommendation, and the skill says so once if you're on a smaller model.
+
+<details>
+<summary><b>Running the script yourself</b></summary>
+
+The skill calls the bundled script, and you can too:
+
+```bash
+node dist/imh.mjs analyze --since 14d --pretty   # inventory, signals and per-piece usage
+node dist/imh.mjs evidence <signal-id>            # every occurrence behind one signal
+node dist/imh.mjs compare --piece agent:code-reviewer
+node dist/imh.mjs --help
+```
+
+Everything it prints is JSON. It writes only to `.imh/` in your project.
+
+To see what a run of the skill cost you, look at its own row the next time you analyze: `node dist/imh.mjs analyze --piece skill:improve-my-harness`.
+
+</details>
+
+## Supported agents
+
+| Agent | Status |
+| --- | --- |
+| Claude Code | ✅ Supported, as a plugin |
+| Codex | 🔜 Planned ([#3](https://github.com/guilhermebkel/improve-my-harness/issues/3)) |
+| Cursor | 🔜 Planned ([#4](https://github.com/guilhermebkel/improve-my-harness/issues/4)) |
+
+Each agent is a provider: one folder that reads its own transcripts and settings into a shared model. Want yours? [`docs/adding-a-provider.md`](docs/adding-a-provider.md) walks through it.
 
 ## Privacy
 
-- Everything runs locally. Transcripts are read in place and never copied or sent anywhere; only findings (with references) are stored, in `.imh/`.
-- No telemetry. When the analysis meets something it can't map (a new transcript format, a model with no price), the report offers a link to a prefilled GitHub issue holding only names and counts. You read it and decide whether to send it; nothing is sent on its own.
-- Some agents delete old transcripts automatically (Claude Code keeps 30 days by default). `improve-my-harness` tells you how much history is available, but never changes your retention settings.
+- **Everything runs locally.** Transcripts are read in place, never copied, never sent. Only derived, redacted findings are stored, in `.imh/`.
+- **Secrets stay out.** Every string that can reach a report goes through redaction. Hooks and MCP servers are kept as names and shapes, never their commands, arguments or env values.
+- **No telemetry.** When the script meets something it can't map (a new transcript format, a model with no price), the report offers a link to a prefilled GitHub issue holding only names and counts. You read it and decide whether to send it.
+- **Your retention, untouched.** Claude Code deletes transcripts older than 30 days by default. The plugin tells you how much history you have and never changes that setting.
+
+Found a way around any of this? See [SECURITY.md](SECURITY.md).
 
 ## How it compares
 
-- **Session viewers and usage analyzers** show what happened. `improve-my-harness` maps what happened to *the piece of your harness that should change*.
-- **Plugin and skill eval tools** test a piece in a clean, isolated workspace. `improve-my-harness` looks at your *real* harness, in your *real* sessions.
-- **Setup recommenders** suggest skills and hooks from your project. `improve-my-harness` suggests changes from what actually went wrong — and checks whether they helped.
+- **Session viewers and usage dashboards** show what happened. This maps what happened to *the piece of your harness that should change*.
+- **Plugin and skill eval tools** test a piece in a clean, isolated workspace. This looks at your *real* harness in your *real* sessions.
+- **Setup recommenders** suggest skills and hooks from your project's shape. This suggests changes from what actually went wrong, and checks whether they helped.
+
+## FAQ
+
+<details>
+<summary><b>Does it change my harness?</b></summary>
+
+Only if you ask it to, one suggestion at a time, with confirmation, and only in harness files (instructions, skills, subagents, commands, hooks, settings). Pieces from plugins or managed settings are never edited; findings about them become recommendations.
+
+</details>
+
+<details>
+<summary><b>How much history does it need?</b></summary>
+
+It works from the first run, on whatever sessions you have. Patterns across sessions need a few sessions to show up, and before/after comparisons need a minimum on each side; below that, the report says the evidence is partial instead of guessing.
+
+</details>
+
+<details>
+<summary><b>How accurate are the costs?</b></summary>
+
+They're estimates with a stated method: time excludes idle gaps, tokens come from the transcripts, money from a price table you can override in `.imh/config.json`. Each signal says whether its number is a lower bound, an upper bound or an estimate. The rules are in [`docs/cost-model.md`](docs/cost-model.md).
+
+</details>
+
+<details>
+<summary><b>A finding looks wrong for my project. What do I do?</b></summary>
+
+Reject it (it won't come back), and if the rule behind it seems off, ask for a rule question: the script builds a prefilled issue with the signal and your own words, nothing from your sessions. Those reports are how the rules get better.
+
+</details>
 
 ## Roadmap
 
-### Supported agents
-
-- [x] Claude Code
-- [ ] Codex ([#3](https://github.com/guilhermebkel/improve-my-harness/issues/3))
-- [ ] Cursor ([#4](https://github.com/guilhermebkel/improve-my-harness/issues/4))
-
-### Features
-
-- [ ] **v1 — Insights:** history analysis, harness inventory, classified findings, suggestions, before/after comparison.
-- [ ] **v2 — Bench** ([#2](https://github.com/guilhermebkel/improve-my-harness/issues/2)): prove a suggestion before adopting it. Replay tasks from your sessions or past PRs with different models, reasoning effort, subagents or harness pieces; filter by tests; blind human review with a calibrated LLM judge; recommend the **cheapest configuration that still does the job**.
-- [ ] **Cross-agent comparison:** when you use more than one agent on the same project, compare which harness fails less on similar tasks.
+- [x] **Insights:** history analysis, harness inventory, classified and costed findings, suggestions, before/after comparison.
+- [ ] **Codex and Cursor** providers ([#3](https://github.com/guilhermebkel/improve-my-harness/issues/3), [#4](https://github.com/guilhermebkel/improve-my-harness/issues/4)).
+- [ ] **Bench** ([#2](https://github.com/guilhermebkel/improve-my-harness/issues/2)): prove a suggestion before adopting it. Replay tasks from your sessions with different models, reasoning effort, subagents or pieces; filter by tests; blind review with a calibrated judge; recommend the cheapest configuration that still does the job.
+- [ ] **Cross-agent comparison:** when a project uses more than one agent, compare which harness fails less on similar tasks.
 - [ ] **Team mode:** aggregate sessions across a team.
 - [ ] **Scheduled runs:** periodic analysis that opens a PR with suggested changes for human review.
 
@@ -129,29 +246,28 @@ This project applies the ideas behind *Test-Driven Prompting* (CBSoft 2026): def
 
 ## Contributing
 
-Issues and PRs are welcome. For larger changes, please open an issue first to discuss the approach. Adding support for a new agentic tool (a provider) means a new `src/Providers/<Provider>/` folder whose adapter extends `BaseProviderAdapter`, one entry in `ProviderModule`, and one CI workflow; [`docs/adding-a-provider.md`](docs/adding-a-provider.md) walks through it.
-
-### Development
+Issues and pull requests are welcome, and the most useful contributions are often small: a mapping gap the report linked you to, a rule that misjudged your project, a new provider. Start with [CONTRIBUTING.md](CONTRIBUTING.md); vocabulary is in [GLOSSARY.md](GLOSSARY.md) and design decisions in [`docs/adr/`](docs/adr/).
 
 ```bash
 pnpm install
-pnpm test         # tests next to the code, end to end on synthetic transcripts
-pnpm lint         # ESLint (typescript-eslint + stylistic); see docs/code-standards.md and docs/test-standards.md
-pnpm build        # bundles src/ into dist/imh.mjs (committed by the Release workflow, so the plugin needs no install step)
-pnpm check        # typecheck + lint + quality + tests + a build to a scratch file
+pnpm check   # typecheck, lint, dead code, duplication, tests and a build
 ```
 
-The skill calls the bundled script; you can also run it directly:
+---
 
-```bash
-node dist/imh.mjs analyze --project /path/to/repo --since 14d --pretty
-node dist/imh.mjs --help
-```
+<p align="center">
+  <strong>Stop tuning your harness by feel. Let your sessions show you.</strong>
+</p>
 
-Vocabulary is in [`GLOSSARY.md`](GLOSSARY.md) and design decisions in [`docs/adr/`](docs/adr/).
+<p align="center">
+  <a href="https://www.star-history.com/#guilhermebkel/improve-my-harness&Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=guilhermebkel/improve-my-harness&type=Date&theme=dark" />
+      <img alt="Star history" src="https://api.star-history.com/svg?repos=guilhermebkel/improve-my-harness&type=Date" width="600" />
+    </picture>
+  </a>
+</p>
 
-Layout: `src/Providers/<Provider>/` reads one tool's sessions and harness into the shared model; `src/Shared/` (commands, services, protocols, utils) extracts signals, usage and before/after without knowing which tool produced them; `skills/improve-my-harness/` is what the agent reads. Before committing, run `pnpm check` (lint, typecheck, tests, build).
-
-## License
-
-MIT
+<p align="center">
+  MIT License &copy; Guilherme Mota
+</p>

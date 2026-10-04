@@ -1,0 +1,29 @@
+name: Feature request
+description: A signal, a flow, an agent or anything else you'd like the plugin to do.
+title: "[feature] "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What do you see in your sessions or your harness that the plugin misses today?
+      placeholder: My agent keeps ... and the analysis doesn't flag it.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you'd like
+      description: The finding, signal or flow you have in mind, and what it should suggest.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: How it would be detected
+      description: Optional. What in a transcript shows it (by shape, never content), and how you'd count its cost.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do today instead
