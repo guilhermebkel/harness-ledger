@@ -21,11 +21,11 @@ SCRATCH=<a folder outside the repo>
 SESSIONS_HOME=<a folder whose projects/ holds the copy>
 PROJECT=<the project dir those sessions belong to, as recorded in them>
 
-node scripts/build.mjs --outfile "$SCRATCH/imh-after.mjs"
-git stash && node scripts/build.mjs --outfile "$SCRATCH/imh-before.mjs"; git stash pop
+node scripts/build.mjs --outfile "$SCRATCH/harness-ledger-after.mjs"
+git stash && node scripts/build.mjs --outfile "$SCRATCH/harness-ledger-before.mjs"; git stash pop
 
 for version in before after; do
-  IMH_CLAUDE_HOME="$SESSIONS_HOME" node "$SCRATCH/imh-$version.mjs" analyze \
+  HARNESS_LEDGER_CLAUDE_HOME="$SESSIONS_HOME" node "$SCRATCH/harness-ledger-$version.mjs" analyze \
     --project "$PROJECT" --since 2020-01-01 --no-cache \
     --max-signals 1000 --max-evidence 1000 \
     --data-dir "$SCRATCH/data-$version" > "$SCRATCH/analysis-$version.json"
@@ -36,7 +36,7 @@ node scripts/compare-analyses.mjs "$SCRATCH/analysis-before.json" "$SCRATCH/anal
 
 `--no-cache` makes both versions parse every transcript, and separate `--data-dir`s keep their caches apart. `compare-analyses.mjs` ignores the fields that change on every run (`generatedAt`, `period.until`, `dataDir`), prints each difference by path and exits 1 when there is any.
 
-For another provider, use its home variable (`IMH_<PROVIDER>_HOME`) and `--provider`.
+For another provider, use its home variable (`HARNESS_LEDGER_<PROVIDER>_HOME`) and `--provider`.
 
 ## When something differs
 

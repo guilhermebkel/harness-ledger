@@ -108,7 +108,7 @@ export class AnalysisService {
     });
     const analysis: Analysis = {
       tool: {
-        name: "improve-my-harness",
+        name: "harness-ledger",
         version: VersionUtil.VERSION,
       },
       generatedAt: new Date().toISOString(),
@@ -175,7 +175,7 @@ export class AnalysisService {
   static async lastAnalysis(store: StoreService): Promise<Analysis> {
     const analysis = await store.readJson<Analysis>(AnalysisService.LAST_ANALYSIS_FILE);
     if (!analysis) {
-      throw new Error("No analysis yet. Run `imh analyze` first.");
+      throw new Error("No analysis yet. Run `harness-ledger analyze` first.");
     }
     return analysis;
   }
@@ -191,7 +191,7 @@ export class AnalysisService {
         evidence: signal.evidence.slice(0, maxEvidence),
       })),
       omittedSignals: Math.max(0, analysis.signals.length - maxSignals),
-      hint: "Full result in .imh/last-analysis.json. Use `imh evidence <signal-id>` for all evidence of one signal.",
+      hint: "Full result in .harness-ledger/last-analysis.json. Use `harness-ledger evidence <signal-id>` for all evidence of one signal.",
     };
   }
 

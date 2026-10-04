@@ -5,7 +5,7 @@ import type { FactsCache, SavedInventory } from "@/Shared/Protocols/StoreProtoco
 import type { Suggestion } from "@/Shared/Protocols/SuggestionProtocol.ts";
 import { GuardUtil } from "@/Shared/Utils/GuardUtil.ts";
 
-const DATA_DIR_NAME = ".imh";
+const DATA_DIR_NAME = ".harness-ledger";
 const JSON_INDENT = 2;
 const FACTS_CACHE_FILE = "cache/facts.json";
 const LATEST_INVENTORY_FILE = "inventory/latest.json";

@@ -1,4 +1,4 @@
-# improve-my-harness
+# harness-ledger
 
 A Claude Code plugin that reads the session transcripts the agent already saves, maps the project's harness, and suggests evidence-based changes. Vocabulary is in `GLOSSARY.md`; decisions are in `docs/adr/`; planned work (v2 Bench, Codex, Cursor) is in GitHub issues.
 
@@ -6,8 +6,8 @@ A Claude Code plugin that reads the session transcripts the agent already saves,
 
 ADR 0008 has the reasons; `docs/code-standards.md` ("Architecture") has the rules.
 
-- `skills/improve-my-harness/`: what the agent reads at runtime. `SKILL.md` has the four flows; `references/findings.md` has the classes, rules and report format.
-- `src/index.ts`: entry point of the `imh` script.
+- `skills/audit-harness/`: what the agent reads at runtime. `SKILL.md` has the four flows; `references/findings.md` has the classes, rules and report format.
+- `src/index.ts`: entry point of the `harness-ledger` script.
 - `src/Shared/`: code that knows no provider.
   - `Adapters/BaseProviderAdapter.ts`: the contract every provider extends (paths, transcripts, sessions, inventory).
   - `Modules/`: `CLIModule` (arguments, JSON output) and `ProviderModule` (creates a provider by type; the only Shared file that imports a provider).
@@ -16,7 +16,7 @@ ADR 0008 has the reasons; `docs/code-standards.md` ("Architecture") has the rule
   - `Protocols/`: types only. `Utils/`: static helper classes (guards, env, time, redaction, JSONL, git).
 - `src/Providers/<Provider>/`: one agentic coding tool (Claude Code today), with the same folders as Shared. `Adapters/<Provider>ProviderAdapter.ts` extends `BaseProviderAdapter`; `Utils/<Provider>FixtureUtil.ts` builds a fake home and project in the tool's real format, for tests.
 - Tests sit next to the file they test (`*.test.ts`). There is no `test/` folder.
-- `dist/imh.mjs`: the bundled script the skill runs. Generated; only the `Release` workflow commits it (ADR 0004).
+- `dist/harness-ledger.mjs`: the bundled script the skill runs. Generated; only the `Release` workflow commits it (ADR 0004).
 - `.github/workflows/`: `ci.yml` (shared checks), `release.yml` (cuts a version, by hand) and one workflow per provider (`claude-code.yml` validates the plugin and skill).
 - `scripts/`: `build.mjs` (bundle), `survey-transcripts.mjs` (the shape of a folder of transcripts, without their content) and `eslint-local-rules.mjs` (this repo's own lint rules, tested next to it).
 - `README.md` (for users), `CONTRIBUTING.md` (for contributors), `SECURITY.md` (what counts as a vulnerability: anything that leaks session data) and `CODE_OF_CONDUCT.md`. `.github/ISSUE_TEMPLATE/` has the bug, feature, mapping-gap and rule-question forms; `docs/assets/` holds the README banner.
@@ -30,9 +30,9 @@ pnpm test           # vitest
 pnpm typecheck
 pnpm lint           # pnpm lint:fix for autofixable rules; includes complexity limits (sonarjs)
 pnpm quality        # knip (dead code, unused exports and deps), dpdm (import cycles) and jscpd (duplicated code)
-pnpm build          # src/ -> dist/imh.mjs
+pnpm build          # src/ -> dist/harness-ledger.mjs
 pnpm check          # all of the above, building to a scratch file so dist/ is untouched (CI runs this)
-node dist/imh.mjs --help
+node dist/harness-ledger.mjs --help
 claude plugin validate .claude-plugin/plugin.json && claude plugin validate skills
 ```
 
@@ -58,14 +58,14 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 - Links that leave the machine (issue links for gaps and rule questions, ADR 0010) carry shapes, names and counts only, never session content; the script builds them and never sends anything.
 - Every string that can reach output passes through `RedactUtil.redact()` / `RedactUtil.excerpt()`. Hook and MCP entries keep names and shapes only (ADR 0007). Add a test with a fake secret for any new output path.
 - Transcript formats are internal: parse defensively, count unknown lines, never throw on a bad line. Add new format cases to the provider's fixture (`ClaudeCodeFixtureUtil`).
-- `skills/improve-my-harness/SKILL.md` description is loaded in every user session: keep it short.
+- `skills/audit-harness/SKILL.md` description is loaded in every user session: keep it short.
 - A merge reaches no one until a release. Cut one with the `Release` workflow (`.github/workflows/release.yml`, run by hand from the Actions tab on `master`, choosing patch, minor or major): in one commit it bumps `version` in `plugin.json` and `package.json`, points the marketplace `ref` at `vX.Y.Z`, runs `pnpm release:check` (adds publint) and rebuilds `dist/`; then it tags `vX.Y.Z` and publishes a GitHub Release with generated notes.
 
 ## Agent skills
 
 ### Issue tracker
 
-Issues and specs live in GitHub Issues for `guilhermebkel/improve-my-harness`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues and specs live in GitHub Issues for `guilhermebkel/harness-ledger`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

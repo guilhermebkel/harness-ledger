@@ -1,14 +1,14 @@
 {
-  "name": "improve-my-harness",
-  "displayName": "improve-my-harness",
+  "name": "harness-ledger",
+  "displayName": "harness-ledger",
   "version": "0.2.2",
-  "description": "Improve your coding-agent harness with evidence from your own sessions.",
+  "description": "Every piece of your coding agent's harness, with what it costs you and the receipts from your own sessions.",
   "author": {
     "name": "Guilherme Mota",
     "url": "https://github.com/guilhermebkel"
   },
-  "homepage": "https://github.com/guilhermebkel/improve-my-harness",
-  "repository": "https://github.com/guilhermebkel/improve-my-harness",
+  "homepage": "https://github.com/guilhermebkel/harness-ledger",
+  "repository": "https://github.com/guilhermebkel/harness-ledger",
   "license": "MIT",
   "keywords": ["harness", "skills", "subagents", "hooks", "transcripts", "insights", "evals"]
 }

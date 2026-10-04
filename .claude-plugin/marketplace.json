@@ -7,13 +7,13 @@
   },
   "plugins": [
     {
-      "name": "improve-my-harness",
+      "name": "harness-ledger",
       "source": {
         "source": "github",
-        "repo": "guilhermebkel/improve-my-harness",
+        "repo": "guilhermebkel/harness-ledger",
         "ref": "v0.2.2"
       },
-      "description": "Reads the sessions your coding agent already saves, maps your harness and suggests evidence-based improvements.",
+      "description": "Names the harness piece behind each problem in your sessions, what it cost, and whether the fix worked.",
       "category": "productivity",
       "tags": ["harness", "insights", "transcripts"]
     }

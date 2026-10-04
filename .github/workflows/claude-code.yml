@@ -17,9 +17,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - name: Install the Claude Code CLI
         run: npm install --global @anthropic-ai/claude-code
       # The plugin root holds this repo's CLAUDE.md (for contributors), which plugins don't load;
@@ -31,4 +34,4 @@ jobs:
       - name: Validate the skill
         run: claude plugin validate --strict skills
       - name: The bundled script the skill runs starts
-        run: node dist/imh.mjs --help
+        run: pnpm build:verify && node node_modules/.cache/harness-ledger/harness-ledger.mjs --help

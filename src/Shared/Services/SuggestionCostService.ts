@@ -93,7 +93,7 @@ export class SuggestionCostService {
         if (!evidenceKeys.has(key)) {
           throw new Error(
             `Suggestion ${position} lists session ${occurrence.sessionId} line ${occurrence.line}, which isn't in the`
-            + " evidence of its signals. Run `imh evidence <signal-id>` to see their occurrences.",
+            + " evidence of its signals. Run `harness-ledger evidence <signal-id>` to see their occurrences.",
           );
         }
         const otherPosition = occurrenceKeyToPosition.get(key);
@@ -119,7 +119,7 @@ export class SuggestionCostService {
           const shownId = RedactUtil.excerpt(signalId, MAX_ID_CHARS);
           throw new Error(
             `Suggestions ${otherPosition} and ${position} both take all of ${shownId}. List the occurrences each one`
-            + ` covers ("occurrences": [{"sessionId", "line"}], from \`imh evidence ${shownId}\`).`,
+            + ` covers ("occurrences": [{"sessionId", "line"}], from \`harness-ledger evidence ${shownId}\`).`,
           );
         }
         signalIdToPosition.set(signalId, position);

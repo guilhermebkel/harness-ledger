@@ -1,12 +1,12 @@
-# Contributing to improve-my-harness
+# Contributing to harness-ledger
 
 Thanks for helping. This project gets better mostly from people running it on their own sessions and telling us where it went wrong, so small reports matter as much as code.
 
 ## Ways to contribute
 
 - **Send a mapping gap.** When a report lists something the script couldn't map (a new transcript line, an unknown model, a check tool it doesn't know), it gives you a prefilled issue link with only names and counts. Read it, then send it. That's how new agent versions get supported.
-- **Question a rule.** A finding that's wrong for your project ("that command is supposed to fail here") is a rule question. Ask the skill for one, or open the [rule question form](https://github.com/guilhermebkel/improve-my-harness/issues/new?template=rule-question.yml).
-- **Report a bug or ask for a feature** with the [issue forms](https://github.com/guilhermebkel/improve-my-harness/issues/new/choose).
+- **Question a rule.** A finding that's wrong for your project ("that command is supposed to fail here") is a rule question. Ask the skill for one, or open the [rule question form](https://github.com/guilhermebkel/harness-ledger/issues/new?template=rule-question.yml).
+- **Report a bug or ask for a feature** with the [issue forms](https://github.com/guilhermebkel/harness-ledger/issues/new/choose).
 - **Add a provider** (Codex, Cursor, ...). [`docs/adding-a-provider.md`](docs/adding-a-provider.md) walks through it, from finding the sessions to checking the result.
 - **Improve a signal, the cost model or the docs.**
 
@@ -23,8 +23,8 @@ Security issues go through [SECURITY.md](SECURITY.md), not public issues.
 You need Node.js 20+ and pnpm (never npm: the committed `pnpm-lock.yaml` is what keeps users from installing dev dependencies; ADR 0004).
 
 ```bash
-git clone https://github.com/guilhermebkel/improve-my-harness.git
-cd improve-my-harness
+git clone https://github.com/guilhermebkel/harness-ledger.git
+cd harness-ledger
 pnpm install
 pnpm check
 ```
@@ -33,7 +33,7 @@ To try your changes on a real project, build and run the script against it:
 
 ```bash
 pnpm build
-node dist/imh.mjs analyze --project /path/to/your/project --since 14d --pretty
+node dist/harness-ledger.mjs analyze --project /path/to/your/project --since 14d --pretty
 git checkout dist/   # dist/ is committed only by releases
 ```
 
@@ -51,8 +51,8 @@ While iterating, run only what you touch: `pnpm exec vitest run <file>`, `pnpm e
 
 - `src/Providers/<Provider>/` reads one agent's transcripts and settings into the shared model. Nothing outside that folder knows the agent's formats (ADR 0008).
 - `src/Shared/` (commands, services, protocols, utils) extracts signals, usage, costs and before/after without knowing which agent produced them.
-- `skills/improve-my-harness/` is what the agent reads at runtime: the flows, the finding classes and the report format.
-- `dist/imh.mjs` is the bundled script the skill runs. Don't commit it; the Release workflow does.
+- `skills/audit-harness/` is what the agent reads at runtime: the flows, the finding classes and the report format.
+- `dist/harness-ledger.mjs` is the bundled script the skill runs. Don't commit it; the Release workflow does.
 
 The rules are in [`docs/code-standards.md`](docs/code-standards.md) and [`docs/test-standards.md`](docs/test-standards.md), and `pnpm lint` enforces most of them. The ones people trip on first:
 

@@ -30,7 +30,7 @@ export class ClaudeCodeFixtureUtil {
 
   static makeFixture(): Fixture {
     const tempDir = tmpdir();
-    const root = mkdtempSync(join(tempDir, "imh-test-"));
+    const root = mkdtempSync(join(tempDir, "harness-ledger-test-"));
     const claudeHome = join(root, "claude-home");
     const projectDir = join(root, "work", "my-app");
     const projectsDir = join(claudeHome, "projects", ClaudeCodePathUtil.encodeProjectDir(projectDir));
@@ -52,7 +52,7 @@ export class ClaudeCodeFixtureUtil {
       claudeHome,
       projectDir,
       claudeJson,
-      dataDir: join(root, "imh-data"),
+      dataDir: join(root, "harness-ledger-data"),
     };
   }
 
@@ -367,17 +367,17 @@ export class ClaudeCodeFixtureUtil {
   }
 
   static useFixtureEnv(fixture: Fixture): () => void {
-    const previousHome = process.env.IMH_CLAUDE_HOME;
-    const previousJson = process.env.IMH_CLAUDE_JSON;
-    process.env.IMH_CLAUDE_HOME = fixture.claudeHome;
-    process.env.IMH_CLAUDE_JSON = fixture.claudeJson;
+    const previousHome = process.env.HARNESS_LEDGER_CLAUDE_HOME;
+    const previousJson = process.env.HARNESS_LEDGER_CLAUDE_JSON;
+    process.env.HARNESS_LEDGER_CLAUDE_HOME = fixture.claudeHome;
+    process.env.HARNESS_LEDGER_CLAUDE_JSON = fixture.claudeJson;
     return () => {
-      ClaudeCodeFixtureUtil.restoreEnv("IMH_CLAUDE_HOME", previousHome);
-      ClaudeCodeFixtureUtil.restoreEnv("IMH_CLAUDE_JSON", previousJson);
+      ClaudeCodeFixtureUtil.restoreEnv("HARNESS_LEDGER_CLAUDE_HOME", previousHome);
+      ClaudeCodeFixtureUtil.restoreEnv("HARNESS_LEDGER_CLAUDE_JSON", previousJson);
     };
   }
 
-  private static restoreEnv(name: "IMH_CLAUDE_HOME" | "IMH_CLAUDE_JSON", value: string | undefined): void {
+  private static restoreEnv(name: "HARNESS_LEDGER_CLAUDE_HOME" | "HARNESS_LEDGER_CLAUDE_JSON", value: string | undefined): void {
     if (value === undefined) {
       process.env[name] = "";
     } else {

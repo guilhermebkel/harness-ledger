@@ -1,5 +1,5 @@
 name: Mapping gap
-description: Something in your sessions the analysis couldn't map (a transcript line, a file extension, a check tool, a model, a subagent). Usually opened from a link in an improve-my-harness report.
+description: Something in your sessions the analysis couldn't map (a transcript line, a file extension, a check tool, a model, a subagent). Usually opened from a link in an harness-ledger report.
 title: "[gap] "
 labels: ["mapping-gap", "needs-triage"]
 body:
@@ -25,8 +25,8 @@ body:
     id: versions
     attributes:
       label: Versions
-      description: improve-my-harness, the agent and its version, the platform.
-      placeholder: imh 0.1.0 · claude-code 2.1.287 · darwin
+      description: harness-ledger, the agent and its version, the platform.
+      placeholder: harness-ledger 0.1.0 · claude-code 2.1.287 · darwin
     validations:
       required: true
   - type: textarea

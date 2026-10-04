@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/guilhermebkel/improve-my-harness/security/advisories/new
+    url: https://github.com/guilhermebkel/harness-ledger/security/advisories/new
     about: Report privately. Never in a public issue.
   - name: README and docs
-    url: https://github.com/guilhermebkel/improve-my-harness#readme
+    url: https://github.com/guilhermebkel/harness-ledger#readme
     about: Install, usage, privacy and FAQ.

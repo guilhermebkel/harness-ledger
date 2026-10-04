@@ -24,6 +24,6 @@ export abstract class BaseProviderAdapter {
 
   retentionNote(retentionDays: number): string {
     return `${this.displayName} deletes transcripts older than ${retentionDays} days. `
-      + "improve-my-harness never changes this setting.";
+      + "harness-ledger never changes this setting.";
   }
 }

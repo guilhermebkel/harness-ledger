@@ -54,7 +54,7 @@ export class ConfigService {
       signalThresholds: this.readThresholds(GuardUtil.asRecord(userConfig.signalThresholds)),
     };
     for (const key of NUMERIC_CONFIG_KEYS) {
-      // Why: people edit .imh/config.json by hand, so each field falls back to its default on its own.
+      // Why: people edit .harness-ledger/config.json by hand, so each field falls back to its default on its own.
       config[key] = this.readNonNegative(userConfig[key]) ?? defaults[key];
     }
     return config;

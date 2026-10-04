@@ -97,16 +97,17 @@ History: <transcriptsAvailable> transcripts since <oldestAt>; retention <retenti
 
 | # | What to do | Where to change | Problem | Sessions | Time | Input tokens | Output tokens | Cost | Id |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Enforce a rule that already exists | test-runner agent (`.claude/agents/test-runner.md`) | Runs `npm test` (fails), then `pnpm test` | 3 of 20 | ~38 min | 1.2M | 40k | ~$2.10 | sug-1a2b3c4d |
+| 1 | Enforce a rule that already exists | test-runner agent (`.claude/agents/test-runner.md`) | Runs `npm test` (fails), then `pnpm test` | 3 of 20 | ≥ 38 min | ≥ 1.2M | ≥ 40k | ≥ $2.10 | sug-1a2b3c4d |
 
-_Time, tokens and cost add up the whole period (<N> sessions), not one session; they are estimates from transcript timestamps and token usage, with idle time left out. Together the suggestions cover <covered>; no cost is counted in two rows._
+_Time, tokens and cost add up the whole period (<N> sessions), not one session: what these problems already cost, not a promised saving. ≥ means at least, ≤ at most, ~ about. They come from transcript timestamps and token usage, with idle time left out. Together the suggestions cover <covered>; no cost is counted in two rows._
 
 ### 1. <title>
 **What to do:** … · **Where:** `<path>` · **Evidence:** session 3f2a91bc · line 14 · test-runner; … +4 more
-**What happens:** one or two sentences, with the numbers from the script, time first when it is the bigger cost.
+**What happens:** one or two sentences, with the numbers from the script and how often it happened ("6 times in 4 of 41 sessions"), time first when it is the bigger cost.
 **How we measured:** one plain sentence, from the signal's `cost.method` and `cost.bound`, saying what the numbers count, which occurrences they cover when the suggestion covers part of a signal (`suggestionIdToSuggestionCost[id].occurrences`: "the 5 corrections about the workspace's rules"), and how sure they are ("from the first error until the command that worked, reasoning included; an estimate").
 **Why:** one sentence on why this is the right kind of fix (e.g. "CLAUDE.md line 3 already says to use pnpm, so more text won't help").
 **Change:** the exact text, diff, hook or file to add.
+**After the change:** how they'll know it worked ("run a comparison on the test-runner agent after a few sessions").
 (**Partial:** reason — only when partial.)
 
 ## Already handled
@@ -123,6 +124,18 @@ _Time, tokens and cost add up the whole period (<N> sessions), not one session; 
 ```
 
 When `totals.reportedByProvider.costUsd` exists, show it next to the estimate as the agent's own figure ("the agent reports $X"); never add the two. The totals don't overlap, so they can be listed side by side. A signal's `cost.bound` decides the wording: `lower` → "at least", `upper` → "at most", `estimate` → "about". **How we measured** restates `cost.method` in the person's words and language, never in the script's terms (no field names); when a suggestion combines signals, say what each part counts. Failure costs run until the call that worked (`details.chains`: chains, how many recovered, attempts), so "3 attempts, ~4 min until it worked" is the way to put them. Skill rows in `usage` overlap the main and agent rows.
+
+### Numbers, carefully
+
+The numbers are the reason to trust the report and the easiest part to oversell. Every one of them follows these rules:
+
+- **Say what kind of number it is.** Every figure carries its bound: in tables ≥ (`lower`), ≤ (`upper`) or ~ (`estimate`); in sentences "at least", "at most", "about". Never a bare number.
+- **Say how often.** Next to every finding, the count and the sample: "6 times in 4 of 41 sessions". A big cost from one session is a different finding from a small cost in every session.
+- **Spent, not saved.** The script measures what already happened. Write "this cost at least 38 min in the period", never "fixing this saves 38 min": a saving is a hypothesis until a before/after comparison shows it.
+- **Never add numbers with different bounds.** An "at least" plus an "at most" is not a number. Totals stay split by kind, as in the header above.
+- **The agent's own figure sits beside the estimate.** When `totals.reportedByProvider.costUsd` exists, show it next to the script's estimate for the same sessions; when they differ by more than half, say so in one line. Never add the two.
+- **Round to what the method can tell.** Minutes as whole numbers, hours with one decimal (`~1.8 h`), money with cents below $10 and whole dollars above, tokens as `340k` / `1.2M`.
+- **Partial means the number may move.** When a signal is partial, say why in the person's words ("only 2 sessions so far"), and that the figure may change with more history.
 
 **What the tool couldn't handle** lists `gaps`: up to three, one line each (an unknown transcript line, an extension with no language, a check tool or a model the script doesn't know, a subagent whose type it couldn't tell), then "and N more" with no links. Say in one sentence, once, that each link opens a prefilled GitHub issue they can read and edit before sending, that it holds only names and counts, and that nothing is sent unless they submit it. When you already resolved a gap yourself (you know `.ex` is Elixir, you found what a package checks), say so in the line; the link still helps the next person.
 

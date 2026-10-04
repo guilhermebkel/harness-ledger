@@ -1,10 +1,10 @@
 ---
-name: improve-my-harness
+name: audit-harness
 description: Analyzes this project's coding-agent harness (CLAUDE.md, skills, subagents, commands, hooks, MCP servers, plugins) against the session transcripts already saved on this machine, and suggests evidence-based changes. Use when the user asks to improve, audit or clean up their harness, asks why the agent keeps making the same mistake, asks whether a skill, subagent or instruction is worth it, or asks whether a harness change helped.
 argument-hint: "[what to analyze, e.g. 'only code-reviewer, last 2 weeks' or 'did my change help?']"
 ---
 
-# improve-my-harness
+# audit-harness
 
 You turn deterministic signals from the user's own sessions into a short list of classified, evidence-backed suggestions for their harness. The numbers come from a local script; your job is to judge, classify and write the change. Never invent a number, a session or a step.
 
@@ -19,16 +19,16 @@ The script counts; you judge. Grouping signals by cause, telling real friction f
 All data comes from the bundled script. Run it with Bash from the project root:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/dist/imh.mjs" <command> [options]
+node "${CLAUDE_PLUGIN_ROOT}/dist/harness-ledger.mjs" <command> [options]
 ```
 
-It needs Node.js 20+. If `node` is missing or older, tell the user and stop. It reads transcripts in place, prints JSON, and writes only to `.imh/` in the project.
+It needs Node.js 20+. If `node` is missing or older, tell the user and stop. It reads transcripts in place, prints JSON, and writes only to `.harness-ledger/` in the project.
 
 Always pass `--exclude-session ${CLAUDE_SESSION_ID}` to `analyze`, `compare` and `status`, so the session running this analysis isn't counted.
 
 | Command | Use it for |
 | --- | --- |
-| `analyze [--since 14d] [--until DATE] [--piece ID]...` | Inventory + signals + per-piece usage. Prints a compact JSON; the full result goes to `.imh/last-analysis.json`. |
+| `analyze [--since 14d] [--until DATE] [--piece ID]...` | Inventory + signals + per-piece usage. Prints a compact JSON; the full result goes to `.harness-ledger/last-analysis.json`. |
 | `evidence <signal-id>` | All evidence (session, transcript line, thread, redacted excerpt) for one signal. |
 | `inventory` | The active harness with piece ids (`agent:code-reviewer`, `skill:changelog`, `instructions:project`, `hook:...`, `mcp:...`). |
 | `compare --piece ID [--at DATE]` | Before/after metrics for one piece. |
@@ -69,11 +69,11 @@ Before any flow, read `references/findings.md` in this skill's folder (`${CLAUDE
    - Also treat as already handled anything an open branch or PR already changes: check `git branch --list` and, if `gh` works, `gh pr list --state open --limit 20 --json title,headRefName,files`. Skip this silently when not a git repo or `gh` isn't available.
    - Classify it with exactly one class and write the change, following the rules in the reference.
 5. Group signals that share a cause into one finding (for example, `failed_command:npm test` and a correction saying "use pnpm").
-6. Write the report in the format from the reference, save it to `.imh/reports/<YYYY-MM-DD>.md`, and show it to the user. Keep it short: at most 7 suggestions, ordered by estimated cost (the script's `score`, which weighs time and money).
+6. Write the report in the format from the reference, save it to `.harness-ledger/reports/<YYYY-MM-DD>.md`, and show it to the user. Keep it short: at most 7 suggestions, ordered by estimated cost (the script's `score`, which weighs time and money).
 7. Register all suggestions in one `suggestions add --file <tmp.json>` call (an array of `{title, class, piece, signals, occurrences, change}`; `signals` are the signal ids the finding came from). When two suggestions come from the same signal, split it: in each, list in `occurrences` the evidence (`{sessionId, line}`, from `evidence <signal-id>`) that its change would have prevented; each occurrence goes to one suggestion, and at most one of them may leave `occurrences` out to take the rest. The script refuses overlaps. Use the returned ids, and take each suggestion's time, tokens and money from the returned `costs` (and `covered` for their sum), never from the signals.
 8. Ask which suggestions, if any, the user wants applied (see "Applying").
 
-If `.imh/` is not in `.gitignore` and the project is a git repo, ask once whether to add it there (or to `.git/info/exclude`). Don't add it without asking.
+If `.harness-ledger/` is not in `.gitignore` and the project is a git repo, ask once whether to add it there (or to `.git/info/exclude`). Don't add it without asking.
 
 ## Flow 3: compare a change
 
@@ -105,7 +105,7 @@ Only when the user explicitly asks for a specific suggestion. Then:
 ## Hard rules
 
 - Every finding cites its evidence: session id (first 8 characters), transcript line and thread. No evidence, no finding.
-- Numbers come only from the script. Time and cost are always labeled as estimates. If `totals.unpricedModels` is not empty, say that those models' cost is not included; you may look up a model's price and propose it as an entry in `.imh/config.json` (`modelFamilyToPrice`: a family such as `"glm"` with `inputUsdPerMillionTokens` and `outputUsdPerMillionTokens`) with its source, but use it only after the person confirms and the script recomputes. `totals.reportedByProvider` holds the agent's own cost and turn time; show it beside the estimate, never summed with it. Each signal's `cost.bound` says whether to write "at least", "at most" or "about".
+- Numbers come only from the script. Time and cost are always labeled as estimates. If `totals.unpricedModels` is not empty, say that those models' cost is not included; you may look up a model's price and propose it as an entry in `.harness-ledger/config.json` (`modelFamilyToPrice`: a family such as `"glm"` with `inputUsdPerMillionTokens` and `outputUsdPerMillionTokens`) with its source, but use it only after the person confirms and the script recomputes. `totals.reportedByProvider` holds the agent's own cost and turn time; show it beside the estimate, never summed with it. Each signal's `cost.bound` says whether to write "at least", "at most" or "about".
 - Never show secret values. The script redacts excerpts; if you read a transcript line yourself, don't copy credentials, tokens, keys or personal data into the report, suggestions or commits. If you notice an exposed secret, tell the user privately in one line and don't turn it into a suggestion.
 - Stay in scope: unrelated bugs or code issues you notice in transcripts are not harness findings. Mention them in one line at most, outside the suggestion list.
 - Don't apply anything without explicit confirmation for that specific suggestion.
