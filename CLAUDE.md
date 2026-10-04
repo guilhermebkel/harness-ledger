@@ -25,6 +25,7 @@ ADR 0008 has the reasons; `docs/code-standards.md` ("Architecture") has the rule
 ## Commands
 
 ```bash
+nvm use            # Node 20 from .nvmrc: the oldest version users may run; workflows read it too
 pnpm install
 pnpm test           # vitest
 pnpm typecheck
