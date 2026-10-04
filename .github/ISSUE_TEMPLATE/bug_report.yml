@@ -1,0 +1,45 @@
+name: Bug report
+description: The script or the skill did something wrong (a crash, a wrong number, a report that breaks a rule).
+title: "[bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Never paste a real transcript, an excerpt from a session, a secret or company data here.** Describe the shape instead ("a `user` line with an `origin` key"), or build a synthetic example.
+
+        A finding that's wrong for your project is a rule question, not a bug: use that form instead. Security issues go through SECURITY.md.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you ran and what you got.
+      placeholder: Ran `/improve-my-harness` and the analysis stopped with "..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: Steps, with synthetic data if a transcript shape matters.
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: improve-my-harness (`node dist/imh.mjs --help` prints it), your agent and its version, OS and Node.js.
+      placeholder: imh 0.2.0 · Claude Code 2.1.288 · macOS 15 · Node 22
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy
+      options:
+        - label: This issue has no session content, real paths, secrets or company names.
+          required: true

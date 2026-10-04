@@ -19,6 +19,7 @@ ADR 0008 has the reasons; `docs/code-standards.md` ("Architecture") has the rule
 - `dist/imh.mjs`: the bundled script the skill runs. Generated; only the `Release` workflow commits it (ADR 0004).
 - `.github/workflows/`: `ci.yml` (shared checks), `release.yml` (cuts a version, by hand) and one workflow per provider (`claude-code.yml` validates the plugin and skill).
 - `scripts/`: `build.mjs` (bundle), `survey-transcripts.mjs` (the shape of a folder of transcripts, without their content) and `eslint-local-rules.mjs` (this repo's own lint rules, tested next to it).
+- `README.md` (for users), `CONTRIBUTING.md` (for contributors), `SECURITY.md` (what counts as a vulnerability: anything that leaks session data) and `CODE_OF_CONDUCT.md`. `.github/ISSUE_TEMPLATE/` has the bug, feature, mapping-gap and rule-question forms; `docs/assets/` holds the README banner.
 - Adding a provider (Codex, Cursor, ...): follow `docs/adding-a-provider.md`. It covers finding the sessions, exporting a sample of the last 7 days, learning the format, mapping it to the shared model and checking it on real sessions.
 
 ## Commands
@@ -39,7 +40,7 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 
 - **Commit once per task, not per file.** Make all the edits a task needs, then verify once and commit everything together.
 - **Before every commit, run `pnpm lint`, `pnpm typecheck` (tsc), `pnpm quality` and `pnpm test`, and fix everything they report.** `pnpm check` runs all of this in one go, plus a build to a scratch file; CI runs the same. Never commit with lint errors, type errors, quality findings or failing tests; fix the code instead of raising a limit or adding an ignore.
-- The v1 work is in PR #1 (`feat/v1-insights`), not merged yet: start new work from that branch, not from `master`.
+- Start new work on a branch from `master` and open a pull request; `.github/PULL_REQUEST_TEMPLATE.md` has the checklist.
 - While iterating, run only what you need (`pnpm exec vitest run <file>`, `pnpm exec eslint <file>`); keep the full run for the end.
 - Provider-specific code (paths, transcript and settings formats, tool names, prompt tags, env variables) lives only in `src/Providers/<Provider>/`. `src/Shared/` never imports a provider except through `ProviderModule`, and providers never import each other (ADR 0008, enforced by lint). If shared code needs provider knowledge, extend the shared model or `BaseProviderAdapter` instead.
 - Write classes: static-only Utils, Services with constructor-injected dependencies, Commands with `run`. Protocols hold only types. One class per file, and the file is named after it (enforced by lint).
