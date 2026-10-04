@@ -2,6 +2,7 @@
 name: audit-harness
 description: Analyzes this project's coding-agent harness (CLAUDE.md, skills, subagents, commands, hooks, MCP servers, plugins) against the session transcripts already saved on this machine, and suggests evidence-based changes. Use when the user asks to improve, audit or clean up their harness, asks why the agent keeps making the same mistake, asks whether a skill, subagent or instruction is worth it, or asks whether a harness change helped.
 argument-hint: "[what to analyze, e.g. 'only code-reviewer, last 2 weeks' or 'did my change help?']"
+model: opus
 ---
 
 # audit-harness
