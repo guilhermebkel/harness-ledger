@@ -500,7 +500,7 @@ var TokenUsageUtil = class _TokenUsageUtil {
 // src/Shared/Utils/VersionUtil.ts
 var VersionUtil = class {
   // Why: esbuild replaces it at build time; "dev" when running from source.
-  static VERSION = true ? "0.3.0" : "dev";
+  static VERSION = true ? "0.3.1" : "dev";
 };
 
 // src/Shared/Services/AttributionService.ts
@@ -1530,6 +1530,11 @@ var MIN_SESSIONS_FOR_FULL_EVIDENCE = 2;
 var SELF_SKILL_NAME = /(^|:)audit-harness$/;
 var USAGE_KINDS = /* @__PURE__ */ new Set(["skill", "agent", "command", "mcp"]);
 var SIZE_KINDS = /* @__PURE__ */ new Set(["instructions", "skill", "agent"]);
+var BOUND_TO_COST_WEIGHT = {
+  lower: 1,
+  estimate: 1,
+  upper: 0.5
+};
 var SCORE_WEIGHTS = {
   perActiveMinute: 1,
   perUsd: 2,
@@ -1732,7 +1737,8 @@ var SignalService = class _SignalService {
   }
   scoreOf(signal) {
     const countedOccurrences = Math.min(signal.occurrences, SCORE_WEIGHTS.maxCountedOccurrences);
-    const score = signal.cost.activeMinutes * SCORE_WEIGHTS.perActiveMinute + signal.cost.usd * SCORE_WEIGHTS.perUsd + signal.sessions * SCORE_WEIGHTS.perSession + countedOccurrences * SCORE_WEIGHTS.perOccurrence - (signal.isPartial ? SCORE_WEIGHTS.partialPenalty : 0);
+    const costWeight = BOUND_TO_COST_WEIGHT[signal.cost.bound];
+    const score = signal.cost.activeMinutes * SCORE_WEIGHTS.perActiveMinute * costWeight + signal.cost.usd * SCORE_WEIGHTS.perUsd * costWeight + signal.sessions * SCORE_WEIGHTS.perSession + countedOccurrences * SCORE_WEIGHTS.perOccurrence - (signal.isPartial ? SCORE_WEIGHTS.partialPenalty : 0);
     return NumberUtil.round(score);
   }
   unusedPieceSignals(sessions, inventory) {
@@ -3425,7 +3431,7 @@ var BaseProviderAdapter = class {
 
 // src/Providers/ClaudeCode/Services/ClaudeCodeInventoryService.ts
 import { readdir as readdir2, readFile as readFile4, stat as stat2 } from "node:fs/promises";
-import { basename, join as join3, relative as relative2 } from "node:path";
+import { basename, join as join4, relative as relative2 } from "node:path";
 
 // src/Shared/Utils/FrontmatterUtil.ts
 var BLOCK_TEXT_MARKERS = /* @__PURE__ */ new Set(["|", ">", "|-", ">-"]);
@@ -3573,11 +3579,12 @@ var GitUtil = class {
 
 // src/Providers/ClaudeCode/Services/ClaudeCodePieceCollectorService.ts
 import { readFile as readFile3, realpath, stat } from "node:fs/promises";
-import { dirname, relative } from "node:path";
+import { dirname, join as join3, relative, sep } from "node:path";
 var PROJECT_SCOPES = /* @__PURE__ */ new Set(["project", "local"]);
 var KINDS_WITH_SKILLS = /* @__PURE__ */ new Set(["agent"]);
 var READ_ONLY_SCOPES = /* @__PURE__ */ new Set(["plugin", "managed"]);
 var MAX_DESCRIPTION_CHARS = 300;
+var CLAUDE_FOLDER = ".claude";
 var MAX_HASHED_FILE_BYTES = 1e6;
 var ClaudeCodePieceCollectorService = class {
   constructor(projectDir, gitChangeDates) {
@@ -3595,6 +3602,24 @@ var ClaudeCodePieceCollectorService = class {
     }
     this.seenRealPaths.add(realPath);
     return true;
+  }
+  async linkedPathOf(file) {
+    const anchor = this.anchorOf(file);
+    if (anchor === void 0) {
+      return void 0;
+    }
+    const realFile = await realpath(file).catch(() => file);
+    const realAnchor = await realpath(anchor).catch(() => anchor);
+    const isLinked = realFile !== join3(realAnchor, relative(anchor, file));
+    return isLinked ? RedactUtil.redact(PathUtil.tildify(realFile)) : void 0;
+  }
+  anchorOf(file) {
+    const isInsideProject = !relative(this.projectDir, file).startsWith("..");
+    if (isInsideProject) {
+      return this.projectDir;
+    }
+    const claudeFolderIndex = file.lastIndexOf(`${sep}${CLAUDE_FOLDER}${sep}`);
+    return claudeFolderIndex === -1 ? void 0 : file.slice(0, claudeFolderIndex);
   }
   displayPath(file, scope) {
     const isProjectFile = PROJECT_SCOPES.has(scope);
@@ -3642,12 +3667,14 @@ ${content.toString("base64")}`);
     );
     const latestChange = changes.filter((change) => change.modifiedAt !== void 0).sort((left, right) => (right.modifiedAt ?? "").localeCompare(left.modifiedAt ?? ""))[0];
     const pieceFolder = dirname(filePiece.file);
+    const linkedPath = await this.linkedPathOf(filePiece.file);
     this.pieces.push({
       id: this.uniqueId(filePiece.kind, filePiece.name, filePiece.scope),
       kind: filePiece.kind,
       name: filePiece.name,
       scope: filePiece.scope,
       path: this.displayPath(filePiece.file, filePiece.scope),
+      linkedPath,
       hash: extraFiles.length ? HashUtil.sha([text, ...extraHashes].join("\n")) : HashUtil.sha(text),
       bytes: Buffer.byteLength(text),
       approxTokens: NumberUtil.approxTokens(text),
@@ -3682,7 +3709,7 @@ var ClaudeCodeInventoryService = class {
     const builder = new ClaudeCodePieceCollectorService(projectDir, changeDates);
     const shouldIncludeUser = !options.isProjectOnly;
     await this.addInstructionFiles(builder, shouldIncludeUser);
-    await this.addComponents(builder, join3(projectDir, ".claude"), "project");
+    await this.addComponents(builder, join4(projectDir, ".claude"), "project");
     if (shouldIncludeUser) {
       await this.addComponents(builder, this.homeDir, "user");
     }
@@ -3707,19 +3734,19 @@ var ClaudeCodeInventoryService = class {
     const projectDir = builder.projectDir;
     const instructionFiles = [
       {
-        file: join3(projectDir, "CLAUDE.md"),
+        file: join4(projectDir, "CLAUDE.md"),
         kind: "instructions",
         name: "project",
         scope: "project"
       },
       {
-        file: join3(projectDir, ".claude", "CLAUDE.md"),
+        file: join4(projectDir, ".claude", "CLAUDE.md"),
         kind: "instructions",
         name: "project-dotclaude",
         scope: "project"
       },
       {
-        file: join3(projectDir, "CLAUDE.local.md"),
+        file: join4(projectDir, "CLAUDE.local.md"),
         kind: "instructions",
         name: "local",
         scope: "local"
@@ -3727,7 +3754,7 @@ var ClaudeCodeInventoryService = class {
     ];
     if (shouldIncludeUser) {
       instructionFiles.push({
-        file: join3(this.homeDir, "CLAUDE.md"),
+        file: join4(this.homeDir, "CLAUDE.md"),
         kind: "instructions",
         name: "user",
         scope: "user"
@@ -3740,9 +3767,9 @@ var ClaudeCodeInventoryService = class {
   async addComponents(builder, baseDir, scope, componentOptions = {}) {
     const prefix = componentOptions.namePrefix ?? "";
     const plugin = componentOptions.plugin;
-    for (const skillDir of await readdir2(join3(baseDir, "skills")).catch(() => [])) {
-      const skillFolder = join3(baseDir, "skills", skillDir);
-      const file = join3(skillFolder, "SKILL.md");
+    for (const skillDir of await readdir2(join4(baseDir, "skills")).catch(() => [])) {
+      const skillFolder = join4(baseDir, "skills", skillDir);
+      const file = join4(skillFolder, "SKILL.md");
       const declaredName = await this.declaredNameOf(file);
       const extraFiles = await this.skillFolderFiles(skillFolder);
       await builder.addFile({
@@ -3754,7 +3781,7 @@ var ClaudeCodeInventoryService = class {
         name: `${prefix}${declaredName ?? skillDir}`
       });
     }
-    const rootSkill = join3(baseDir, "SKILL.md");
+    const rootSkill = join4(baseDir, "SKILL.md");
     const rootSkillStat = componentOptions.canBeRootSkill ? await stat2(rootSkill).catch(() => void 0) : void 0;
     if (rootSkillStat !== void 0) {
       await builder.addFile({
@@ -3765,7 +3792,7 @@ var ClaudeCodeInventoryService = class {
         plugin
       });
     }
-    const agentsDir = join3(baseDir, "agents");
+    const agentsDir = join4(baseDir, "agents");
     for (const file of await this.listMarkdownFiles(agentsDir)) {
       const declaredName = await this.declaredNameOf(file);
       await builder.addFile({
@@ -3776,7 +3803,7 @@ var ClaudeCodeInventoryService = class {
         name: `${prefix}${declaredName ?? this.nameFromPath(agentsDir, file)}`
       });
     }
-    const commandsDir = join3(baseDir, "commands");
+    const commandsDir = join4(baseDir, "commands");
     for (const file of await this.listMarkdownFiles(commandsDir)) {
       await builder.addFile({
         file,
@@ -3801,17 +3828,25 @@ var ClaudeCodeInventoryService = class {
     const entries = await readdir2(dir, { withFileTypes: true }).catch(() => []);
     const files = [];
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-      const entryPath = join3(dir, entry.name);
+      const entryPath = join4(dir, entry.name);
       const isHidden = entry.name.startsWith(".");
-      if (entry.isDirectory() && !isHidden && !SKIPPED_FOLDERS.has(entry.name)) {
+      const { isDirectory, isFile } = await this.entryKindOf(entry, entryPath);
+      if (isDirectory && !isHidden && !SKIPPED_FOLDERS.has(entry.name)) {
         files.push(...await this.skillFolderFiles(entryPath, depth + 1));
       }
       const isSkillEntryFile = depth === 0 && entry.name === "SKILL.md";
-      if (entry.isFile() && !isHidden && !isSkillEntryFile) {
+      if (isFile && !isHidden && !isSkillEntryFile) {
         files.push(entryPath);
       }
     }
     return files.slice(0, MAX_SKILL_FILES);
+  }
+  async entryKindOf(entry, entryPath) {
+    if (!entry.isSymbolicLink()) {
+      return { isDirectory: entry.isDirectory(), isFile: entry.isFile() };
+    }
+    const target = await stat2(entryPath).catch(() => void 0);
+    return { isDirectory: target?.isDirectory() ?? false, isFile: target?.isFile() ?? false };
   }
   async listMarkdownFiles(dir, depth = 0) {
     if (depth > MAX_COMPONENT_DEPTH) {
@@ -3820,11 +3855,12 @@ var ClaudeCodeInventoryService = class {
     const entries = await readdir2(dir, { withFileTypes: true }).catch(() => []);
     const files = [];
     for (const entry of entries) {
-      const entryPath = join3(dir, entry.name);
-      if (entry.isDirectory()) {
+      const entryPath = join4(dir, entry.name);
+      const { isDirectory, isFile } = await this.entryKindOf(entry, entryPath);
+      if (isDirectory) {
         files.push(...await this.listMarkdownFiles(entryPath, depth + 1));
       }
-      if (entry.isFile() && entry.name.endsWith(".md")) {
+      if (isFile && entry.name.endsWith(".md")) {
         files.push(entryPath);
       }
     }
@@ -3835,17 +3871,17 @@ var ClaudeCodeInventoryService = class {
     const settingsFiles = [];
     if (shouldIncludeUser) {
       settingsFiles.push({
-        file: join3(this.homeDir, "settings.json"),
+        file: join4(this.homeDir, "settings.json"),
         scope: "user"
       });
     }
     settingsFiles.push(
       {
-        file: join3(projectDir, ".claude", "settings.json"),
+        file: join4(projectDir, ".claude", "settings.json"),
         scope: "project"
       },
       {
-        file: join3(projectDir, ".claude", "settings.local.json"),
+        file: join4(projectDir, ".claude", "settings.local.json"),
         scope: "local"
       }
     );
@@ -3934,7 +3970,7 @@ var ClaudeCodeInventoryService = class {
     return pieces;
   }
   async addMcpServers(builder, shouldIncludeUser) {
-    const projectMcpFile = join3(builder.projectDir, ".mcp.json");
+    const projectMcpFile = join4(builder.projectDir, ".mcp.json");
     const projectMcp = await this.readJsonFile(projectMcpFile);
     const projectServers = GuardUtil.asRecord(projectMcp?.mcpServers);
     const projectChange = await builder.changeOf(projectMcpFile, "project");
@@ -3984,7 +4020,7 @@ var ClaudeCodeInventoryService = class {
       if (!pluginIdToIsEnabled.has(pluginId)) {
         builder.notes.push(`Plugin ${pluginId} is installed but not listed in enabledPlugins; assumed enabled.`);
       }
-      const manifestFile = join3(installPath, ".claude-plugin", "plugin.json");
+      const manifestFile = join4(installPath, ".claude-plugin", "plugin.json");
       const manifest = await this.readJsonFile(manifestFile);
       const serialized = JSON.stringify(manifest ?? {});
       builder.pieces.push({
@@ -4010,7 +4046,7 @@ var ClaudeCodeInventoryService = class {
   }
   async readInstalledPlugins() {
     const pluginIdToInstallPath = /* @__PURE__ */ new Map();
-    const installedFile = join3(this.homeDir, "plugins", "installed_plugins.json");
+    const installedFile = join4(this.homeDir, "plugins", "installed_plugins.json");
     const installed = await this.readJsonFile(installedFile);
     const plugins = GuardUtil.asRecord(installed?.plugins) ?? installed ?? {};
     for (const [pluginId, value] of Object.entries(plugins)) {
@@ -4030,7 +4066,7 @@ var ClaudeCodeInventoryService = class {
 
 // src/Providers/ClaudeCode/Services/ClaudeCodeSessionService.ts
 import { readdir as readdir3, readFile as readFile5, stat as stat3 } from "node:fs/promises";
-import { basename as basename2, isAbsolute as isAbsolute2, join as join5, relative as relative3 } from "node:path";
+import { basename as basename2, isAbsolute as isAbsolute2, join as join6, relative as relative3 } from "node:path";
 
 // src/Shared/Utils/JsonlUtil.ts
 import { createReadStream } from "node:fs";
@@ -4065,7 +4101,7 @@ var JsonlUtil = class _JsonlUtil {
 
 // src/Providers/ClaudeCode/Utils/ClaudeCodePathUtil.ts
 import { homedir as homedir3 } from "node:os";
-import { join as join4 } from "node:path";
+import { join as join5 } from "node:path";
 
 // src/Shared/Utils/EnvUtil.ts
 var EnvUtil = class {
@@ -4078,11 +4114,11 @@ var EnvUtil = class {
 // src/Providers/ClaudeCode/Utils/ClaudeCodePathUtil.ts
 var ClaudeCodePathUtil = class {
   static homeDir() {
-    return EnvUtil.read("HARNESS_LEDGER_CLAUDE_HOME") ?? EnvUtil.read("CLAUDE_CONFIG_DIR") ?? join4(homedir3(), ".claude");
+    return EnvUtil.read("HARNESS_LEDGER_CLAUDE_HOME") ?? EnvUtil.read("CLAUDE_CONFIG_DIR") ?? join5(homedir3(), ".claude");
   }
   static claudeJsonPath() {
     const configDir = EnvUtil.read("CLAUDE_CONFIG_DIR");
-    const defaultPath = configDir ? join4(configDir, ".claude.json") : join4(homedir3(), ".claude.json");
+    const defaultPath = configDir ? join5(configDir, ".claude.json") : join5(homedir3(), ".claude.json");
     return EnvUtil.read("HARNESS_LEDGER_CLAUDE_JSON") ?? defaultPath;
   }
   static encodeProjectDir(projectDir) {
@@ -4274,22 +4310,22 @@ var ClaudeCodeSessionService = class {
     }
   };
   async discoverTranscripts(options) {
-    const projectsDir = join5(this.homeDir, "projects");
+    const projectsDir = join6(this.homeDir, "projects");
     const projectFolders = await readdir3(projectsDir).catch(() => []);
     const encodedProject = ClaudeCodePathUtil.encodeProjectDir(options.projectDir);
     const isCandidateFolder = (folder) => folder === encodedProject || folder.startsWith(`${encodedProject}-`);
     const selectedFolders = options.shouldReadAllProjects ? projectFolders : projectFolders.filter(isCandidateFolder);
     const transcripts = [];
     for (const folder of selectedFolders) {
-      const folderPath = join5(projectsDir, folder);
+      const folderPath = join6(projectsDir, folder);
       const entries = await readdir3(folderPath).catch(() => []);
       for (const entry of entries.filter((name) => name.endsWith(TRANSCRIPT_EXTENSION))) {
-        const fileStat = await this.statFile(join5(folderPath, entry));
+        const fileStat = await this.statFile(join6(folderPath, entry));
         if (!fileStat) {
           continue;
         }
         const sessionId = entry.slice(0, -TRANSCRIPT_EXTENSION.length);
-        const subagentFolder = join5(folderPath, sessionId, "subagents");
+        const subagentFolder = join6(folderPath, sessionId, "subagents");
         const subagentFiles = await this.listSubagentFiles(subagentFolder);
         transcripts.push({
           ...fileStat,
@@ -4364,7 +4400,7 @@ var ClaudeCodeSessionService = class {
   async listSubagentFiles(subagentsDir) {
     const entries = await readdir3(subagentsDir).catch(() => []);
     const stats = await Promise.all(
-      entries.filter((name) => name.endsWith(TRANSCRIPT_EXTENSION)).map(async (name) => this.statFile(join5(subagentsDir, name)))
+      entries.filter((name) => name.endsWith(TRANSCRIPT_EXTENSION)).map(async (name) => this.statFile(join6(subagentsDir, name)))
     );
     return stats.filter((fileStat) => fileStat !== void 0);
   }
@@ -5006,7 +5042,7 @@ import { cpus } from "node:os";
 
 // src/Shared/Services/StoreService.ts
 import { mkdir, readFile as readFile6, rename, writeFile } from "node:fs/promises";
-import { dirname as dirname2, join as join6 } from "node:path";
+import { dirname as dirname2, join as join7 } from "node:path";
 var DATA_DIR_NAME = ".harness-ledger";
 var JSON_INDENT = 2;
 var FACTS_CACHE_FILE = "cache/facts.json";
@@ -5019,14 +5055,14 @@ var StoreService = class _StoreService {
   // Why: bump when the parser's output shape changes, so cached facts are re-parsed.
   static FACTS_VERSION = 5;
   static forProject(projectDir, dataDir) {
-    return new _StoreService(dataDir ?? join6(projectDir, DATA_DIR_NAME));
+    return new _StoreService(dataDir ?? join7(projectDir, DATA_DIR_NAME));
   }
   async readJson(relativePath) {
-    const text = await readFile6(join6(this.root, relativePath), "utf8").catch(() => void 0);
+    const text = await readFile6(join7(this.root, relativePath), "utf8").catch(() => void 0);
     return text === void 0 ? void 0 : GuardUtil.parseJson(text);
   }
   async writeJson(relativePath, value, shouldIndent = true) {
-    const file = join6(this.root, relativePath);
+    const file = join7(this.root, relativePath);
     await mkdir(dirname2(file), { recursive: true });
     const temporaryFile = `${file}.${process.pid}.tmp`;
     const serialized = JSON.stringify(value, null, shouldIndent ? JSON_INDENT : 0);
