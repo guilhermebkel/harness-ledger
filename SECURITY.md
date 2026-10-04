@@ -44,4 +44,4 @@ Out of scope:
 
 ## Supported versions
 
-Fixes go into the next release. Update with `/plugin` → Installed → Update, or `claude plugin update improve-my-harness@improve-my-harness`.
+Fixes go into the next release. Update with `/plugin` → Installed → Update, or `claude plugin update improve-my-harness@guilhermebkel`.
