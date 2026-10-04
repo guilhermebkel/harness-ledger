@@ -1,7 +1,7 @@
 {
   "name": "improve-my-harness",
   "displayName": "improve-my-harness",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Improve your coding-agent harness with evidence from your own sessions.",
   "author": {
     "name": "Guilherme Mota",
