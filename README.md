@@ -161,7 +161,7 @@ The work is split on purpose:
 | **Local script** (`dist/harness-ledger.mjs`) | Parses transcripts, inventories the harness, extracts signals, counts time, tokens and cost, compares before and after | Numbers must be reproducible. The model never estimates one. |
 | **Your agent**, running the skill | Groups signals by cause, tells real friction from ordinary work, classifies each finding and writes the change | That's judgment, and it's where a weaker model goes wrong. |
 
-The skill runs on Opus by default. The script does the reading and counting, so the model only sees a compact summary; what it adds is judgment.
+Run it on the most capable reasoning model you have. The script does the reading and counting, so the model only sees a compact summary; what it adds is judgment.
 
 ### How the numbers work
 
