@@ -20,11 +20,12 @@ Security issues go through [SECURITY.md](SECURITY.md), not public issues.
 
 ## Setup
 
-You need Node.js 20+ and pnpm (never npm: the committed `pnpm-lock.yaml` is what keeps users from installing dev dependencies; ADR 0004).
+You need Node.js 20+ and pnpm (never npm: the committed `pnpm-lock.yaml` is what keeps users from installing dev dependencies; ADR 0004). `.nvmrc` pins the version we develop on, the oldest one users may run: `nvm use` (or fnm, mise) picks it up, and the Release workflow reads it too. The Claude Code workflow stays on Node 22, which its CLI needs.
 
 ```bash
 git clone https://github.com/guilhermebkel/harness-ledger.git
 cd harness-ledger
+nvm use
 pnpm install
 pnpm check
 ```
