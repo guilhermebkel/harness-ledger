@@ -71,14 +71,14 @@ export class GapService {
     return shortName.startsWith("@") ? `${PRIVATE_SCOPE}/${shortName.split("/").slice(1).join("/")}` : shortName;
   }
 
-  static versionsOf(sessions: SessionFacts[], imhVersion: string, provider: string): IssueVersions {
+  static versionsOf(sessions: SessionFacts[], harnessLedgerVersion: string, provider: string): IssueVersions {
     const agentVersions = sessions.map((session) => session.agentVersion).filter((version) => version !== undefined);
     const platforms = sessions
       .map((session) => session.environment.platform)
       .filter((platform) => platform !== undefined);
     return {
       provider,
-      imh: imhVersion,
+      harnessLedger: harnessLedgerVersion,
       agentVersions: CollectionUtil.unique(agentVersions).sort(GapService.compareVersions),
       platforms: CollectionUtil.unique(platforms).sort(CollectionUtil.compareCodeUnits),
     };

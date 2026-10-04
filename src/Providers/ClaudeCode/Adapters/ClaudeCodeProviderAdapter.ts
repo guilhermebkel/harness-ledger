@@ -36,7 +36,7 @@ export class ClaudeCodeProviderAdapter extends BaseProviderAdapter {
 
   override retentionNote(retentionDays: number): string {
     return `Claude Code deletes transcripts older than ${retentionDays} days at startup. `
-      + "improve-my-harness never changes this setting.";
+      + "harness-ledger never changes this setting.";
   }
 
   private sessionService(): ClaudeCodeSessionService {

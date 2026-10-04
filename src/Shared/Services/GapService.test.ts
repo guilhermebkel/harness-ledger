@@ -5,7 +5,7 @@ import { SessionFactsBuilder } from "@/Shared/Utils/SessionFactsBuilder.ts";
 import { GapService } from "@/Shared/Services/GapService.ts";
 
 const VERSIONS: IssueVersions = {
-  imh: "0.1.0",
+  harnessLedger: "0.1.0",
   provider: "claude-code",
   agentVersions: ["2.1.287"],
   platforms: ["darwin"],
@@ -46,7 +46,7 @@ describe("GapService.gapsOf()", () => {
     expect(params.get("template")).toBe("mapping-gap.yml");
     expect(params.get("title")).toBe(`[gap] file extension with no language ".ex" · ${gap?.fingerprint ?? ""}`);
     expect(params.get("details")).toBe("extension: .ex\nedits: 12");
-    expect(params.get("versions")).toBe("imh 0.1.0 · claude-code 2.1.287 · darwin");
+    expect(params.get("versions")).toBe("harness-ledger 0.1.0 · claude-code 2.1.287 · darwin");
     expect(gap?.searchUrl).toContain(`is%3Aissue+${gap?.fingerprint ?? ""}`);
   });
 
@@ -83,7 +83,7 @@ describe("GapService.gapsOf()", () => {
   it("gives the same gap the same fingerprint on every run", () => {
     const input = { sessions: [], checks: noChecks, unpricedModels: ["glm-5.2"], usage: [] };
     const [first] = new GapService(VERSIONS).gapsOf(input);
-    const [again] = new GapService({ ...VERSIONS, imh: "0.2.0" }).gapsOf(input);
+    const [again] = new GapService({ ...VERSIONS, harnessLedger: "0.2.0" }).gapsOf(input);
     expect(first?.kind).toBe("unpriced_model");
     expect(again?.fingerprint).toBe(first?.fingerprint);
   });

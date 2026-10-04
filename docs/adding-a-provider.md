@@ -7,9 +7,9 @@ How to add support for another agentic coding tool (a provider, see `GLOSSARY.md
 Start from the provider's documentation. When it doesn't say, find out on your own machine: mark the time, run one short session, and see which files changed.
 
 ```bash
-touch /tmp/imh-marker
+touch /tmp/harness-ledger-marker
 # ...run one short session in the provider, in any project...
-find ~ -newer /tmp/imh-marker -type f 2>/dev/null \
+find ~ -newer /tmp/harness-ledger-marker -type f 2>/dev/null \
   | grep -vE '/(\.cache|node_modules|\.git|Library/Caches)/' | head -50
 ```
 
@@ -19,7 +19,7 @@ Note for the provider:
 - The format: JSONL (one event per line, like Claude Code and Codex) or something else. Treat an editor database (SQLite) as a last resort: read it only from a copy, never the original, which the editor keeps open (issue #4).
 - How a session says which project it belongs to (a folder name, or a working directory recorded inside it).
 - Where subagent runs are stored, if the provider has subagents.
-- The environment variable that relocates the provider's home, if any. The adapter honors it, and also gets an `IMH_<PROVIDER>_HOME` override for tests (see `ClaudeCodePathUtil`).
+- The environment variable that relocates the provider's home, if any. The adapter honors it, and also gets an `HARNESS_LEDGER_<PROVIDER>_HOME` override for tests (see `ClaudeCodePathUtil`).
 - The harness: instruction files, skills, agents or modes, commands, hooks, MCP servers, plugins, settings and retention.
 
 ## 2. Export a sample of real sessions
@@ -88,7 +88,7 @@ src/Providers/<Provider>/
 Point the script at the extracted sample and compare with what you know about those sessions:
 
 ```bash
-IMH_<PROVIDER>_HOME=<sample home> node dist/imh.mjs analyze --provider <type> --project <project dir> --no-cache --pretty
+HARNESS_LEDGER_<PROVIDER>_HOME=<sample home> node dist/harness-ledger.mjs analyze --provider <type> --project <project dir> --no-cache --pretty
 ```
 
 - `analyzed.unparsedLines` is 0, or every unparsed line is understood.

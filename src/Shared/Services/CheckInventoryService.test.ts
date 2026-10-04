@@ -11,7 +11,7 @@ const projectDirs: string[] = [];
 
 function projectWith(pathToContent: Record<string, string>): string {
   const tempDir = tmpdir();
-  const projectDir = mkdtempSync(join(tempDir, "imh-checks-"));
+  const projectDir = mkdtempSync(join(tempDir, "harness-ledger-checks-"));
   projectDirs.push(projectDir);
   for (const [relativePath, content] of Object.entries(pathToContent)) {
     const file = join(projectDir, relativePath);

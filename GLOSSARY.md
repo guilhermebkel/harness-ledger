@@ -1,4 +1,4 @@
-# improve-my-harness
+# harness-ledger
 
 Analyzes the setup around a coding agent, using the sessions the agent already saved, and suggests changes backed by evidence. v1 reads history; v2 tests a change before it is adopted.
 

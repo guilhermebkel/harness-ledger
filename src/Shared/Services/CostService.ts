@@ -9,7 +9,7 @@ const CACHE_WRITE_INPUT_RATIO = 1.25;
 const DEFAULT_PRICED_VENDOR = "claude";
 
 export class CostService {
-  // Why: list prices may be outdated; .imh/config.json overrides them.
+  // Why: list prices may be outdated; .harness-ledger/config.json overrides them.
   static readonly DEFAULT_MODEL_FAMILY_TO_PRICE: ModelFamilyToPrice = {
     opus: {
       inputUsdPerMillionTokens: 5,

@@ -6,7 +6,7 @@ import type { Inventory } from "@/Shared/Protocols/HarnessProtocol.ts";
 import { MentionService } from "@/Shared/Services/MentionService.ts";
 
 const tempDir = tmpdir();
-const projectDir = mkdtempSync(join(tempDir, "imh-mentions-"));
+const projectDir = mkdtempSync(join(tempDir, "harness-ledger-mentions-"));
 const instructionsFile = join(projectDir, "CLAUDE.md");
 writeFileSync(instructionsFile, "# App\n\n- Pick a category before you cat the logs.\n- Run `pnpm test`.\n");
 const inventory: Inventory = {

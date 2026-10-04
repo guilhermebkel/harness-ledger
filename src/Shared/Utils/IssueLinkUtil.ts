@@ -2,7 +2,7 @@ import type { IssueLink, IssueRequest, IssueVersions } from "@/Shared/Protocols/
 import { HashUtil } from "@/Shared/Utils/HashUtil.ts";
 import { RedactUtil } from "@/Shared/Utils/RedactUtil.ts";
 
-const REPOSITORY_URL = "https://github.com/guilhermebkel/improve-my-harness";
+const REPOSITORY_URL = "https://github.com/guilhermebkel/harness-ledger";
 const FINGERPRINT_CHARS = 8;
 const MAX_FIELD_CHARS = 1500;
 // Why: browsers and GitHub cut long URLs; past this the form opens without some fields.
@@ -18,7 +18,7 @@ export class IssueLinkUtil {
   static versionsText(versions: IssueVersions): string {
     const agentVersions = IssueLinkUtil.versionRange(versions.agentVersions);
     const platforms = versions.platforms.length ? versions.platforms.join(", ") : "unknown";
-    return `imh ${versions.imh} · ${versions.provider} ${agentVersions} · ${platforms}`;
+    return `harness-ledger ${versions.harnessLedger} · ${versions.provider} ${agentVersions} · ${platforms}`;
   }
 
   private static versionRange(sortedVersions: string[]): string {

@@ -33,7 +33,7 @@ const MAX_COUNTED_VALUES = 5;
 const OCCURRENCE_USD_DIGITS = 6;
 // Why: evidence from fewer sessions is partial; re-reads within one session are still meaningful.
 const MIN_SESSIONS_FOR_FULL_EVIDENCE = 2;
-const SELF_SKILL_NAME = /(^|:)improve-my-harness$/;
+const SELF_SKILL_NAME = /(^|:)harness-ledger$/;
 const USAGE_KINDS = new Set<PieceKind>(["skill", "agent", "command", "mcp"]);
 const SIZE_KINDS = new Set<PieceKind>(["instructions", "skill", "agent"]);
 

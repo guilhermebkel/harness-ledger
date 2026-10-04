@@ -14,7 +14,7 @@ body:
     attributes:
       label: What happened
       description: What you ran and what you got.
-      placeholder: Ran `/improve-my-harness` and the analysis stopped with "..."
+      placeholder: Ran `/harness-ledger` and the analysis stopped with "..."
     validations:
       required: true
   - type: textarea
@@ -32,8 +32,8 @@ body:
     id: versions
     attributes:
       label: Versions
-      description: improve-my-harness (`node dist/imh.mjs --help` prints it), your agent and its version, OS and Node.js.
-      placeholder: imh 0.2.0 · Claude Code 2.1.288 · macOS 15 · Node 22
+      description: harness-ledger (`node dist/harness-ledger.mjs --help` prints it), your agent and its version, OS and Node.js.
+      placeholder: harness-ledger 0.2.0 · Claude Code 2.1.288 · macOS 15 · Node 22
     validations:
       required: true
   - type: checkboxes

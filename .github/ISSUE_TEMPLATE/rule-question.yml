@@ -1,5 +1,5 @@
 name: Rule question
-description: A signal or cost rule that looks wrong for your project. Usually opened from a link in an improve-my-harness report.
+description: A signal or cost rule that looks wrong for your project. Usually opened from a link in an harness-ledger report.
 title: "[rule] "
 labels: ["rule-question", "needs-triage"]
 body:
@@ -32,6 +32,6 @@ body:
     id: versions
     attributes:
       label: Versions
-      placeholder: imh 0.1.0 · claude-code 2.1.287 · darwin
+      placeholder: harness-ledger 0.1.0 · claude-code 2.1.287 · darwin
     validations:
       required: true

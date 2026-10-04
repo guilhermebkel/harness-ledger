@@ -1,16 +1,16 @@
 {
-  "name": "improve-my-harness",
+  "name": "harness-ledger",
   "version": "0.2.2",
-  "description": "Improve your coding-agent harness with evidence from your own sessions.",
+  "description": "Every piece of your coding agent's harness, with what it costs you and the receipts from your own sessions.",
   "license": "MIT",
   "author": "Guilherme Mota",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/guilhermebkel/improve-my-harness.git"
+    "url": "git+https://github.com/guilhermebkel/harness-ledger.git"
   },
   "type": "module",
   "bin": {
-    "imh": "dist/imh.mjs"
+    "harness-ledger": "dist/harness-ledger.mjs"
   },
   "files": [
     "dist",
@@ -22,7 +22,7 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "build:verify": "node scripts/build.mjs --outfile node_modules/.cache/imh/imh.mjs",
+    "build:verify": "node scripts/build.mjs --outfile node_modules/.cache/harness-ledger/harness-ledger.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

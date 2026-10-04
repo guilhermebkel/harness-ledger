@@ -1,6 +1,6 @@
 node_modules/
 coverage/
-.imh/
+.harness-ledger/
 *.log
 .DS_Store
 # The plugin uses pnpm: Claude Code skips dependency installs for plugins with a

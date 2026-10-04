@@ -174,7 +174,7 @@ describe("AnalyzeCommand.run()", () => {
         ["unpriced_model", "model: glm-5.2"],
       ]);
       expect(analysis.versions).toStrictEqual({
-        imh: "dev",
+        harnessLedger: "dev",
         provider: "claude-code",
         agentVersions: ["2.1.287"],
         platforms: ["darwin"],

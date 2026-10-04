@@ -27,7 +27,7 @@ export interface IssueRequest {
 }
 
 export interface IssueVersions {
-  imh: string;
+  harnessLedger: string;
   provider: string;
   agentVersions: string[];
   platforms: string[];

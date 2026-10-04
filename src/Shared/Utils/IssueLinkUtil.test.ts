@@ -9,12 +9,12 @@ describe("IssueLinkUtil.linkOf()", () => {
       fingerprint: "abcd1234",
       fieldIdToFieldValue: {
         explanation: "word ".repeat(3000),
-        versions: "imh 0.1.0 · claude-code 2.1.287 · darwin",
+        versions: "harness-ledger 0.1.0 · claude-code 2.1.287 · darwin",
       },
     });
     const params = new URL(link.issueUrl).searchParams;
     expect(link.issueUrl.length).toBeLessThanOrEqual(6000);
-    expect(params.get("versions")).toBe("imh 0.1.0 · claude-code 2.1.287 · darwin");
+    expect(params.get("versions")).toBe("harness-ledger 0.1.0 · claude-code 2.1.287 · darwin");
     expect(params.get("explanation")).toMatch(/\(cut to fit the link\)$/);
     expect(link.title).toBe("[rule] user_correction · abcd1234");
   });
@@ -23,11 +23,11 @@ describe("IssueLinkUtil.linkOf()", () => {
 describe("IssueLinkUtil.versionsText()", () => {
   it("shows many agent versions as a range", () => {
     const text = IssueLinkUtil.versionsText({
-      imh: "0.1.0",
+      harnessLedger: "0.1.0",
       provider: "claude-code",
       agentVersions: ["2.1.233", "2.1.246", "2.1.251", "2.1.286"],
       platforms: ["linux"],
     });
-    expect(text).toBe("imh 0.1.0 · claude-code 2.1.233 to 2.1.286 (4 versions) · linux");
+    expect(text).toBe("harness-ledger 0.1.0 · claude-code 2.1.233 to 2.1.286 (4 versions) · linux");
   });
 });

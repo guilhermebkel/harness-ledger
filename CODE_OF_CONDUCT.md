@@ -6,4 +6,4 @@ In short: be respectful, assume good faith, critique ideas rather than people, a
 
 ## Reporting
 
-If someone's behavior makes you uncomfortable, contact the maintainer privately through [their GitHub profile](https://github.com/guilhermebkel) or a [private security advisory](https://github.com/guilhermebkel/improve-my-harness/security/advisories/new) if you need a confidential channel. Reports are handled discreetly, and the maintainer will act as the Covenant's enforcement guidelines describe: from a private note up to a ban from the project.
+If someone's behavior makes you uncomfortable, contact the maintainer privately through [their GitHub profile](https://github.com/guilhermebkel) or a [private security advisory](https://github.com/guilhermebkel/harness-ledger/security/advisories/new) if you need a confidential channel. Reports are handled discreetly, and the maintainer will act as the Covenant's enforcement guidelines describe: from a private note up to a ban from the project.
