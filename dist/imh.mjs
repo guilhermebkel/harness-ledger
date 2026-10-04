@@ -500,7 +500,7 @@ var TokenUsageUtil = class _TokenUsageUtil {
 // src/Shared/Utils/VersionUtil.ts
 var VersionUtil = class {
   // Why: esbuild replaces it at build time; "dev" when running from source.
-  static VERSION = true ? "0.2.0" : "dev";
+  static VERSION = true ? "0.2.1" : "dev";
 };
 
 // src/Shared/Services/AttributionService.ts
