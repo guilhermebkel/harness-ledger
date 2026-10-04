@@ -500,7 +500,7 @@ var TokenUsageUtil = class _TokenUsageUtil {
 // src/Shared/Utils/VersionUtil.ts
 var VersionUtil = class {
   // Why: esbuild replaces it at build time; "dev" when running from source.
-  static VERSION = true ? "0.3.1" : "dev";
+  static VERSION = true ? "0.3.2" : "dev";
 };
 
 // src/Shared/Services/AttributionService.ts
@@ -1741,11 +1741,18 @@ var SignalService = class _SignalService {
     const score = signal.cost.activeMinutes * SCORE_WEIGHTS.perActiveMinute * costWeight + signal.cost.usd * SCORE_WEIGHTS.perUsd * costWeight + signal.sessions * SCORE_WEIGHTS.perSession + countedOccurrences * SCORE_WEIGHTS.perOccurrence - (signal.isPartial ? SCORE_WEIGHTS.partialPenalty : 0);
     return NumberUtil.round(score);
   }
+  static isReadOf(piece, filePath) {
+    if (filePath === void 0) {
+      return false;
+    }
+    const isLinkedRead = piece.linkedPath?.endsWith(`/${filePath}`) === true || piece.linkedPath === filePath;
+    return piece.path === filePath || isLinkedRead;
+  }
   unusedPieceSignals(sessions, inventory) {
     if (sessions.length < this.options.minSessionsForUnused) {
       return [];
     }
-    const usedPieceIds = this.usedPieceIdsIn(sessions);
+    const usedPieceIds = this.usedPieceIdsIn(sessions, inventory);
     const periodStartAtMs = Math.min(...sessions.map((session) => session.startedAtMs ?? Date.now()));
     const unusedPieces = inventory.pieces.filter((piece) => {
       const isTrackedKind = USAGE_KINDS.has(piece.kind);
@@ -1772,10 +1779,11 @@ var SignalService = class _SignalService {
       });
     });
   }
-  usedPieceIdsIn(sessions) {
+  usedPieceIdsIn(sessions, inventory) {
     const usedPieceIds = /* @__PURE__ */ new Set();
+    const skillPieces = inventory.pieces.filter((piece) => piece.kind === "skill");
     for (const session of sessions) {
-      for (const pieceId of session.tools.flatMap((call) => this.piecesCalledBy(call))) {
+      for (const pieceId of session.tools.flatMap((call) => this.piecesCalledBy(call, skillPieces))) {
         usedPieceIds.add(pieceId);
       }
       for (const threadFacts of session.threads.filter((thread) => !SessionUtil.isMainThread(thread.thread))) {
@@ -1786,12 +1794,20 @@ var SignalService = class _SignalService {
         usedPieceIds.add(`command:${command}`);
       }
     }
+    for (const agent of inventory.pieces.filter((piece) => usedPieceIds.has(piece.id))) {
+      for (const skillName of agent.preloadedSkills ?? []) {
+        usedPieceIds.add(`skill:${skillName}`);
+      }
+    }
     return usedPieceIds;
   }
-  piecesCalledBy(call) {
+  piecesCalledBy(call, skillPieces) {
+    const readSkills = skillPieces.filter((piece) => _SignalService.isReadOf(piece, call.filePath));
     return [
       ...call.subagentType ? [`agent:${call.subagentType}`] : [],
       ...call.skill ? [`skill:${call.skill}`] : [],
+      ...call.skillInUse ? [`skill:${call.skillInUse}`] : [],
+      ...readSkills.map((piece) => piece.id),
       ...SessionUtil.MCP_CATEGORIES.has(call.category) ? [call.key] : []
     ];
   }
@@ -3123,7 +3139,6 @@ var MAX_COMMON_COMMANDS = 15;
 var EMPTY_COMMAND_KEY = "(empty)";
 var DEFAULT_MAX_EVIDENCE = 5;
 var SAVED_EVIDENCE_PER_SIGNAL = 50;
-var MAX_USAGE_ENTRIES = 15;
 var MAX_FAILED_COMMANDS_TO_SEARCH = 15;
 var FAILED_COMMAND_PREFIX = "failed_command:";
 var FAILURE_SIGNAL_TYPES = /* @__PURE__ */ new Set(["failed_command", "tool_error", "permission_denied", "hook_blocked", "api_error"]);
@@ -3248,7 +3263,6 @@ var AnalysisService = class _AnalysisService {
     const maxEvidence = options.maxEvidence ?? DEFAULT_MAX_EVIDENCE;
     return {
       ...analysis,
-      usage: analysis.usage.slice(0, MAX_USAGE_ENTRIES),
       signals: analysis.signals.slice(0, maxSignals).map((signal) => ({
         ...signal,
         evidence: signal.evidence.slice(0, maxEvidence)

@@ -11,7 +11,7 @@
       "source": {
         "source": "github",
         "repo": "guilhermebkel/harness-ledger",
-        "ref": "v0.3.1"
+        "ref": "v0.3.2"
       },
       "description": "Names the harness piece behind each problem in your sessions, what it cost, and whether the fix worked.",
       "category": "productivity",
