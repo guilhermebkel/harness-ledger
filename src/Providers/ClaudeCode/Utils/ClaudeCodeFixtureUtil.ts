@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll } from "vitest";
@@ -30,7 +30,9 @@ export class ClaudeCodeFixtureUtil {
 
   static makeFixture(): Fixture {
     const tempDir = tmpdir();
-    const root = mkdtempSync(join(tempDir, "harness-ledger-test-"));
+    const tempRoot = mkdtempSync(join(tempDir, "harness-ledger-test-"));
+    // Why: macOS temp folders sit behind a symlink (/var → /private/var); real paths keep link checks exact.
+    const root = realpathSync(tempRoot);
     const claudeHome = join(root, "claude-home");
     const projectDir = join(root, "work", "my-app");
     const projectsDir = join(claudeHome, "projects", ClaudeCodePathUtil.encodeProjectDir(projectDir));
@@ -54,6 +56,22 @@ export class ClaudeCodeFixtureUtil {
       claudeJson,
       dataDir: join(root, "harness-ledger-data"),
     };
+  }
+
+  static writeSharedToolkit(fixture: Fixture): string {
+    const toolkitDir = join(fixture.root, "team-toolkit");
+    const toolkitAgentsDir = join(toolkitDir, "agents");
+    const toolkitSkillDir = join(toolkitDir, "skills", "release-notes");
+    mkdirSync(toolkitAgentsDir, { recursive: true });
+    mkdirSync(toolkitSkillDir, { recursive: true });
+    const agentFile = join(toolkitAgentsDir, "security-reviewer.md");
+    writeFileSync(agentFile, "---\nname: security-reviewer\ndescription: Reviews for security issues\n---\nReview it.\n");
+    writeFileSync(join(toolkitSkillDir, "SKILL.md"), "---\nname: release-notes\ndescription: Writes release notes\n---\nWrite them.\n");
+    const linkedAgentFile = join(fixture.projectDir, ".claude", "agents", "security-reviewer.md");
+    const linkedSkillDir = join(fixture.projectDir, ".claude", "skills", "release-notes");
+    symlinkSync(agentFile, linkedAgentFile);
+    symlinkSync(toolkitSkillDir, linkedSkillDir);
+    return toolkitDir;
   }
 
   static writeHarness(fixture: Fixture): void {

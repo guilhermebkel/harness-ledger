@@ -76,3 +76,8 @@ export interface ClaudeCodeResultSignals {
   wasInterrupted: boolean;
   denialKind?: string;
 }
+
+export interface EntryKind {
+  isDirectory: boolean;
+  isFile: boolean;
+}

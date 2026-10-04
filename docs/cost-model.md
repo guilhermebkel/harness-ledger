@@ -50,6 +50,10 @@ A chain starts at a failed call (not an interruption or a rejection) and follows
 
 `context_heavy`, `large_piece` and `repeated_workflow` stay out of the totals: they price what a structure change would save, not something lost.
 
+## Ranking
+
+Signals are ordered by `score`: active minutes (×1) plus money (×2 per dollar) plus sessions (×2) plus occurrences (×0.3, up to 30), minus 2 when the evidence is partial. Minutes and money count at half weight when the signal's bound is `upper` (corrected and interrupted turns): those costs include the whole turn, much of which may have been useful, and at full weight they would outrank failures measured precisely. The score only orders signals; it is never shown as a cost.
+
 ## Per suggestion
 
 Every evidence line carries the cost of its occurrence (`evidence[].cost`, unrounded: `activeMs`, tokens, `usd`). A suggestion's cost comes from the script when the skill registers it (`suggestions add`, which reads the last analysis), never from the skill:

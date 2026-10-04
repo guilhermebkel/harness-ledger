@@ -40,8 +40,8 @@ These are starting points, not rules; read the piece and what it loads (skill fi
 ## Rules
 
 1. **Traceable.** Each finding cites its evidence as `session <first 8 chars of id> · line <n> · <thread>`. Show up to 3 and "+N more".
-2. **Partial evidence is marked.** If the signal has `isPartial: true`, say why (from `partialReasons`) and don't claim the cause is certain. A single session is never enough for a structure change.
-3. **No repeats.** Already-handled signals, and signals whose piece changed after the evidence, don't become new suggestions.
+2. **Partial evidence is marked.** If the signal has `isPartial: true`, say why (from `partialReasons`) and don't claim the cause is certain. A single session is never enough for a structure change (adding, removing or splitting a piece). It can still support a fix to an instruction, and a one-session signal of 5 minutes or more is listed under "Seen once" with its time, so it isn't lost.
+3. **No repeats.** Already-handled signals don't become new suggestions, and neither do signals whose piece changed after the evidence in a way that touches their cause. A change elsewhere in the piece doesn't excuse a signal.
 4. **Mandate only.** Only report what the evidence supports and what concerns the harness. Never include secret values, even partially.
 5. **Self-contained text.** Text proposed for a subagent or skill describes the condition and the action in that piece's own terms. It never refers to who calls it, to another file's step numbers, or to this report.
 6. **Coupling is a finding.** If a piece only works because another piece says something specific (a subagent that relies on the main instructions mentioning a path), report the coupling as a structure change.
@@ -85,7 +85,8 @@ Costs are the script's numbers for the whole analyzed period, adding up every oc
 ```markdown
 # Harness report — <YYYY-MM-DD>
 
-Analyzed <N> sessions (<period>) · <K> suggestions
+Analyzed <N> sessions (<period>) · <K> new suggestions · <P> pending from earlier runs
+Spent in the period: ~<usd> · ~<activeMinutes, in hours> (the agent reports <reportedByProvider.costUsd>; models without a price count as $0: <unpricedModels>)
 Estimated cost of the problems found, for the whole period (min · input tokens · output tokens · $; the four don't overlap):
 - Failures ~<lostToFailures>: from each first error until a call doing the same job worked, reasoning and retries included.
 - Fix loops ~<inFixLoops>: rerunning a check after fixing the code until it passed; work, but the share a check after each edit would shorten.
@@ -109,6 +110,14 @@ _Time, tokens and cost add up the whole period (<N> sessions), not one session: 
 **Change:** the exact text, diff, hook or file to add.
 **After the change:** how they'll know it worked ("run a comparison on the test-runner agent after a few sessions").
 (**Partial:** reason — only when partial.)
+
+## Examined, not suggested
+- <problem> — <time> · <sessions> — <reason, citing what the evidence showed>
+
+## Seen once
+- <problem> — <time> in session <first 8 chars>; one session isn't enough for a structure change.
+
+Not examined: <N> smaller signals (under 5 min, fewer than 3 sessions, below the top 15).
 
 ## Already handled
 - <title> — <status> (<id>)
@@ -135,6 +144,7 @@ The numbers are the reason to trust the report and the easiest part to oversell.
 - **Never add numbers with different bounds.** An "at least" plus an "at most" is not a number. Totals stay split by kind, as in the header above.
 - **The agent's own figure sits beside the estimate.** When `totals.reportedByProvider.costUsd` exists, show it next to the script's estimate for the same sessions; when they differ by more than half, say so in one line. Never add the two.
 - **Round to what the method can tell.** Minutes as whole numbers, hours with one decimal (`~1.8 h`), money with cents below $10 and whole dollars above, tokens as `340k` / `1.2M`.
+- **No size words.** Never call a figure small, big, low or high. Give its share instead: "16 min of the 4.6 h lost to failures", "$0.75 of the ~$14 the problems cost". When money is undercounted (unpriced models), say so next to it and lead with time.
 - **Partial means the number may move.** When a signal is partial, say why in the person's words ("only 2 sessions so far"), and that the figure may change with more history.
 
 **What the tool couldn't handle** lists `gaps`: up to three, one line each (an unknown transcript line, an extension with no language, a check tool or a model the script doesn't know, a subagent whose type it couldn't tell), then "and N more" with no links. Say in one sentence, once, that each link opens a prefilled GitHub issue they can read and edit before sending, that it holds only names and counts, and that nothing is sent unless they submit it. When you already resolved a gap yourself (you know `.ex` is Elixir, you found what a package checks), say so in the line; the link still helps the next person.

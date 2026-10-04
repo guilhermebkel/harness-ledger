@@ -8,6 +8,7 @@ import { ClaudeCodeProviderAdapter } from "@/Providers/ClaudeCode/Adapters/Claud
 import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
 
 const CHANGELOG_SKILL = "skill:changelog";
+const TEST_RUNNER_AGENT = "agent:test-runner";
 
 const { FAKE_SECRETS } = ClaudeCodeFixtureUtil;
 
@@ -271,7 +272,7 @@ describe("ClaudeCodeProviderAdapter.takeInventory()", () => {
     expect(inventory.pieces.map((piece) => piece.id)).toStrictEqual(
       expect.arrayContaining([
         "instructions:project",
-        "agent:test-runner",
+        TEST_RUNNER_AGENT,
         "agent:code-reviewer",
         CHANGELOG_SKILL,
         "mcp:github",
@@ -279,7 +280,7 @@ describe("ClaudeCodeProviderAdapter.takeInventory()", () => {
         "settings:permissions-project",
       ]),
     );
-    expect(inventory.pieces.find((piece) => piece.id === "agent:test-runner")).toMatchObject({
+    expect(inventory.pieces.find((piece) => piece.id === TEST_RUNNER_AGENT)).toMatchObject({
       model: "haiku",
       tools: ["Bash", "Read"],
       scope: "project",
@@ -307,6 +308,17 @@ describe("ClaudeCodeProviderAdapter.takeInventory()", () => {
     const referenceFile = join(fixture.projectDir, ".claude", "skills", "changelog", "references", "format.md");
     writeFileSync(referenceFile, "# Entry format\n\nOne line per change.\n");
     expect(await hashOf()).not.toBe(hashBefore);
+  });
+
+  it("reads agents and skills symlinked in from a shared folder, and says where they really live", async () => {
+    const toolkitDir = ClaudeCodeFixtureUtil.writeSharedToolkit(fixture);
+    const inventory = await adapter.takeInventory({ projectDir: fixture.projectDir, isProjectOnly: true });
+    const pieceIdToPiece = new Map(inventory.pieces.map((piece) => [piece.id, piece]));
+    const linkedAgentFile = join(toolkitDir, "agents", "security-reviewer.md");
+    const linkedSkillFile = join(toolkitDir, "skills", "release-notes", "SKILL.md");
+    expect(pieceIdToPiece.get("agent:security-reviewer")?.linkedPath).toBe(linkedAgentFile);
+    expect(pieceIdToPiece.get("skill:release-notes")?.linkedPath).toBe(linkedSkillFile);
+    expect(pieceIdToPiece.get(TEST_RUNNER_AGENT)?.linkedPath).toBeUndefined();
   });
 
   it("can leave out user-level pieces", async () => {

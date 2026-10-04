@@ -10,6 +10,7 @@ export interface HarnessPiece {
   name: string;
   scope: PieceScope;
   path: string;
+  linkedPath?: string;
   hash: string;
   bytes: number;
   approxTokens: number;
