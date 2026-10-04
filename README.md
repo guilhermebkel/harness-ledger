@@ -79,19 +79,6 @@ Accept a suggestion and later runs compare the piece before and after the change
 
 Requires Node.js 20+. Nothing else is installed: the analysis script ships prebuilt.
 
-<details>
-<summary>Installed it before as <code>improve-my-harness@improve-my-harness</code>?</summary>
-
-The marketplace is now called `guilhermebkel`. Remove the old one and add it again:
-
-```text
-/plugin marketplace remove improve-my-harness
-/plugin marketplace add guilhermebkel/improve-my-harness
-/plugin install improve-my-harness@guilhermebkel
-```
-
-</details>
-
 ### 2. Analyze your sessions
 
 Open Claude Code in your project, pick your strongest reasoning model with `/model`, and run:
