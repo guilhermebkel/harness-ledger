@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/banner.png" alt="improve-my-harness: reads your agent's sessions, maps your harness and suggests evidence-based changes" width="820" />
+  <img src="docs/assets/banner.jpg" alt="improve-my-harness: reads your agent's sessions, maps your harness and suggests evidence-based changes" width="820" />
 </p>
 
 ---
