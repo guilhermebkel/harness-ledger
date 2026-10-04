@@ -18,9 +18,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+      # The Claude Code CLI needs Node 22+; on Node 20, npm silently installs an old version whose
+      # `plugin validate` can't check a skills folder. The rest of this job runs fine on 22 too.
       - uses: actions/setup-node@v4
         with:
-          node-version-file: .nvmrc
+          node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Install the Claude Code CLI
