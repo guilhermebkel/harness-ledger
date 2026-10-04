@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// improve-my-harness — generated file, edit src/ and run `pnpm build`.
+// harness-ledger — generated file, edit src/ and run `pnpm build`.
 
 // src/Shared/Modules/CLIModule.ts
 import { readFile as readFile7 } from "node:fs/promises";
@@ -500,7 +500,7 @@ var TokenUsageUtil = class _TokenUsageUtil {
 // src/Shared/Utils/VersionUtil.ts
 var VersionUtil = class {
   // Why: esbuild replaces it at build time; "dev" when running from source.
-  static VERSION = true ? "0.2.2" : "dev";
+  static VERSION = true ? "0.3.0" : "dev";
 };
 
 // src/Shared/Services/AttributionService.ts
@@ -604,7 +604,7 @@ var CostService = class _CostService {
   constructor(modelFamilyToPrice) {
     this.modelFamilyToPrice = modelFamilyToPrice;
   }
-  // Why: list prices may be outdated; .imh/config.json overrides them.
+  // Why: list prices may be outdated; .harness-ledger/config.json overrides them.
   static DEFAULT_MODEL_FAMILY_TO_PRICE = {
     opus: {
       inputUsdPerMillionTokens: 5,
@@ -1527,7 +1527,7 @@ var ContextLoadDetectorService = class _ContextLoadDetectorService {
 var MAX_COUNTED_VALUES = 5;
 var OCCURRENCE_USD_DIGITS = 6;
 var MIN_SESSIONS_FOR_FULL_EVIDENCE = 2;
-var SELF_SKILL_NAME = /(^|:)improve-my-harness$/;
+var SELF_SKILL_NAME = /(^|:)audit-harness$/;
 var USAGE_KINDS = /* @__PURE__ */ new Set(["skill", "agent", "command", "mcp"]);
 var SIZE_KINDS = /* @__PURE__ */ new Set(["instructions", "skill", "agent"]);
 var SCORE_WEIGHTS = {
@@ -2950,7 +2950,7 @@ var CheckInventoryService = class _CheckInventoryService {
 };
 
 // src/Shared/Utils/IssueLinkUtil.ts
-var REPOSITORY_URL = "https://github.com/guilhermebkel/improve-my-harness";
+var REPOSITORY_URL = "https://github.com/guilhermebkel/harness-ledger";
 var FINGERPRINT_CHARS = 8;
 var MAX_FIELD_CHARS = 1500;
 var MAX_URL_CHARS = 6e3;
@@ -2963,7 +2963,7 @@ var IssueLinkUtil = class _IssueLinkUtil {
   static versionsText(versions) {
     const agentVersions = _IssueLinkUtil.versionRange(versions.agentVersions);
     const platforms = versions.platforms.length ? versions.platforms.join(", ") : "unknown";
-    return `imh ${versions.imh} \xB7 ${versions.provider} ${agentVersions} \xB7 ${platforms}`;
+    return `harness-ledger ${versions.harnessLedger} \xB7 ${versions.provider} ${agentVersions} \xB7 ${platforms}`;
   }
   static versionRange(sortedVersions) {
     const oldest = sortedVersions[0];
@@ -3048,12 +3048,12 @@ var GapService = class _GapService {
     const shortName = RedactUtil.excerpt(packageName, MAX_NAME_CHARS);
     return shortName.startsWith("@") ? `${PRIVATE_SCOPE}/${shortName.split("/").slice(1).join("/")}` : shortName;
   }
-  static versionsOf(sessions, imhVersion, provider) {
+  static versionsOf(sessions, harnessLedgerVersion, provider) {
     const agentVersions = sessions.map((session) => session.agentVersion).filter((version) => version !== void 0);
     const platforms = sessions.map((session) => session.environment.platform).filter((platform) => platform !== void 0);
     return {
       provider,
-      imh: imhVersion,
+      harnessLedger: harnessLedgerVersion,
       agentVersions: CollectionUtil.unique(agentVersions).sort(_GapService.compareVersions),
       platforms: CollectionUtil.unique(platforms).sort(CollectionUtil.compareCodeUnits)
     };
@@ -3172,7 +3172,7 @@ var AnalysisService = class _AnalysisService {
     });
     const analysis = {
       tool: {
-        name: "improve-my-harness",
+        name: "harness-ledger",
         version: VersionUtil.VERSION
       },
       generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -3233,7 +3233,7 @@ var AnalysisService = class _AnalysisService {
   static async lastAnalysis(store) {
     const analysis = await store.readJson(_AnalysisService.LAST_ANALYSIS_FILE);
     if (!analysis) {
-      throw new Error("No analysis yet. Run `imh analyze` first.");
+      throw new Error("No analysis yet. Run `harness-ledger analyze` first.");
     }
     return analysis;
   }
@@ -3248,7 +3248,7 @@ var AnalysisService = class _AnalysisService {
         evidence: signal.evidence.slice(0, maxEvidence)
       })),
       omittedSignals: Math.max(0, analysis.signals.length - maxSignals),
-      hint: "Full result in .imh/last-analysis.json. Use `imh evidence <signal-id>` for all evidence of one signal."
+      hint: "Full result in .harness-ledger/last-analysis.json. Use `harness-ledger evidence <signal-id>` for all evidence of one signal."
     };
   }
   touchesAnyPiece(signal, pieces) {
@@ -3419,7 +3419,7 @@ import { resolve } from "node:path";
 // src/Shared/Adapters/BaseProviderAdapter.ts
 var BaseProviderAdapter = class {
   retentionNote(retentionDays) {
-    return `${this.displayName} deletes transcripts older than ${retentionDays} days. improve-my-harness never changes this setting.`;
+    return `${this.displayName} deletes transcripts older than ${retentionDays} days. harness-ledger never changes this setting.`;
   }
 };
 
@@ -4078,12 +4078,12 @@ var EnvUtil = class {
 // src/Providers/ClaudeCode/Utils/ClaudeCodePathUtil.ts
 var ClaudeCodePathUtil = class {
   static homeDir() {
-    return EnvUtil.read("IMH_CLAUDE_HOME") ?? EnvUtil.read("CLAUDE_CONFIG_DIR") ?? join4(homedir3(), ".claude");
+    return EnvUtil.read("HARNESS_LEDGER_CLAUDE_HOME") ?? EnvUtil.read("CLAUDE_CONFIG_DIR") ?? join4(homedir3(), ".claude");
   }
   static claudeJsonPath() {
     const configDir = EnvUtil.read("CLAUDE_CONFIG_DIR");
     const defaultPath = configDir ? join4(configDir, ".claude.json") : join4(homedir3(), ".claude.json");
-    return EnvUtil.read("IMH_CLAUDE_JSON") ?? defaultPath;
+    return EnvUtil.read("HARNESS_LEDGER_CLAUDE_JSON") ?? defaultPath;
   }
   static encodeProjectDir(projectDir) {
     return projectDir.replace(/[^a-zA-Z0-9]/g, "-");
@@ -4892,7 +4892,7 @@ var ClaudeCodeProviderAdapter = class extends BaseProviderAdapter {
     return inventoryService.takeInventory(options);
   }
   retentionNote(retentionDays) {
-    return `Claude Code deletes transcripts older than ${retentionDays} days at startup. improve-my-harness never changes this setting.`;
+    return `Claude Code deletes transcripts older than ${retentionDays} days at startup. harness-ledger never changes this setting.`;
   }
   sessionService() {
     return new ClaudeCodeSessionService(this.paths().homeDir);
@@ -5007,7 +5007,7 @@ import { cpus } from "node:os";
 // src/Shared/Services/StoreService.ts
 import { mkdir, readFile as readFile6, rename, writeFile } from "node:fs/promises";
 import { dirname as dirname2, join as join6 } from "node:path";
-var DATA_DIR_NAME = ".imh";
+var DATA_DIR_NAME = ".harness-ledger";
 var JSON_INDENT = 2;
 var FACTS_CACHE_FILE = "cache/facts.json";
 var LATEST_INVENTORY_FILE = "inventory/latest.json";
@@ -5385,7 +5385,7 @@ var SuggestionCostService = class _SuggestionCostService {
         const key = _SuggestionCostService.keyOf(occurrence);
         if (!evidenceKeys.has(key)) {
           throw new Error(
-            `Suggestion ${position} lists session ${occurrence.sessionId} line ${occurrence.line}, which isn't in the evidence of its signals. Run \`imh evidence <signal-id>\` to see their occurrences.`
+            `Suggestion ${position} lists session ${occurrence.sessionId} line ${occurrence.line}, which isn't in the evidence of its signals. Run \`harness-ledger evidence <signal-id>\` to see their occurrences.`
           );
         }
         const otherPosition = occurrenceKeyToPosition.get(key);
@@ -5408,7 +5408,7 @@ var SuggestionCostService = class _SuggestionCostService {
         if (otherPosition !== void 0) {
           const shownId = RedactUtil.excerpt(signalId, MAX_ID_CHARS);
           throw new Error(
-            `Suggestions ${otherPosition} and ${position} both take all of ${shownId}. List the occurrences each one covers ("occurrences": [{"sessionId", "line"}], from \`imh evidence ${shownId}\`).`
+            `Suggestions ${otherPosition} and ${position} both take all of ${shownId}. List the occurrences each one covers ("occurrences": [{"sessionId", "line"}], from \`harness-ledger evidence ${shownId}\`).`
           );
         }
         signalIdToPosition.set(signalId, position);
@@ -5710,7 +5710,7 @@ var CLIModule = class _CLIModule {
     evidence: async ({ values, rest, common }) => {
       const [signalId] = rest;
       if (!signalId) {
-        throw new Error("Usage: imh evidence <signal-id>");
+        throw new Error("Usage: harness-ledger evidence <signal-id>");
       }
       return new EvidenceCommand().run({
         ...common,
@@ -5721,7 +5721,7 @@ var CLIModule = class _CLIModule {
     compare: async ({ values, common }) => {
       const piece = values.piece?.[0];
       if (!piece) {
-        throw new Error("Usage: imh compare --piece <id> [--at <date>]");
+        throw new Error("Usage: harness-ledger compare --piece <id> [--at <date>]");
       }
       return new CompareCommand().run({
         ...common,
@@ -5735,7 +5735,7 @@ var CLIModule = class _CLIModule {
     issue: async ({ values, rest, common }) => {
       const [signalId] = rest;
       if (!signalId || !values.note) {
-        throw new Error('Usage: imh issue <signal-id> --note "why the rule looks wrong"');
+        throw new Error('Usage: harness-ledger issue <signal-id> --note "why the rule looks wrong"');
       }
       return new IssueCommand().run({
         ...common,
@@ -5757,20 +5757,20 @@ var CLIModule = class _CLIModule {
         process.exitCode = 0;
       },
       (error) => {
-        process.stderr.write(`imh: ${error instanceof Error ? error.message : String(error)}
+        process.stderr.write(`harness-ledger: ${error instanceof Error ? error.message : String(error)}
 `);
         process.exitCode = 1;
       }
     );
   }
   help() {
-    return `imh ${VersionUtil.VERSION} \u2014 improve-my-harness analysis script
+    return `harness-ledger ${VersionUtil.VERSION} \u2014 analysis script
 
-Usage: imh <command> [options]
+Usage: harness-ledger <command> [options]
 
 Commands
   analyze                 Map the harness, read session transcripts and extract signals
-  inventory               Snapshot the active harness (saved to .imh/inventory/ when it changes)
+  inventory               Snapshot the active harness (saved to .harness-ledger/inventory/ when it changes)
   evidence <signal-id>    All evidence for one signal from the last analysis
   compare --piece <id>    Before/after metrics for one piece (e.g. agent:code-reviewer)
   suggestions list        List suggestions [--status pending|accepted|rejected|applied]
@@ -5792,7 +5792,7 @@ Options
   --max-signals <n>       analyze: signals in stdout (default 25)
   --max-evidence <n>      analyze: evidence per signal in stdout (default 5)
   --max <n>               evidence: evidence items (default 50)
-  --data-dir <dir>        Where state lives (default: <project>/.imh)
+  --data-dir <dir>        Where state lives (default: <project>/.harness-ledger)
   --exclude-session <id>  Leave a session out, e.g. the one running the analysis (repeatable)
   --no-cache              Re-parse every transcript
   --pretty                Indented JSON
@@ -5817,7 +5817,7 @@ Output is JSON on stdout. Nothing leaves your machine.`;
       throw new Error(`Node.js ${MIN_NODE_MAJOR}+ is required (found ${process.version}).`);
     }
     if (!GuardUtil.isKeyOf(this.commandNameToHandler, commandName)) {
-      throw new Error(`Unknown command: ${commandName}. Run \`imh --help\`.`);
+      throw new Error(`Unknown command: ${commandName}. Run \`harness-ledger --help\`.`);
     }
     const result = await this.commandNameToHandler[commandName]({
       values,
@@ -5866,7 +5866,7 @@ Output is JSON on stdout. Nothing leaves your machine.`;
   async setSuggestionStatus({ values, rest, common }) {
     const [, id, status] = rest;
     if (!id || !status || !SuggestionService.isStatus(status)) {
-      throw new Error("Usage: imh suggestions set <id> <pending|accepted|rejected|applied> [--note text]");
+      throw new Error("Usage: harness-ledger suggestions set <id> <pending|accepted|rejected|applied> [--note text]");
     }
     return new SuggestionsCommand().setStatus({
       ...common,

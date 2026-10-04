@@ -1,6 +1,6 @@
 {
   "name": "harness-ledger",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Every piece of your coding agent's harness, with what it costs you and the receipts from your own sessions.",
   "license": "MIT",
   "author": "Guilherme Mota",
