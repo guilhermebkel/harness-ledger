@@ -84,7 +84,7 @@ Requires Node.js 20+. Nothing else is installed: the analysis script ships prebu
 Open Claude Code in your project, pick your strongest reasoning model with `/model`, and run:
 
 ```text
-/harness-ledger
+/harness-ledger:audit-harness
 ```
 
 It works on the sessions you already have, from the first run. No extra logging, no setup.
@@ -93,13 +93,13 @@ It works on the sessions you already have, from the first run. No extra logging,
 
 ```text
 # Focus on one piece or period
-/harness-ledger only the code-reviewer subagent, last 2 weeks
+/harness-ledger:audit-harness only the code-reviewer subagent, last 2 weeks
 
 # Check whether a change helped
-/harness-ledger did my change to code-reviewer help?
+/harness-ledger:audit-harness did my change to code-reviewer help?
 
 # Review what was suggested before
-/harness-ledger show pending suggestions
+/harness-ledger:audit-harness show pending suggestions
 ```
 
 Suggestions are never applied on their own. Applying one always asks first and only touches harness files.
@@ -189,7 +189,7 @@ node dist/harness-ledger.mjs --help
 
 Everything it prints is JSON. It writes only to `.harness-ledger/` in your project.
 
-To see what a run of the skill cost you, look at its own row the next time you analyze: `node dist/harness-ledger.mjs analyze --piece skill:harness-ledger`.
+To see what a run of the skill cost you, look at its own row the next time you analyze: `node dist/harness-ledger.mjs analyze --piece skill:harness-ledger:audit-harness`.
 
 </details>
 

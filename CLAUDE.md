@@ -6,7 +6,7 @@ A Claude Code plugin that reads the session transcripts the agent already saves,
 
 ADR 0008 has the reasons; `docs/code-standards.md` ("Architecture") has the rules.
 
-- `skills/harness-ledger/`: what the agent reads at runtime. `SKILL.md` has the four flows; `references/findings.md` has the classes, rules and report format.
+- `skills/audit-harness/`: what the agent reads at runtime. `SKILL.md` has the four flows; `references/findings.md` has the classes, rules and report format.
 - `src/index.ts`: entry point of the `harness-ledger` script.
 - `src/Shared/`: code that knows no provider.
   - `Adapters/BaseProviderAdapter.ts`: the contract every provider extends (paths, transcripts, sessions, inventory).
@@ -58,7 +58,7 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 - Links that leave the machine (issue links for gaps and rule questions, ADR 0010) carry shapes, names and counts only, never session content; the script builds them and never sends anything.
 - Every string that can reach output passes through `RedactUtil.redact()` / `RedactUtil.excerpt()`. Hook and MCP entries keep names and shapes only (ADR 0007). Add a test with a fake secret for any new output path.
 - Transcript formats are internal: parse defensively, count unknown lines, never throw on a bad line. Add new format cases to the provider's fixture (`ClaudeCodeFixtureUtil`).
-- `skills/harness-ledger/SKILL.md` description is loaded in every user session: keep it short.
+- `skills/audit-harness/SKILL.md` description is loaded in every user session: keep it short.
 - A merge reaches no one until a release. Cut one with the `Release` workflow (`.github/workflows/release.yml`, run by hand from the Actions tab on `master`, choosing patch, minor or major): in one commit it bumps `version` in `plugin.json` and `package.json`, points the marketplace `ref` at `vX.Y.Z`, runs `pnpm release:check` (adds publint) and rebuilds `dist/`; then it tags `vX.Y.Z` and publishes a GitHub Release with generated notes.
 
 ## Agent skills

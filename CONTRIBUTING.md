@@ -51,7 +51,7 @@ While iterating, run only what you touch: `pnpm exec vitest run <file>`, `pnpm e
 
 - `src/Providers/<Provider>/` reads one agent's transcripts and settings into the shared model. Nothing outside that folder knows the agent's formats (ADR 0008).
 - `src/Shared/` (commands, services, protocols, utils) extracts signals, usage, costs and before/after without knowing which agent produced them.
-- `skills/harness-ledger/` is what the agent reads at runtime: the flows, the finding classes and the report format.
+- `skills/audit-harness/` is what the agent reads at runtime: the flows, the finding classes and the report format.
 - `dist/harness-ledger.mjs` is the bundled script the skill runs. Don't commit it; the Release workflow does.
 
 The rules are in [`docs/code-standards.md`](docs/code-standards.md) and [`docs/test-standards.md`](docs/test-standards.md), and `pnpm lint` enforces most of them. The ones people trip on first:

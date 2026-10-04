@@ -14,7 +14,7 @@ body:
     attributes:
       label: What happened
       description: What you ran and what you got.
-      placeholder: Ran `/harness-ledger` and the analysis stopped with "..."
+      placeholder: Ran `/harness-ledger:audit-harness` and the analysis stopped with "..."
     validations:
       required: true
   - type: textarea
