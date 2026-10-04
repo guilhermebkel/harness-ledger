@@ -53,9 +53,10 @@ jobs:
             exit 1
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-      - run: pnpm release:check
       - name: Rebuild dist/ from scratch, so a renamed bundle leaves no old file behind
         run: rm -rf dist && pnpm build
+      - name: Check the package against the bundle it ships
+        run: pnpm release:check
       - name: Commit, tag and push
         run: |
           git config user.name "github-actions[bot]"
