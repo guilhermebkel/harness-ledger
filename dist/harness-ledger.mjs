@@ -2,7 +2,7 @@
 // harness-ledger — generated file, edit src/ and run `pnpm build`.
 
 // src/Shared/Modules/CLIModule.ts
-import { readFile as readFile7 } from "node:fs/promises";
+import { readFile as readFile10 } from "node:fs/promises";
 import { parseArgs } from "node:util";
 
 // src/Shared/Utils/CollectionUtil.ts
@@ -405,6 +405,18 @@ var SessionUtil = class _SessionUtil {
   static isMainThread(thread) {
     return thread.id === _SessionUtil.MAIN_THREAD_ID;
   }
+  static platformFromPath(projectDir) {
+    if (projectDir === void 0) {
+      return void 0;
+    }
+    if (/^[A-Za-z]:[\\/]/.test(projectDir)) {
+      return "win32";
+    }
+    if (projectDir.startsWith("/Users/")) {
+      return "darwin";
+    }
+    return projectDir.startsWith("/home/") ? "linux" : void 0;
+  }
 };
 
 // src/Shared/Utils/TimeUtil.ts
@@ -429,10 +441,10 @@ var TimeUtil = class _TimeUtil {
     if (!value) {
       return void 0;
     }
-    const relative4 = /^(\d+)\s*([hdwm])$/i.exec(value.trim());
-    if (relative4) {
-      const amount = Number(relative4[1]);
-      const unit = (relative4[2] ?? "d").toLowerCase();
+    const relative6 = /^(\d+)\s*([hdwm])$/i.exec(value.trim());
+    if (relative6) {
+      const amount = Number(relative6[1]);
+      const unit = (relative6[2] ?? "d").toLowerCase();
       return nowAtMs - amount * _TimeUtil.PERIOD_UNIT_TO_MS[unit];
     }
     const absoluteAtMs = Date.parse(value);
@@ -500,7 +512,7 @@ var TokenUsageUtil = class _TokenUsageUtil {
 // src/Shared/Utils/VersionUtil.ts
 var VersionUtil = class {
   // Why: esbuild replaces it at build time; "dev" when running from source.
-  static VERSION = true ? "0.3.2" : "dev";
+  static VERSION = true ? "0.4.0" : "dev";
 };
 
 // src/Shared/Services/AttributionService.ts
@@ -4113,6 +4125,35 @@ var JsonlUtil = class _JsonlUtil {
   }
 };
 
+// src/Shared/Utils/ThreadSummaryUtil.ts
+var UNKNOWN_SUBAGENT_TYPE2 = "subagent";
+var ThreadSummaryUtil = class _ThreadSummaryUtil {
+  static summarize(input) {
+    const { facts, idleMs } = input;
+    for (const [threadId, eventsAtMs] of input.threadIdToEventsAtMs) {
+      eventsAtMs.sort((left, right) => left - right);
+      const isMain = threadId === SessionUtil.MAIN_THREAD_ID;
+      const threadFacts = {
+        thread: isMain ? SessionUtil.mainThread() : _ThreadSummaryUtil.threadRefOf(facts, threadId),
+        activeMs: TimeUtil.activeTime(eventsAtMs, idleMs),
+        firstEventAtMs: eventsAtMs[0],
+        lastEventAtMs: eventsAtMs.at(-1),
+        promptHash: input.threadIdToFirstPromptHash.get(threadId)
+      };
+      facts.threads.push(threadFacts);
+      if (isMain) {
+        facts.activeMs = threadFacts.activeMs;
+        facts.startedAtMs = threadFacts.firstEventAtMs;
+        facts.endedAtMs = threadFacts.lastEventAtMs;
+      }
+    }
+  }
+  static threadRefOf(facts, threadId) {
+    const typeOf = facts.tools.find((call) => call.thread.id === threadId)?.thread.agentType ?? facts.messages.find((message) => message.thread.id === threadId)?.thread.agentType ?? UNKNOWN_SUBAGENT_TYPE2;
+    return { id: threadId, agentType: typeOf };
+  }
+};
+
 // src/Providers/ClaudeCode/Utils/ClaudeCodePathUtil.ts
 import { homedir as homedir3 } from "node:os";
 import { join as join5 } from "node:path";
@@ -4206,7 +4247,7 @@ var ClaudeCodeTranscriptUtil = class _ClaudeCodeTranscriptUtil {
 
 // src/Providers/ClaudeCode/Services/ClaudeCodeSessionService.ts
 var TRANSCRIPT_EXTENSION = ".jsonl";
-var UNKNOWN_SUBAGENT_TYPE2 = "subagent";
+var UNKNOWN_SUBAGENT_TYPE3 = "subagent";
 var DEFAULT_SUBAGENT_TYPE = "general-purpose";
 var MAX_PROMPT_CHARS = 2e3;
 var MAX_SUMMARY_CHARS = 160;
@@ -4392,7 +4433,7 @@ var ClaudeCodeSessionService = class {
       context.currentFile = subagentFile.file;
       context.currentThread = {
         id: agentId,
-        agentType: metaType ?? UNKNOWN_SUBAGENT_TYPE2
+        agentType: metaType ?? UNKNOWN_SUBAGENT_TYPE3
       };
       await this.readTranscript(context, subagentFile.file, false);
       const resolvedType = metaType ?? context.threadIdToDeclaredType.get(agentId) ?? this.typeFromDelegation(context, agentId);
@@ -4407,7 +4448,7 @@ var ClaudeCodeSessionService = class {
       }
     }
     facts.messages = [...context.messageIdToMessage.values()];
-    facts.environment.platform ??= this.platformFromPath(facts.projectDir);
+    facts.environment.platform ??= SessionUtil.platformFromPath(facts.projectDir);
     this.summarizeThreads(context, options.idleMs);
     return facts;
   }
@@ -4450,34 +4491,17 @@ var ClaudeCodeSessionService = class {
   }
   summarizeThreads(context, idleMs) {
     const facts = context.facts;
-    for (const [threadId, eventsAtMs] of context.threadIdToEventsAtMs) {
-      eventsAtMs.sort((left, right) => left - right);
-      const isMain = threadId === SessionUtil.MAIN_THREAD_ID;
-      const threadFacts = {
-        thread: isMain ? SessionUtil.mainThread() : {
-          id: threadId,
-          agentType: this.knownTypeOfThread(facts, threadId)
-        },
-        activeMs: TimeUtil.activeTime(eventsAtMs, idleMs),
-        firstEventAtMs: eventsAtMs[0],
-        lastEventAtMs: eventsAtMs.at(-1),
-        promptHash: context.threadIdToFirstPromptHash.get(threadId)
-      };
-      facts.threads.push(threadFacts);
-      if (isMain) {
-        facts.activeMs = threadFacts.activeMs;
-        facts.startedAtMs = threadFacts.firstEventAtMs;
-        facts.endedAtMs = threadFacts.lastEventAtMs;
-      }
-    }
+    ThreadSummaryUtil.summarize({
+      facts,
+      idleMs,
+      threadIdToEventsAtMs: context.threadIdToEventsAtMs,
+      threadIdToFirstPromptHash: context.threadIdToFirstPromptHash
+    });
     if (facts.startedAtMs === void 0) {
       const allEventsAtMs = [...context.threadIdToEventsAtMs.values()].flat().sort((left, right) => left - right);
       facts.startedAtMs = allEventsAtMs[0];
       facts.endedAtMs = allEventsAtMs.at(-1);
     }
-  }
-  knownTypeOfThread(facts, threadId) {
-    return facts.tools.find((call) => call.thread.id === threadId)?.thread.agentType ?? facts.messages.find((message) => message.thread.id === threadId)?.thread.agentType ?? UNKNOWN_SUBAGENT_TYPE2;
   }
   relabelThread(facts, threadId, agentType) {
     for (const call of facts.tools.filter((toolCall) => toolCall.thread.id === threadId)) {
@@ -4567,7 +4591,7 @@ var ClaudeCodeSessionService = class {
       const sidechainId = GuardUtil.asString(record.agentId) ?? "sidechain";
       thread = {
         id: sidechainId,
-        agentType: context.threadIdToDeclaredType.get(sidechainId) ?? UNKNOWN_SUBAGENT_TYPE2
+        agentType: context.threadIdToDeclaredType.get(sidechainId) ?? UNKNOWN_SUBAGENT_TYPE3
       };
     }
     const declaredType = GuardUtil.firstString(record, SUBAGENT_TYPE_KEYS);
@@ -4688,18 +4712,6 @@ var ClaudeCodeSessionService = class {
       ref: this.evidenceFactory(context, line)(text),
       occurredAtMs: line.occurredAtMs
     });
-  }
-  platformFromPath(projectDir) {
-    if (projectDir === void 0) {
-      return void 0;
-    }
-    if (/^[A-Za-z]:[\\/]/.test(projectDir)) {
-      return "win32";
-    }
-    if (projectDir.startsWith("/Users/")) {
-      return "darwin";
-    }
-    return projectDir.startsWith("/home/") ? "linux" : void 0;
   }
   readEnvironment(context, snapshot) {
     const environment = context.facts.environment;
@@ -4949,11 +4961,1189 @@ var ClaudeCodeProviderAdapter = class extends BaseProviderAdapter {
   }
 };
 
+// src/Providers/Codex/Adapters/CodexProviderAdapter.ts
+import { homedir as homedir5 } from "node:os";
+import { join as join10 } from "node:path";
+
+// src/Providers/Codex/Services/CodexInventoryService.ts
+import { readdir as readdir4, readFile as readFile7, stat as stat5 } from "node:fs/promises";
+import { basename as basename3, join as join7 } from "node:path";
+
+// src/Shared/Utils/PieceFileUtil.ts
+import { readFile as readFile6, stat as stat4 } from "node:fs/promises";
+import { relative as relative4 } from "node:path";
+var MAX_DESCRIPTION_CHARS3 = 300;
+var PROJECT_SCOPES2 = /* @__PURE__ */ new Set(["project", "local"]);
+var PieceFileUtil = class _PieceFileUtil {
+  static async fromFile(options) {
+    const text = await readFile6(options.file, "utf8").catch(() => void 0);
+    if (text === void 0) {
+      return void 0;
+    }
+    const { keyToValue } = FrontmatterUtil.parse(text);
+    const fileStat = await stat4(options.file).catch(() => void 0);
+    const description = options.description ?? FrontmatterUtil.asText(keyToValue.description);
+    return {
+      id: `${options.kind}:${options.name}`,
+      kind: options.kind,
+      name: options.name,
+      scope: options.scope,
+      path: _PieceFileUtil.displayPath(options.file, options.scope, options.projectDir),
+      hash: HashUtil.sha(text),
+      bytes: Buffer.byteLength(text),
+      approxTokens: NumberUtil.approxTokens(text),
+      description: description?.slice(0, MAX_DESCRIPTION_CHARS3),
+      model: options.model ?? FrontmatterUtil.asText(keyToValue.model),
+      modifiedAt: fileStat ? new Date(fileStat.mtimeMs).toISOString() : void 0,
+      modifiedSource: fileStat ? "mtime" : void 0,
+      isEditable: true
+    };
+  }
+  static displayPath(file, scope, projectDir) {
+    const isProjectFile = PROJECT_SCOPES2.has(scope);
+    return isProjectFile ? relative4(projectDir, file) : PathUtil.tildify(file);
+  }
+  static mcpPiece(options) {
+    return {
+      id: `mcp:${options.name}`,
+      kind: "mcp",
+      name: options.name,
+      scope: options.scope,
+      path: _PieceFileUtil.displayPath(options.file, options.scope, options.projectDir),
+      hash: HashUtil.sha(options.name),
+      bytes: 0,
+      approxTokens: 0,
+      isEditable: true
+    };
+  }
+  static async settled(pending) {
+    const pieces = await Promise.all(pending);
+    return pieces.filter((piece) => piece !== void 0);
+  }
+  static fingerprint(pieces) {
+    return HashUtil.sha(pieces.map((piece) => `${piece.id}=${piece.hash}`).join("\n"));
+  }
+  static withUniqueIds(pieces) {
+    const idToCount = /* @__PURE__ */ new Map();
+    const unique = pieces.map((piece) => {
+      const count = idToCount.get(piece.id) ?? 0;
+      idToCount.set(piece.id, count + 1);
+      return count === 0 ? piece : { ...piece, id: `${piece.id}@${piece.scope}` };
+    });
+    return unique.sort((left, right) => left.id.localeCompare(right.id));
+  }
+};
+
+// src/Providers/Codex/Utils/CodexTomlUtil.ts
+var TABLE_HEADER = /^\[mcp_servers\.("?)([^\]"]+)\1\]/;
+var STRING_ASSIGNMENT = /^([A-Za-z_][\w-]*)\s*=\s*"((?:[^"\\]|\\.)*)"\s*(?:#.*)?$/;
+var CodexTomlUtil = class {
+  static mcpServerNames(toml) {
+    const names = [];
+    for (const line of toml.split(/\r?\n/)) {
+      const name = TABLE_HEADER.exec(line.trim())?.[2];
+      if (name !== void 0 && !name.includes(".") && !names.includes(name)) {
+        names.push(name);
+      }
+    }
+    return names;
+  }
+  static topLevelStrings(toml, keys) {
+    const keyToValue = {};
+    for (const line of toml.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("[")) {
+        break;
+      }
+      const match = STRING_ASSIGNMENT.exec(trimmed);
+      const key = match?.[1];
+      if (key !== void 0 && keys.includes(key) && match?.[2] !== void 0) {
+        keyToValue[key] = match[2];
+      }
+    }
+    return keyToValue;
+  }
+};
+
+// src/Providers/Codex/Services/CodexInventoryService.ts
+var INSTRUCTION_FILES = ["AGENTS.override.md", "AGENTS.md"];
+var AGENT_KEYS = ["name", "description", "model"];
+var CodexInventoryService = class {
+  constructor(homeDir, userSkillsDir) {
+    this.homeDir = homeDir;
+    this.userSkillsDir = userSkillsDir;
+  }
+  async takeInventory(options) {
+    const { projectDir } = options;
+    const pieces = [];
+    const places = [
+      { scope: "project", root: projectDir, skillsDir: join7(projectDir, ".agents", "skills") }
+    ];
+    if (!options.isProjectOnly) {
+      places.push({ scope: "user", root: this.homeDir, skillsDir: this.userSkillsDir });
+    }
+    for (const place of places) {
+      const isProject = place.scope === "project";
+      const configFolder = isProject ? join7(place.root, ".codex") : place.root;
+      pieces.push(
+        ...await this.instructionPieces(place.root, place.scope, projectDir),
+        ...await this.skillPieces(place.skillsDir, place.scope, projectDir),
+        ...await this.agentPieces(join7(configFolder, "agents"), place.scope, projectDir),
+        ...await this.mcpPieces(join7(configFolder, "config.toml"), place.scope, projectDir)
+      );
+    }
+    const uniquePieces = PieceFileUtil.withUniqueIds(pieces);
+    return {
+      projectDir,
+      fingerprint: PieceFileUtil.fingerprint(uniquePieces),
+      provider: "codex",
+      takenAt: (/* @__PURE__ */ new Date()).toISOString(),
+      pieces: uniquePieces,
+      retention: { days: 0, source: "Codex keeps transcripts until they are deleted" },
+      notes: []
+    };
+  }
+  async instructionPieces(root, scope, projectDir) {
+    return PieceFileUtil.settled(INSTRUCTION_FILES.map(async (name) => PieceFileUtil.fromFile({ file: join7(root, name), kind: "instructions", name, scope, projectDir })));
+  }
+  async skillPieces(skillsDir, scope, projectDir) {
+    const folders = await readdir4(skillsDir).catch(() => []);
+    return PieceFileUtil.settled(folders.map(async (folder) => {
+      const piece = await PieceFileUtil.fromFile({ file: join7(skillsDir, folder, "SKILL.md"), kind: "skill", name: folder, scope, projectDir });
+      return piece && { ...piece, files: await this.extraFiles(join7(skillsDir, folder)) };
+    }));
+  }
+  async extraFiles(skillFolder) {
+    const names = await readdir4(skillFolder, { recursive: true }).catch(() => []);
+    const files = [];
+    for (const name of names.filter((entry) => basename3(entry) !== "SKILL.md")) {
+      const fileStat = await stat5(join7(skillFolder, name)).catch(() => void 0);
+      if (fileStat?.isFile()) {
+        files.push(name);
+      }
+    }
+    return files.length ? files.sort((left, right) => left.localeCompare(right)) : void 0;
+  }
+  async agentPieces(agentsDir, scope, projectDir) {
+    const allNames = await readdir4(agentsDir).catch(() => []);
+    const names = allNames.filter((name) => name.endsWith(".toml"));
+    return PieceFileUtil.settled(names.map(async (fileName) => {
+      const file = join7(agentsDir, fileName);
+      const text = await readFile7(file, "utf8").catch(() => "");
+      const { name, description, model } = CodexTomlUtil.topLevelStrings(text, AGENT_KEYS);
+      const agentName = name ?? basename3(fileName, ".toml");
+      return PieceFileUtil.fromFile({ kind: "agent", name: agentName, file, scope, projectDir, description, model });
+    }));
+  }
+  async mcpPieces(file, scope, projectDir) {
+    const text = await readFile7(file, "utf8").catch(() => "");
+    return CodexTomlUtil.mcpServerNames(text).map((name) => PieceFileUtil.mcpPiece({ name, file, scope, projectDir }));
+  }
+};
+
+// src/Providers/Codex/Services/CodexSessionService.ts
+import { readdir as readdir5, stat as stat6 } from "node:fs/promises";
+import { basename as basename4, join as join9, relative as relative5, sep as sep2 } from "node:path";
+
+// src/Shared/Utils/UnknownLineUtil.ts
+var MAX_UNKNOWN_TYPE_CHARS2 = 60;
+var MAX_UNKNOWN_KEYS2 = 40;
+var UnknownLineUtil = class {
+  static record(facts, record, lineType) {
+    const type = RedactUtil.excerpt(lineType ?? "(no type)", MAX_UNKNOWN_TYPE_CHARS2);
+    const keys = Object.keys(record).sort(CollectionUtil.compareCodeUnits).slice(0, MAX_UNKNOWN_KEYS2).map((key) => RedactUtil.excerpt(key, MAX_UNKNOWN_TYPE_CHARS2));
+    const shapes = facts.unknownLines ?? [];
+    const signature = keys.join(",");
+    const known = shapes.find((shape) => shape.type === type && shape.keys.join(",") === signature);
+    if (known) {
+      known.count++;
+    } else {
+      shapes.push({ type, keys, count: 1 });
+    }
+    facts.unknownLines = shapes;
+  }
+};
+
+// src/Providers/Codex/Utils/CodexPathUtil.ts
+import { homedir as homedir4 } from "node:os";
+import { join as join8 } from "node:path";
+var CodexPathUtil = class {
+  static homeDir() {
+    return EnvUtil.read("HARNESS_LEDGER_CODEX_HOME") ?? EnvUtil.read("CODEX_HOME") ?? join8(homedir4(), ".codex");
+  }
+  static userAgentsDir(userHome) {
+    return EnvUtil.read("HARNESS_LEDGER_CODEX_AGENTS_HOME") ?? join8(userHome, ".agents");
+  }
+  static sessionsDir(homeDir) {
+    return join8(homeDir, "sessions");
+  }
+};
+
+// src/Providers/Codex/Utils/CodexTranscriptUtil.ts
+import { createReadStream as createReadStream2 } from "node:fs";
+import { createInterface as createInterface2 } from "node:readline";
+var EXIT_CODE_PATTERNS = [/Process exited with code (-?\d+)/, /^Exit code: (-?\d+)/m];
+var UNKNOWN_SUBAGENT = "subagent";
+var CodexTranscriptUtil = class _CodexTranscriptUtil {
+  static async readSessionMeta(file) {
+    const first = await _CodexTranscriptUtil.firstLine(file);
+    const record = GuardUtil.asRecord(first === void 0 ? void 0 : GuardUtil.parseJson(first));
+    const payload = GuardUtil.asRecord(record?.payload);
+    if (record?.type !== "session_meta" || !payload) {
+      return {};
+    }
+    const spawn = GuardUtil.asRecord(GuardUtil.asRecord(GuardUtil.asRecord(payload.source)?.subagent)?.thread_spawn);
+    return {
+      id: GuardUtil.asString(payload.id),
+      cwd: GuardUtil.asString(payload.cwd),
+      parentThreadId: GuardUtil.asString(spawn?.parent_thread_id),
+      agentType: spawn ? _CodexTranscriptUtil.agentTypeOf(spawn) : void 0
+    };
+  }
+  static exitCodeOf(text) {
+    for (const pattern of EXIT_CODE_PATTERNS) {
+      const match = pattern.exec(text);
+      if (match?.[1] !== void 0) {
+        return Number(match[1]);
+      }
+    }
+    return void 0;
+  }
+  static outputText(output) {
+    const text = GuardUtil.asString(output);
+    if (text !== void 0) {
+      return text;
+    }
+    return GuardUtil.asArray(output).map((item) => GuardUtil.asString(GuardUtil.asRecord(item)?.text) ?? "").join("\n");
+  }
+  static isInjectedContext(text) {
+    return /^\s*(# AGENTS\.md instructions|<environment_context>|<turn_aborted>|<recommended_plugins>|<user_instructions>)/.test(text);
+  }
+  static argumentsOf(value) {
+    return GuardUtil.asRecord(typeof value === "string" ? GuardUtil.parseJson(value) : value) ?? {};
+  }
+  static agentTypeOf(spawn) {
+    return GuardUtil.firstString(spawn, ["agent_role", "agent_nickname"]) ?? UNKNOWN_SUBAGENT;
+  }
+  static async firstLine(file) {
+    const lines = createInterface2({ input: createReadStream2(file, { encoding: "utf8" }), crlfDelay: Infinity });
+    try {
+      for await (const line of lines) {
+        return line;
+      }
+      return void 0;
+    } catch {
+      return void 0;
+    } finally {
+      lines.close();
+    }
+  }
+};
+
+// src/Providers/Codex/Services/CodexSessionService.ts
+var ROLLOUT_PREFIX = "rollout-";
+var ROLLOUT_EXTENSION = ".jsonl";
+var UNKNOWN_SUBAGENT_TYPE4 = "subagent";
+var MAX_PROMPT_CHARS2 = 2e3;
+var MAX_UNKNOWN_TYPE_CHARS3 = 60;
+var INTERRUPTION_TEXT = "[Request interrupted by user]";
+var MCP_TOOL_PREFIX = "mcp__";
+var MCP_TOOL_SEPARATOR = "__";
+var PATCH_FILE_PATTERN = /^\*\*\* (?:Update|Add|Delete) File: (.+)$/m;
+var FAILED_SCRIPT_PATTERN = /^Script failed/m;
+var SHELL_WRAPPER_PARTS = 3;
+var SHELL_SCRIPT_FLAGS = /* @__PURE__ */ new Set(["-c", "-lc"]);
+var TIMED_LINE_TYPES2 = /* @__PURE__ */ new Set(["event_msg", "response_item"]);
+var IGNORED_EVENT_TYPES = /* @__PURE__ */ new Set([
+  "agent_message",
+  "agent_reasoning",
+  "agent_reasoning_raw_content",
+  "task_started",
+  "web_search_end",
+  "item_completed",
+  "sub_agent_activity",
+  "collab_agent_spawn_end",
+  "collab_waiting_end",
+  "context_compacted",
+  "thread_rolled_back",
+  "thread_settings_applied",
+  "entered_review_mode",
+  "exited_review_mode",
+  "mcp_tool_call_end",
+  "patch_apply_end"
+]);
+var IGNORED_ITEM_TYPES = /* @__PURE__ */ new Set(["ghost_snapshot", "agent_message"]);
+var IGNORED_LINE_TYPES2 = /* @__PURE__ */ new Set(["world_state", "inter_agent_communication_metadata"]);
+var commandOf = (input) => {
+  const command = input.cmd ?? input.command;
+  const asList = GuardUtil.asArray(command).filter((part) => typeof part === "string");
+  const isShellWrapper = asList.length >= SHELL_WRAPPER_PARTS && SHELL_SCRIPT_FLAGS.has(asList[1] ?? "");
+  const script = isShellWrapper ? asList.at(-1) : void 0;
+  return GuardUtil.asString(command) ?? script ?? (asList.length ? asList.join(" ") : void 0);
+};
+var describeShell = (input) => {
+  const command = commandOf(input) ?? "";
+  return {
+    key: NormalizeUtil.commandKey(command),
+    category: "shell",
+    summary: command
+  };
+};
+var describePatch = (_input, rawInput) => ({
+  key: "apply_patch",
+  category: "edit",
+  summary: "apply_patch",
+  filePath: PATCH_FILE_PATTERN.exec(rawInput ?? "")?.[1]
+});
+var describePlan = () => ({ key: "update_plan", category: "plan", summary: "update_plan" });
+var describeSpawn = (input) => {
+  const subagentType = GuardUtil.asString(input.agent_type) ?? "default";
+  const message = GuardUtil.asString(input.message);
+  return {
+    key: `spawn_agent:${subagentType}`,
+    category: "delegation",
+    summary: `spawn ${subagentType}`,
+    subagentPromptHash: message === void 0 ? void 0 : HashUtil.sha(message),
+    subagentType
+  };
+};
+var NAME_TO_DESCRIBER = {
+  exec_command: describeShell,
+  shell_command: describeShell,
+  shell: describeShell,
+  local_shell: describeShell,
+  apply_patch: describePatch,
+  update_plan: describePlan,
+  spawn_agent: describeSpawn
+};
+var RESULT_KIND_TO_IS_ERROR = {
+  ok: false,
+  error: true,
+  permission_denied: true,
+  user_rejected: true,
+  interrupted: true,
+  hook_blocked: true
+};
+var CodexSessionService = class {
+  constructor(homeDir) {
+    this.homeDir = homeDir;
+  }
+  lineTypeToHandler = {
+    session_meta: (context, line, isMainFile) => {
+      this.handleSessionMeta(context, line, isMainFile);
+    },
+    turn_context: (context, line) => {
+      this.handleTurnContext(context, line);
+    },
+    event_msg: (context, line, isMainFile) => {
+      this.handlePayload(context, line, isMainFile, this.eventTypeToHandler, IGNORED_EVENT_TYPES);
+    },
+    response_item: (context, line, isMainFile) => {
+      this.handlePayload(context, line, isMainFile, this.itemTypeToHandler, IGNORED_ITEM_TYPES);
+    },
+    compacted: (context, line) => {
+      this.handleCompaction(context, line);
+    }
+  };
+  eventTypeToHandler = {
+    user_message: (context, line, isMainFile) => {
+      this.handleUserMessage(context, line, isMainFile);
+    },
+    token_count: (context, line) => {
+      this.handleTokenCount(context, line);
+    },
+    turn_aborted: (context, line) => {
+      this.addPrompt(context, line, INTERRUPTION_TEXT, true);
+    },
+    task_complete: (context, line, isMainFile) => {
+      this.handleTaskComplete(context, line, isMainFile);
+    },
+    exec_command_end: (context, line) => {
+      this.handleCommandEnd(context, line);
+    }
+  };
+  itemTypeToHandler = {
+    function_call: (context, line) => {
+      this.handleToolCall(context, line, line.payload.arguments);
+    },
+    custom_tool_call: (context, line) => {
+      this.handleToolCall(context, line, line.payload.input);
+    },
+    web_search_call: (context, line) => {
+      this.handleWebSearch(context, line);
+    },
+    function_call_output: (context, line) => {
+      this.handleToolOutput(context, line);
+    },
+    custom_tool_call_output: (context, line) => {
+      this.handleToolOutput(context, line);
+    },
+    message: (context, line) => {
+      this.handleItemMessage(context, line);
+    },
+    reasoning: (context, line) => {
+      this.openMessageFor(context, line);
+    }
+  };
+  async discoverTranscripts(options) {
+    const entries = await this.listRollouts();
+    const idToEntry = /* @__PURE__ */ new Map();
+    for (const entry of entries) {
+      if (entry.meta.id) {
+        idToEntry.set(entry.meta.id, entry);
+      }
+    }
+    const parentIdToChildren = /* @__PURE__ */ new Map();
+    const roots = [];
+    for (const entry of entries) {
+      const parentId = entry.meta.parentThreadId;
+      if (parentId !== void 0 && idToEntry.has(parentId)) {
+        parentIdToChildren.set(parentId, [...parentIdToChildren.get(parentId) ?? [], entry]);
+      } else {
+        roots.push(entry);
+      }
+    }
+    const { projectDir } = options;
+    return roots.filter((entry) => options.shouldReadAllProjects === true || this.isInsideProject(entry.meta.cwd, projectDir)).map((entry) => ({
+      file: entry.file,
+      modifiedAtMs: entry.modifiedAtMs,
+      bytes: entry.bytes,
+      sessionId: entry.meta.id ?? this.idFromFileName(entry.file),
+      subagentFiles: (parentIdToChildren.get(entry.meta.id ?? "") ?? []).map((child) => ({
+        file: child.file,
+        modifiedAtMs: child.modifiedAtMs,
+        bytes: child.bytes
+      })),
+      isExactProject: entry.meta.cwd === options.projectDir
+    })).sort((left, right) => left.modifiedAtMs - right.modifiedAtMs);
+  }
+  async parseSession(transcript, options) {
+    const facts = {
+      provider: "codex",
+      sessionId: transcript.sessionId,
+      file: transcript.file,
+      activeMs: 0,
+      threads: [],
+      prompts: [],
+      tools: [],
+      messages: [],
+      apiErrors: [],
+      compactions: [],
+      environment: {},
+      reported: {
+        isCostPartial: true,
+        turns: []
+      },
+      files: [transcript.file, ...transcript.subagentFiles.map((subagentFile) => subagentFile.file)],
+      unparsedLines: 0
+    };
+    const context = {
+      facts,
+      currentFile: transcript.file,
+      currentThread: SessionUtil.mainThread(),
+      callIdToPendingCall: /* @__PURE__ */ new Map(),
+      threadIdToEventsAtMs: /* @__PURE__ */ new Map(),
+      threadIdToFirstPromptHash: /* @__PURE__ */ new Map(),
+      threadIdToModel: /* @__PURE__ */ new Map(),
+      threadIdToLastTotalTokens: /* @__PURE__ */ new Map()
+    };
+    await this.readRollout(context, transcript.file, true);
+    for (const subagentFile of transcript.subagentFiles) {
+      const meta = await CodexTranscriptUtil.readSessionMeta(subagentFile.file);
+      context.currentFile = subagentFile.file;
+      context.openMessage = void 0;
+      context.currentThread = {
+        id: meta.id ?? basename4(subagentFile.file, ROLLOUT_EXTENSION),
+        agentType: meta.agentType ?? UNKNOWN_SUBAGENT_TYPE4
+      };
+      await this.readRollout(context, subagentFile.file, false);
+    }
+    ThreadSummaryUtil.summarize({
+      facts,
+      idleMs: options.idleMs,
+      threadIdToEventsAtMs: context.threadIdToEventsAtMs,
+      threadIdToFirstPromptHash: context.threadIdToFirstPromptHash
+    });
+    facts.environment.platform ??= SessionUtil.platformFromPath(facts.projectDir);
+    return facts;
+  }
+  async listRollouts() {
+    const sessionsDir = CodexPathUtil.sessionsDir(this.homeDir);
+    const names = await readdir5(sessionsDir, { recursive: true }).catch(() => []);
+    const files = names.filter((name) => basename4(name).startsWith(ROLLOUT_PREFIX) && name.endsWith(ROLLOUT_EXTENSION));
+    const entries = [];
+    for (const name of files) {
+      const file = join9(sessionsDir, name);
+      const fileStat = await stat6(file).catch(() => void 0);
+      if (fileStat?.isFile()) {
+        entries.push({
+          file,
+          modifiedAtMs: fileStat.mtimeMs,
+          bytes: fileStat.size,
+          meta: await CodexTranscriptUtil.readSessionMeta(file)
+        });
+      }
+    }
+    return entries;
+  }
+  isInsideProject(cwd, projectDir) {
+    if (cwd === void 0) {
+      return false;
+    }
+    const path = relative5(projectDir, cwd);
+    return path === "" || !path.startsWith("..") && !path.startsWith(sep2) && !/^[A-Za-z]:/.test(path);
+  }
+  idFromFileName(file) {
+    return basename4(file, ROLLOUT_EXTENSION).slice(ROLLOUT_PREFIX.length);
+  }
+  async readRollout(context, file, isMainFile) {
+    await JsonlUtil.read(file, {
+      onRecord: (record, lineNumber) => {
+        this.handleRecord(context, record, lineNumber, isMainFile);
+      },
+      onBadLine: () => {
+        context.facts.unparsedLines++;
+      }
+    });
+  }
+  handleRecord(context, value, lineNumber, isMainFile) {
+    const record = GuardUtil.asRecord(value);
+    if (!record) {
+      return;
+    }
+    const occurredAt = GuardUtil.asString(record.timestamp);
+    const parsedAtMs = occurredAt === void 0 ? Number.NaN : Date.parse(occurredAt);
+    const line = {
+      payload: GuardUtil.asRecord(record.payload) ?? {},
+      thread: context.currentThread,
+      occurredAtMs: Number.isNaN(parsedAtMs) ? void 0 : parsedAtMs,
+      record,
+      lineNumber,
+      occurredAt
+    };
+    const lineType = GuardUtil.asString(record.type);
+    if (line.occurredAtMs !== void 0 && lineType !== void 0 && TIMED_LINE_TYPES2.has(lineType)) {
+      const eventsAtMs = context.threadIdToEventsAtMs.get(line.thread.id) ?? [];
+      eventsAtMs.push(line.occurredAtMs);
+      context.threadIdToEventsAtMs.set(line.thread.id, eventsAtMs);
+    }
+    if (GuardUtil.isKeyOf(this.lineTypeToHandler, lineType)) {
+      this.lineTypeToHandler[lineType](context, line, isMainFile);
+      return;
+    }
+    if (!IGNORED_LINE_TYPES2.has(lineType ?? "")) {
+      UnknownLineUtil.record(context.facts, record, lineType);
+    }
+  }
+  handlePayload(context, line, isMainFile, typeToHandler, ignoredTypes) {
+    const payloadType = GuardUtil.asString(line.payload.type);
+    if (payloadType !== void 0 && Object.hasOwn(typeToHandler, payloadType)) {
+      typeToHandler[payloadType]?.(context, line, isMainFile);
+      return;
+    }
+    if (!ignoredTypes.has(payloadType ?? "")) {
+      UnknownLineUtil.record(context.facts, line.payload, `${GuardUtil.asString(line.record.type) ?? ""}:${payloadType ?? "(no type)"}`);
+    }
+  }
+  evidenceFactory(context, line) {
+    return (text) => ({
+      sessionId: context.facts.sessionId,
+      file: context.currentFile,
+      line: line.lineNumber,
+      occurredAt: line.occurredAt,
+      thread: line.thread.agentType,
+      excerpt: text ? RedactUtil.excerpt(text) : void 0
+    });
+  }
+  handleSessionMeta(context, line, isMainFile) {
+    const facts = context.facts;
+    context.facts.agentVersion = GuardUtil.asString(line.payload.cli_version) ?? facts.agentVersion;
+    if (!isMainFile) {
+      return;
+    }
+    facts.projectDir ??= GuardUtil.asString(line.payload.cwd);
+    facts.gitBranch ??= GuardUtil.asString(GuardUtil.asRecord(line.payload.git)?.branch);
+  }
+  handleTurnContext(context, line) {
+    const model = GuardUtil.asString(line.payload.model);
+    if (model) {
+      context.threadIdToModel.set(line.thread.id, model);
+    }
+  }
+  handleCompaction(context, line) {
+    context.facts.compactions.push({
+      trigger: "auto",
+      thread: line.thread,
+      ref: this.evidenceFactory(context, line)(),
+      occurredAtMs: line.occurredAtMs
+    });
+  }
+  handleTaskComplete(context, line, isMainFile) {
+    const durationMs = GuardUtil.asNumber(line.payload.duration_ms);
+    if (isMainFile && durationMs !== void 0) {
+      context.facts.reported.turns.push({ durationMs, endedAtMs: line.occurredAtMs });
+    }
+  }
+  handleUserMessage(context, line, isMainFile) {
+    const text = GuardUtil.asString(line.payload.message);
+    if (text === void 0 || CodexTranscriptUtil.isInjectedContext(text)) {
+      return;
+    }
+    if (!context.threadIdToFirstPromptHash.has(line.thread.id)) {
+      context.threadIdToFirstPromptHash.set(line.thread.id, HashUtil.sha(text));
+    }
+    if (isMainFile) {
+      this.addPrompt(context, line, text, false);
+    }
+  }
+  addPrompt(context, line, text, isInterruption) {
+    context.openMessage = void 0;
+    context.facts.prompts.push({
+      text: RedactUtil.redact(text.slice(0, MAX_PROMPT_CHARS2)),
+      ref: this.evidenceFactory(context, line)(text),
+      sentAtMs: line.occurredAtMs,
+      isCorrection: !isInterruption && NormalizeUtil.isCorrection(text),
+      isInterruption
+    });
+  }
+  handleItemMessage(context, line) {
+    if (line.payload.role !== "assistant") {
+      return;
+    }
+    this.openMessageFor(context, line);
+  }
+  openMessageFor(context, line) {
+    if (context.openMessage) {
+      return context.openMessage;
+    }
+    const message = {
+      id: `${line.thread.id}:${line.lineNumber}`,
+      model: context.threadIdToModel.get(line.thread.id),
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      thread: line.thread,
+      sentAtMs: line.occurredAtMs,
+      ref: this.evidenceFactory(context, line)()
+    };
+    context.facts.messages.push(message);
+    context.openMessage = message;
+    return message;
+  }
+  handleTokenCount(context, line) {
+    const info = GuardUtil.asRecord(line.payload.info);
+    const total = GuardUtil.asNumber(GuardUtil.asRecord(info?.total_token_usage)?.total_tokens);
+    const last = GuardUtil.asRecord(info?.last_token_usage);
+    if (!last || total === void 0 || context.threadIdToLastTotalTokens.get(line.thread.id) === total) {
+      return;
+    }
+    context.threadIdToLastTotalTokens.set(line.thread.id, total);
+    const message = this.openMessageFor(context, line);
+    message.usage = this.usageOf(last);
+    context.openMessage = void 0;
+  }
+  usageOf(usage) {
+    const input = GuardUtil.asNumber(usage.input_tokens) ?? 0;
+    const cacheRead = GuardUtil.asNumber(usage.cached_input_tokens) ?? 0;
+    return {
+      input: Math.max(input - cacheRead, 0),
+      output: GuardUtil.asNumber(usage.output_tokens) ?? 0,
+      cacheRead,
+      cacheWrite: 0
+    };
+  }
+  describeTool(name, rawInput) {
+    const input = CodexTranscriptUtil.argumentsOf(rawInput);
+    const describer = Object.hasOwn(NAME_TO_DESCRIBER, name) ? NAME_TO_DESCRIBER[name] : void 0;
+    if (describer) {
+      return describer(input, GuardUtil.asString(rawInput));
+    }
+    const afterPrefix = name.slice(MCP_TOOL_PREFIX.length);
+    const mcpServer = name.startsWith(MCP_TOOL_PREFIX) ? afterPrefix.split(MCP_TOOL_SEPARATOR)[0] : void 0;
+    if (mcpServer) {
+      return { key: mcpServer, category: "mcp", summary: name };
+    }
+    return { key: name, category: "other", summary: name };
+  }
+  handleToolCall(context, line, rawInput) {
+    const callId = GuardUtil.asString(line.payload.call_id);
+    const name = GuardUtil.asString(line.payload.name);
+    if (callId === void 0 || name === void 0) {
+      return;
+    }
+    const message = this.openMessageFor(context, line);
+    const description = this.describeTool(name, rawInput);
+    const call = {
+      id: callId,
+      name: RedactUtil.excerpt(name, MAX_UNKNOWN_TYPE_CHARS3),
+      ...description,
+      key: RedactUtil.redact(description.key),
+      summary: RedactUtil.excerpt(description.summary),
+      thread: line.thread,
+      ref: this.evidenceFactory(context, line)(description.summary),
+      calledAtMs: line.occurredAtMs,
+      messageId: message.id
+    };
+    context.facts.tools.push(call);
+    context.callIdToPendingCall.set(callId, call);
+  }
+  handleWebSearch(context, line) {
+    const message = this.openMessageFor(context, line);
+    const query = GuardUtil.asString(GuardUtil.asRecord(line.payload.action)?.query) ?? "web_search";
+    const id = `web_search:${line.lineNumber}`;
+    context.facts.tools.push({
+      id,
+      name: "web_search",
+      key: "web_search",
+      category: "search",
+      summary: RedactUtil.excerpt(query),
+      thread: line.thread,
+      ref: this.evidenceFactory(context, line)(query),
+      calledAtMs: line.occurredAtMs,
+      messageId: message.id
+    });
+  }
+  handleCommandEnd(context, line) {
+    const callId = GuardUtil.asString(line.payload.call_id);
+    const call = callId === void 0 ? void 0 : context.callIdToPendingCall.get(callId);
+    if (!call || line.payload.status !== "declined") {
+      return;
+    }
+    call.result = {
+      isError: true,
+      kind: "user_rejected",
+      errorHead: "declined",
+      contentChars: 0,
+      ref: this.evidenceFactory(context, line)("declined"),
+      returnedAtMs: line.occurredAtMs
+    };
+  }
+  handleToolOutput(context, line) {
+    const callId = GuardUtil.asString(line.payload.call_id);
+    const call = callId === void 0 ? void 0 : context.callIdToPendingCall.get(callId);
+    if (!call || call.result) {
+      return;
+    }
+    const text = CodexTranscriptUtil.outputText(line.payload.output);
+    const exitCode = CodexTranscriptUtil.exitCodeOf(text);
+    const kind = exitCode !== void 0 && exitCode !== 0 || FAILED_SCRIPT_PATTERN.test(text) ? "error" : "ok";
+    const isError = RESULT_KIND_TO_IS_ERROR[kind];
+    call.result = {
+      isError,
+      kind,
+      errorHead: isError ? RedactUtil.excerpt(NormalizeUtil.errorKey(text)) : void 0,
+      contentChars: text.length,
+      ref: this.evidenceFactory(context, line)(isError ? text : void 0),
+      returnedAtMs: line.occurredAtMs
+    };
+  }
+};
+
+// src/Providers/Codex/Adapters/CodexProviderAdapter.ts
+var CodexProviderAdapter = class extends BaseProviderAdapter {
+  type = "codex";
+  displayName = "Codex";
+  paths() {
+    return { homeDir: CodexPathUtil.homeDir() };
+  }
+  async discoverTranscripts(options) {
+    return this.sessionService().discoverTranscripts(options);
+  }
+  async parseSession(transcript, options) {
+    return this.sessionService().parseSession(transcript, options);
+  }
+  async takeInventory(options) {
+    const userAgentsDir = CodexPathUtil.userAgentsDir(homedir5());
+    const userSkillsDir = join10(userAgentsDir, "skills");
+    const inventoryService = new CodexInventoryService(this.paths().homeDir, userSkillsDir);
+    return inventoryService.takeInventory(options);
+  }
+  retentionNote() {
+    return "Codex keeps session transcripts until they are deleted, so no retention window applies. harness-ledger never changes this setting.";
+  }
+  sessionService() {
+    return new CodexSessionService(this.paths().homeDir);
+  }
+};
+
+// src/Providers/Cursor/Services/CursorInventoryService.ts
+import { readdir as readdir6, readFile as readFile8 } from "node:fs/promises";
+import { basename as basename5, join as join11 } from "node:path";
+var RULE_EXTENSIONS = [".mdc", ".md"];
+var CursorInventoryService = class {
+  constructor(homeDir) {
+    this.homeDir = homeDir;
+  }
+  async takeInventory(options) {
+    const { projectDir } = options;
+    const agentsMd = PieceFileUtil.fromFile({
+      file: join11(projectDir, "AGENTS.md"),
+      kind: "instructions",
+      name: "AGENTS.md",
+      scope: "project",
+      projectDir
+    });
+    const pieces = await PieceFileUtil.settled([agentsMd]);
+    const scopeToFolder = {
+      project: join11(projectDir, ".cursor"),
+      user: this.homeDir
+    };
+    const scopes = options.isProjectOnly ? ["project"] : ["project", "user"];
+    for (const scope of scopes) {
+      const folder = scopeToFolder[scope];
+      pieces.push(
+        ...await this.folderPieces(join11(folder, "rules"), "instructions", scope, projectDir, RULE_EXTENSIONS),
+        ...await this.folderPieces(join11(folder, "commands"), "command", scope, projectDir, [".md"]),
+        ...await this.folderPieces(join11(folder, "agents"), "agent", scope, projectDir, [".md"]),
+        ...await this.skillPieces(join11(folder, "skills"), scope, projectDir),
+        ...await this.mcpPieces(join11(folder, "mcp.json"), scope, projectDir)
+      );
+    }
+    const uniquePieces = PieceFileUtil.withUniqueIds(pieces);
+    return {
+      projectDir,
+      fingerprint: PieceFileUtil.fingerprint(uniquePieces),
+      provider: "cursor",
+      takenAt: (/* @__PURE__ */ new Date()).toISOString(),
+      pieces: uniquePieces,
+      retention: { days: 0, source: "Cursor keeps transcripts until they are deleted" },
+      notes: []
+    };
+  }
+  async folderPieces(folder, kind, scope, projectDir, extensions) {
+    const allNames = await readdir6(folder).catch(() => []);
+    const names = allNames.filter((name) => extensions.some((extension) => name.endsWith(extension)));
+    return PieceFileUtil.settled(names.map(async (fileName) => {
+      const name = basename5(fileName).replace(/\.[^.]+$/, "");
+      return PieceFileUtil.fromFile({ file: join11(folder, fileName), kind, name, scope, projectDir });
+    }));
+  }
+  async skillPieces(skillsDir, scope, projectDir) {
+    const folders = await readdir6(skillsDir).catch(() => []);
+    return PieceFileUtil.settled(folders.map(async (name) => PieceFileUtil.fromFile({ file: join11(skillsDir, name, "SKILL.md"), kind: "skill", name, scope, projectDir })));
+  }
+  async mcpPieces(file, scope, projectDir) {
+    const text = await readFile8(file, "utf8").catch(() => void 0);
+    const config = GuardUtil.asRecord(text === void 0 ? void 0 : GuardUtil.parseJson(text));
+    const servers = GuardUtil.asRecord(config?.mcpServers) ?? {};
+    return Object.keys(servers).map((name) => PieceFileUtil.mcpPiece({ name, file, scope, projectDir }));
+  }
+};
+
+// src/Providers/Cursor/Services/CursorSessionService.ts
+import { readdir as readdir7, stat as stat7 } from "node:fs/promises";
+import { basename as basename6, dirname as dirname2, join as join13, sep as sep3 } from "node:path";
+
+// src/Providers/Cursor/Utils/CursorPathUtil.ts
+import { homedir as homedir6 } from "node:os";
+import { join as join12 } from "node:path";
+var CursorPathUtil = class {
+  static homeDir() {
+    return EnvUtil.read("HARNESS_LEDGER_CURSOR_HOME") ?? join12(homedir6(), ".cursor");
+  }
+  static projectsDir(homeDir) {
+    return join12(homeDir, "projects");
+  }
+  static encodeProjectDir(projectDir) {
+    return projectDir.split(/[^a-zA-Z0-9]/).filter((part) => part !== "").join("-");
+  }
+};
+
+// src/Providers/Cursor/Services/CursorSessionService.ts
+var TRANSCRIPTS_FOLDER = "agent-transcripts";
+var SUBAGENTS_FOLDER = "subagents";
+var TRANSCRIPT_EXTENSION2 = ".jsonl";
+var MAX_PROMPT_CHARS3 = 2e3;
+var UNKNOWN_SUBAGENT_TYPE5 = "subagent";
+var USER_QUERY_PATTERN = /<user_query>([\s\S]*?)<\/user_query>/;
+var PATCH_FILE_PATTERN2 = /^\*\*\* (?:Update|Add|Delete) File: (.+)$/m;
+var MAX_NAME_CHARS2 = 60;
+var TURN_ROW_TYPES = /* @__PURE__ */ new Set(["turn_ended"]);
+var pathOf = (input) => GuardUtil.firstString(input, ["path", "target_notebook", "file_path"]);
+var describeRead = (input) => ({ key: "Read", category: "read", summary: pathOf(input) ?? "Read", filePath: pathOf(input) });
+var describeEdit = (input) => ({ key: "Edit", category: "edit", summary: pathOf(input) ?? "Edit", filePath: pathOf(input) });
+var describePatch2 = (_input, rawInput) => ({
+  key: "Edit",
+  category: "edit",
+  summary: "ApplyPatch",
+  filePath: PATCH_FILE_PATTERN2.exec(GuardUtil.asString(rawInput) ?? "")?.[1]
+});
+var describeSearch = (input) => ({
+  key: "Search",
+  category: "search",
+  summary: GuardUtil.firstString(input, ["pattern", "glob_pattern", "query", "search_term", "url"]) ?? "Search"
+});
+var describeShell2 = (input) => {
+  const command = GuardUtil.asString(input.command) ?? "";
+  return { key: NormalizeUtil.commandKey(command), category: "shell", summary: command };
+};
+var describePlan2 = () => ({ key: "Plan", category: "plan", summary: "Plan" });
+var describeSubagent = (input) => {
+  const subagentType = GuardUtil.asString(input.subagent_type) ?? "generalPurpose";
+  const prompt = GuardUtil.asString(input.prompt);
+  return {
+    key: `Subagent:${subagentType}`,
+    category: "delegation",
+    summary: GuardUtil.asString(input.description) ?? subagentType,
+    subagentPromptHash: prompt === void 0 ? void 0 : HashUtil.sha(prompt),
+    subagentType
+  };
+};
+var describeMcp = (input) => {
+  const server = GuardUtil.asString(input.server) ?? "unknown";
+  return { key: server, category: "mcp", summary: `${server}:${GuardUtil.asString(input.toolName) ?? ""}` };
+};
+var TOOL_NAME_TO_DESCRIBER2 = /* @__PURE__ */ new Map([
+  ["Read", describeRead],
+  ["ReadFile", describeRead],
+  ["StrReplace", describeEdit],
+  ["Write", describeEdit],
+  ["Delete", describeEdit],
+  ["EditNotebook", describeEdit],
+  ["ApplyPatch", describePatch2],
+  ["Grep", describeSearch],
+  ["rg", describeSearch],
+  ["Glob", describeSearch],
+  ["SemanticSearch", describeSearch],
+  ["WebSearch", describeSearch],
+  ["WebFetch", describeSearch],
+  ["Shell", describeShell2],
+  ["TodoWrite", describePlan2],
+  ["CreatePlan", describePlan2],
+  ["SwitchMode", describePlan2],
+  ["Task", describeSubagent],
+  ["Subagent", describeSubagent],
+  ["CallMcpTool", describeMcp]
+]);
+var CursorSessionService = class {
+  constructor(homeDir) {
+    this.homeDir = homeDir;
+  }
+  roleToHandler = {
+    user: (context, message, lineNumber) => {
+      this.handleUser(context, message, lineNumber);
+    },
+    assistant: (context, message, lineNumber) => {
+      this.handleAssistant(context, message, lineNumber);
+    }
+  };
+  async discoverTranscripts(options) {
+    const projectsDir = CursorPathUtil.projectsDir(this.homeDir);
+    const folders = await readdir7(projectsDir).catch(() => []);
+    const encodedProject = CursorPathUtil.encodeProjectDir(options.projectDir);
+    const isCandidate = (folder) => folder === encodedProject || folder.startsWith(`${encodedProject}-`);
+    const entries = [];
+    for (const folder of options.shouldReadAllProjects ? folders : folders.filter(isCandidate)) {
+      entries.push(...await this.listTranscripts(projectsDir, folder));
+    }
+    const subagentsOf = (id) => entries.filter((entry) => entry.isSubagent && entry.parentId === id);
+    const statOf = (entry) => ({
+      file: entry.file,
+      modifiedAtMs: entry.modifiedAtMs,
+      bytes: entry.bytes
+    });
+    return entries.filter((entry) => !entry.isSubagent).map((entry) => ({
+      file: entry.file,
+      modifiedAtMs: entry.modifiedAtMs,
+      bytes: entry.bytes,
+      sessionId: entry.sessionId,
+      subagentFiles: subagentsOf(entry.sessionId).map((subagent) => statOf(subagent)),
+      isExactProject: entry.projectFolder === encodedProject
+    })).sort((left, right) => left.modifiedAtMs - right.modifiedAtMs);
+  }
+  async parseSession(transcript) {
+    const facts = {
+      provider: "cursor",
+      sessionId: transcript.sessionId,
+      file: transcript.file,
+      // Why: Cursor transcripts record no time, so the file's last write stands in for when the session happened.
+      startedAtMs: transcript.modifiedAtMs,
+      endedAtMs: transcript.modifiedAtMs,
+      activeMs: 0,
+      threads: [{ thread: SessionUtil.mainThread(), activeMs: 0 }],
+      prompts: [],
+      tools: [],
+      messages: [],
+      apiErrors: [],
+      compactions: [],
+      environment: {},
+      reported: { isCostPartial: true, turns: [] },
+      files: [transcript.file, ...transcript.subagentFiles.map((subagentFile) => subagentFile.file)],
+      unparsedLines: 0
+    };
+    const context = {
+      facts,
+      currentFile: transcript.file,
+      currentThread: SessionUtil.mainThread()
+    };
+    await this.readTranscript(context);
+    for (const subagentFile of transcript.subagentFiles) {
+      context.currentFile = subagentFile.file;
+      context.currentThread = {
+        id: basename6(subagentFile.file, TRANSCRIPT_EXTENSION2),
+        agentType: UNKNOWN_SUBAGENT_TYPE5
+      };
+      await this.readTranscript(context);
+    }
+    return facts;
+  }
+  async listTranscripts(projectsDir, folder) {
+    const root = join13(projectsDir, folder, TRANSCRIPTS_FOLDER);
+    const names = await readdir7(root, { recursive: true }).catch(() => []);
+    const entries = [];
+    for (const name of names.filter((candidate) => candidate.endsWith(TRANSCRIPT_EXTENSION2))) {
+      const transcriptFile = join13(root, name);
+      const fileStat = await stat7(transcriptFile).catch(() => void 0);
+      if (!fileStat?.isFile()) {
+        continue;
+      }
+      const parts = name.split(sep3);
+      const isSubagent = parts.includes(SUBAGENTS_FOLDER);
+      const parentFolder = dirname2(dirname2(name));
+      entries.push({
+        file: transcriptFile,
+        modifiedAtMs: fileStat.mtimeMs,
+        bytes: fileStat.size,
+        sessionId: basename6(name, TRANSCRIPT_EXTENSION2),
+        projectFolder: folder,
+        parentId: isSubagent ? basename6(parentFolder) : "",
+        isSubagent
+      });
+    }
+    return entries;
+  }
+  async readTranscript(context) {
+    await JsonlUtil.read(context.currentFile, {
+      onRecord: (record, lineNumber) => {
+        this.handleRecord(context, record, lineNumber);
+      },
+      onBadLine: () => {
+        context.facts.unparsedLines++;
+      }
+    });
+  }
+  handleRecord(context, value, lineNumber) {
+    const record = GuardUtil.asRecord(value);
+    if (!record) {
+      return;
+    }
+    const role = GuardUtil.asString(record.role);
+    const message = GuardUtil.asRecord(record.message);
+    if (GuardUtil.isKeyOf(this.roleToHandler, role) && message) {
+      this.roleToHandler[role](context, message, lineNumber);
+      return;
+    }
+    if (typeof record.error === "string") {
+      this.handleError(context, record, lineNumber);
+      return;
+    }
+    if (!TURN_ROW_TYPES.has(GuardUtil.asString(record.type) ?? "")) {
+      UnknownLineUtil.record(context.facts, record, GuardUtil.asString(record.type));
+    }
+  }
+  evidence(context, lineNumber, text) {
+    return {
+      sessionId: context.facts.sessionId,
+      file: context.currentFile,
+      line: lineNumber,
+      thread: context.currentThread.agentType,
+      excerpt: text ? RedactUtil.excerpt(text) : void 0
+    };
+  }
+  blocksOf(message) {
+    const content = message.content;
+    const blocks = typeof content === "string" ? [{ type: "text", text: content }] : GuardUtil.asArray(content);
+    const records = blocks.map((block) => GuardUtil.asRecord(block));
+    return records.filter((block) => block !== void 0);
+  }
+  handleUser(context, message, lineNumber) {
+    const text = this.blocksOf(message).map((block) => GuardUtil.asString(block.text) ?? "").join("\n");
+    const query = USER_QUERY_PATTERN.exec(text)?.[1]?.trim();
+    if (!query || !SessionUtil.isMainThread(context.currentThread)) {
+      return;
+    }
+    context.facts.prompts.push({
+      text: RedactUtil.redact(query.slice(0, MAX_PROMPT_CHARS3)),
+      ref: this.evidence(context, lineNumber, query),
+      isCorrection: NormalizeUtil.isCorrection(query),
+      isInterruption: false
+    });
+  }
+  handleAssistant(context, content, lineNumber) {
+    const thread = context.currentThread;
+    const message = {
+      id: `${thread.id}:${lineNumber}`,
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      ref: this.evidence(context, lineNumber),
+      thread
+    };
+    context.facts.messages.push(message);
+    const toolBlocks = this.blocksOf(content).filter((block) => this.isToolUse(block));
+    for (const [index, block] of toolBlocks.entries()) {
+      const name = GuardUtil.asString(block.name) ?? "unknown";
+      const id = `${lineNumber}:${index}`;
+      const call = this.toolCall(context, { id, message, name, block, lineNumber });
+      context.facts.tools.push(call);
+    }
+  }
+  isToolUse(block) {
+    return block.type === "tool_use" && typeof block.name === "string";
+  }
+  toolCall(context, source) {
+    const { message, name, block, id, lineNumber } = source;
+    const input = GuardUtil.asRecord(block.input) ?? {};
+    const describer = TOOL_NAME_TO_DESCRIBER2.get(name);
+    const description = describer?.(input, block.input) ?? { key: name, category: "other", summary: name };
+    const summary = RedactUtil.excerpt(description.summary);
+    return {
+      ...description,
+      id,
+      name: RedactUtil.excerpt(name, MAX_NAME_CHARS2),
+      key: RedactUtil.redact(description.key),
+      summary,
+      thread: context.currentThread,
+      ref: this.evidence(context, lineNumber, description.summary),
+      messageId: message.id
+    };
+  }
+  handleError(context, record, lineNumber) {
+    context.facts.apiErrors.push({
+      code: RedactUtil.excerpt(GuardUtil.asString(record.error) ?? "unknown", MAX_NAME_CHARS2),
+      thread: context.currentThread,
+      ref: this.evidence(context, lineNumber, GuardUtil.asString(record.status))
+    });
+  }
+};
+
+// src/Providers/Cursor/Adapters/CursorProviderAdapter.ts
+var CursorProviderAdapter = class extends BaseProviderAdapter {
+  type = "cursor";
+  displayName = "Cursor";
+  paths() {
+    return { homeDir: CursorPathUtil.homeDir() };
+  }
+  async discoverTranscripts(options) {
+    return this.sessionService().discoverTranscripts(options);
+  }
+  async parseSession(transcript) {
+    return this.sessionService().parseSession(transcript);
+  }
+  async takeInventory(options) {
+    return new CursorInventoryService(this.paths().homeDir).takeInventory(options);
+  }
+  retentionNote() {
+    return "Cursor keeps session transcripts until they are deleted, so no retention window applies. harness-ledger never changes this setting.";
+  }
+  sessionService() {
+    return new CursorSessionService(this.paths().homeDir);
+  }
+};
+
 // src/Shared/Modules/ProviderModule.ts
 var ProviderModule = class _ProviderModule {
   static DEFAULT_PROVIDER = "claude-code";
   static TYPE_TO_FACTORY = {
-    "claude-code": () => new ClaudeCodeProviderAdapter()
+    "claude-code": () => new ClaudeCodeProviderAdapter(),
+    "codex": () => new CodexProviderAdapter(),
+    "cursor": () => new CursorProviderAdapter()
   };
   static create(type = _ProviderModule.DEFAULT_PROVIDER) {
     return _ProviderModule.TYPE_TO_FACTORY[type]();
@@ -5055,8 +6245,8 @@ var ConfigService = class _ConfigService {
 import { cpus } from "node:os";
 
 // src/Shared/Services/StoreService.ts
-import { mkdir, readFile as readFile6, rename, writeFile } from "node:fs/promises";
-import { dirname as dirname2, join as join7 } from "node:path";
+import { mkdir, readFile as readFile9, rename, writeFile } from "node:fs/promises";
+import { dirname as dirname3, join as join14 } from "node:path";
 var DATA_DIR_NAME = ".harness-ledger";
 var JSON_INDENT = 2;
 var FACTS_CACHE_FILE = "cache/facts.json";
@@ -5069,15 +6259,15 @@ var StoreService = class _StoreService {
   // Why: bump when the parser's output shape changes, so cached facts are re-parsed.
   static FACTS_VERSION = 5;
   static forProject(projectDir, dataDir) {
-    return new _StoreService(dataDir ?? join7(projectDir, DATA_DIR_NAME));
+    return new _StoreService(dataDir ?? join14(projectDir, DATA_DIR_NAME));
   }
   async readJson(relativePath) {
-    const text = await readFile6(join7(this.root, relativePath), "utf8").catch(() => void 0);
+    const text = await readFile9(join14(this.root, relativePath), "utf8").catch(() => void 0);
     return text === void 0 ? void 0 : GuardUtil.parseJson(text);
   }
   async writeJson(relativePath, value, shouldIndent = true) {
-    const file = join7(this.root, relativePath);
-    await mkdir(dirname2(file), { recursive: true });
+    const file = join14(this.root, relativePath);
+    await mkdir(dirname3(file), { recursive: true });
     const temporaryFile = `${file}.${process.pid}.tmp`;
     const serialized = JSON.stringify(value, null, shouldIndent ? JSON_INDENT : 0);
     await writeFile(temporaryFile, serialized);
@@ -5903,7 +7093,7 @@ Output is JSON on stdout. Nothing leaves your machine.`;
     });
   }
   async addSuggestions({ values, common }) {
-    const rawJson = values.file ? await readFile7(values.file, "utf8") : await this.readStdin();
+    const rawJson = values.file ? await readFile10(values.file, "utf8") : await this.readStdin();
     const items = GuardUtil.parseJson(rawJson);
     if (items === void 0) {
       throw new Error("Suggestions must be valid JSON.");
