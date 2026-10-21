@@ -66,7 +66,7 @@ const MAX_PARAMS = 5;
 const BOOLEAN_PREFIXES = ["is", "has", "should", "can", "must", "was", "did"];
 
 export default tseslint.config(
-  { ignores: ["dist/", "node_modules/", "coverage/"] },
+  { ignores: ["dist/", "skills/audit-harness/scripts/", "node_modules/", "coverage/"] },
   js.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,
