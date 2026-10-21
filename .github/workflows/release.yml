@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,7 +31,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Bump the version in package.json and plugin.json
+      - name: Bump the version in package.json, plugin.json and the landing page
         env:
           BUMP: ${{ inputs.bump }}
         run: |
@@ -46,6 +47,17 @@ jobs:
             const marketplacePath = ".claude-plugin/marketplace.json";
             const marketplace = fs.readFileSync(marketplacePath, "utf8");
             fs.writeFileSync(marketplacePath, marketplace.replace(/"ref": "[^"]*"/, `"ref": "v${version}"`));
+            const sitePath = "site/index.html";
+            const site = fs.readFileSync(sitePath, "utf8");
+            const footerPattern = /Version [^,<]*, page updated <time datetime="[^"]*">[^<]*<\/time>/;
+            if (!footerPattern.test(site)) throw new Error("site/index.html has no version footer to update");
+            const now = new Date();
+            const isoDate = now.toISOString().slice(0, 10);
+            const longDate = now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
+            fs.writeFileSync(sitePath, site.replace(footerPattern, `Version ${version}, page updated <time datetime="${isoDate}">${longDate}</time>`));
+            const sitemapPath = "site/sitemap.xml";
+            const sitemap = fs.readFileSync(sitemapPath, "utf8");
+            fs.writeFileSync(sitemapPath, sitemap.replace(/<lastmod>[^<]*<\/lastmod>/, `<lastmod>${isoDate}</lastmod>`));
           '
           VERSION=$(node -p 'require("./package.json").version')
           if git rev-parse -q --verify "refs/tags/v$VERSION" > /dev/null; then
@@ -61,7 +73,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json dist/
+          git add package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json site/ dist/
           if ! git diff --cached --quiet; then
             git commit -m "release: v$VERSION [skip ci]"
           fi
@@ -71,3 +83,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "v$VERSION" --title "v$VERSION" --generate-notes --verify-tag
+      # Why: a push made with GITHUB_TOKEN doesn't start other workflows, so the release has to start Pages itself.
+      - name: Publish the landing page with the new version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --ref master

@@ -79,7 +79,7 @@ Reviews look at behavior first, then at the rules lint can't check: whether a co
 
 ## Releases
 
-Maintainers cut releases with the `Release` workflow (Actions → Release → patch, minor or major). It bumps the version, rebuilds `dist/`, tags `vX.Y.Z` and publishes notes from the merged pull requests. A merge reaches users only through a release.
+Maintainers cut releases with the `Release` workflow (Actions → Release → patch, minor or major). It bumps the version (also in the landing page footer), rebuilds `dist/`, tags `vX.Y.Z`, publishes notes from the merged pull requests and republishes the landing page. A merge reaches users only through a release, except changes to `site/`, which go live on merge.
 
 ## Code of conduct
 
