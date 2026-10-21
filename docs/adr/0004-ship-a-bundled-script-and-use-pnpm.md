@@ -1,18 +1,13 @@
-# Ship a bundled script in dist/, with pnpm as the package manager
+# Ship a bundled script, with pnpm as the package manager
 
-_The plugin-specific parts (marketplace `ref`, `plugin.json`, `/plugin install`) were replaced by ADR 0011; the bundled script and pnpm stand._
+The skill runs `harness-ledger.mjs`, a single file built by esbuild from `src/` with no runtime dependencies. It is committed (in `dist/`, and copied into `skills/audit-harness/scripts/` because the `skills` CLI copies only the skill's folder), so the skill works right after `npx skills add` with nothing else to install (ADR 0011).
 
-The plugin runs `dist/harness-ledger.mjs`, a single file built by esbuild from `src/` with no runtime dependencies, and it is committed, so the plugin works right after `/plugin install` with nothing to install.
-
-Claude Code runs `npm ci` for plugins that ship `package-lock.json`, which would install our dev dependencies on every user's machine and can time out. It skips the install for plugins that ship a pnpm lockfile. We use pnpm and commit `pnpm-lock.yaml`: contributors get reproducible installs, users get no install step.
+We use pnpm and commit `pnpm-lock.yaml`: contributors get reproducible installs, and users never install dependencies, since the script has none.
 
 ## Consequences
 
-- The marketplace entry serves the plugin from a tag (`"ref": "vX.Y.Z"` in `.claude-plugin/marketplace.json`), not from `master`. A fresh install and an update both get a released commit, where `skills/` and `dist/` come from the same source.
-- Contributors never commit `dist/`, `version` or the marketplace `ref`. Pull requests carry only source, and `pnpm check` builds to a scratch file to prove the bundle builds. Between releases, `dist/` on `master` lags behind `src/`; nobody installs from there.
+- Contributors never commit `dist/`, `skills/audit-harness/scripts/` or `version`. Pull requests carry only source, and `pnpm check` builds to a scratch file to prove the bundle builds. Between releases, both bundles on `master` lag behind `src/`.
 - Runtime code may only use Node built-ins. Dev dependencies (TypeScript, esbuild, ESLint, Vitest) are fine.
-- Never commit `package-lock.json` (it is gitignored): it would make Claude Code run `npm ci` on install.
+- Never commit `package-lock.json` (it is gitignored).
 - `pnpm-lock.yaml` only changes together with `package.json`.
-- `version` in `.claude-plugin/plugin.json` decides when installed copies update: with the string unchanged, they stay cached. The `Release` workflow (`release.yml`, run by hand) bumps it with `package.json`, points the marketplace `ref` at the new tag and rebuilds `dist/` in one commit, then tags it `vX.Y.Z` and publishes a GitHub Release. A merge reaches no one until then.
-- The skill is also installable on its own with `npx skills add guilhermebkel/harness-ledger`, which is the default install for every provider. The Claude Code plugin stays as an alternative: it installs from the tag, where `npx skills add` takes the default branch. That path copies only `skills/audit-harness/`, so the `Release` workflow also writes the bundle to `skills/audit-harness/scripts/harness-ledger.mjs` in the same commit, and `SKILL.md` runs the script from there. Contributors never commit that file either; between releases it is missing on `master`, like `dist/`. The `skill-install` job in `ci.yml` installs the skill into a temporary folder and runs the installed script.
-
+- The `Release` workflow (`release.yml`, run by hand) bumps `version` in `package.json`, rebuilds `dist/` and the skill's script in one commit, then tags it `vX.Y.Z` and publishes a GitHub Release. The `skill-install` job in `ci.yml` installs the skill into a temporary folder and runs the installed script.
