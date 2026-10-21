@@ -199,9 +199,9 @@ To see what a run of the skill cost you, look at its own row the next time you a
 
 | Agent | Status |
 | --- | --- |
-| Claude Code | ✅ Supported, as a skill |
-| Codex | ✅ Supported, as a skill. Cost is partial: some token counts are not recorded |
-| Cursor | ✅ Supported, as a skill. Cost is partial: transcripts record no tokens, tool results, model or times, so failure signals that need a result don't appear |
+| Claude Code | ✅ Supported |
+| Codex | ✅ Supported. Cost is partial: some token counts are not recorded |
+| Cursor | ✅ Supported. Cost is partial: transcripts record no tokens, tool results, model or times, so failure signals that need a result don't appear |
 
 Point the script at another agent with `--provider codex` or `--provider cursor`. `HARNESS_LEDGER_CODEX_HOME` and `HARNESS_LEDGER_CURSOR_HOME` relocate their folders (`~/.codex`, `~/.cursor`) when yours live elsewhere.
 
