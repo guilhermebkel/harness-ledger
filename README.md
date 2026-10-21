@@ -72,27 +72,32 @@ Accept a suggestion and later runs compare the piece before and after the change
 
 ### 1. Install
 
-**Claude Code**, as a plugin:
+```bash
+npx skills add guilhermebkel/harness-ledger -g
+```
+
+The [`skills`](https://github.com/vercel-labs/skills) CLI asks which of your agents (Claude Code, Codex, Cursor) should get the skill. Name them to skip the question (`-a claude-code -a codex -a cursor`), or drop `-g` to install only in the current project. The skill carries its own script, so there is nothing else to install. Running the script needs Node.js 20+; the `skills` CLI itself asks for 22.20+. Update later with `npx skills update`.
+
+<details>
+<summary><b>Claude Code plugin</b></summary>
+
+The Claude Code plugin installs from the release tag and updates through `/plugin`:
 
 ```text
 /plugin marketplace add guilhermebkel/harness-ledger
 /plugin install harness-ledger@guilhermebkel
 ```
 
-**Codex and Cursor**, as a skill (any agent the [`skills`](https://github.com/vercel-labs/skills) CLI supports works the same way):
+Its command is `/harness-ledger:audit-harness`; with the skill installed by `npx`, it is `/audit-harness`.
 
-```bash
-npx skills add guilhermebkel/harness-ledger -a codex -a cursor
-```
-
-Add `-g` to install for every project. The skill carries its own script, so there is nothing else to install. Requires Node.js 20+ to run it (the `skills` CLI itself asks for Node.js 22.20+).
+</details>
 
 ### 2. Analyze your sessions
 
 Open your agent in the project, pick its strongest reasoning model, and run the skill. In Claude Code:
 
 ```text
-/harness-ledger:audit-harness
+/audit-harness
 ```
 
 In Codex and Cursor, ask the agent to run the `audit-harness` skill (for example, "use audit-harness to audit my harness").
@@ -103,13 +108,13 @@ It works on the sessions you already have, from the first run. No extra logging,
 
 ```text
 # Focus on one piece or period
-/harness-ledger:audit-harness only the code-reviewer subagent, last 2 weeks
+/audit-harness only the code-reviewer subagent, last 2 weeks
 
 # Check whether a change helped
-/harness-ledger:audit-harness did my change to code-reviewer help?
+/audit-harness did my change to code-reviewer help?
 
 # Review what was suggested before
-/harness-ledger:audit-harness show pending suggestions
+/audit-harness show pending suggestions
 ```
 
 Suggestions are never applied on their own. Applying one always asks first and only touches harness files.
@@ -199,7 +204,7 @@ node dist/harness-ledger.mjs --help
 
 Everything it prints is JSON. It writes only to `.harness-ledger/` in your project.
 
-To see what a run of the skill cost you, look at its own row the next time you analyze: `node dist/harness-ledger.mjs analyze --piece skill:harness-ledger:audit-harness`.
+To see what a run of the skill cost you, look at its own row the next time you analyze: `node dist/harness-ledger.mjs analyze --piece skill:audit-harness`.
 
 </details>
 
@@ -207,7 +212,7 @@ To see what a run of the skill cost you, look at its own row the next time you a
 
 | Agent | Status |
 | --- | --- |
-| Claude Code | ✅ Supported, as a plugin |
+| Claude Code | ✅ Supported, as a skill (or as a plugin) |
 | Codex | ✅ Supported, as a skill. Cost is partial: some token counts are not recorded |
 | Cursor | ✅ Supported, as a skill. Cost is partial: transcripts record no tokens, tool results, model or times, so failure signals that need a result don't appear |
 

@@ -107,7 +107,7 @@ Code is not the whole change. These files repeat what the code decides, so a pro
 | `CLAUDE.md` | The provider list in the Layout section |
 | `README.md` | Supported-agents table, tagline, retention note (does the provider delete old transcripts?), `--provider` usage with the provider's home variables, roadmap |
 | `site/index.html` and `site/llms.txt` | Agent cards, retention text, title, description, Open Graph, JSON-LD `softwareRequirements`. Merging to `master` publishes `site/` at once, so land it with the release |
-| Skill install path | The agent's skill folders in the install commands (README and site) and the `skills add` check in `ci.yml` |
+| Skill install path | The agent's skill folders for `npx skills add` (the default install for every provider) in the README and site, and the `skill-install` check in `ci.yml` |
 | `skills/audit-harness/` | `SKILL.md` and `references/findings.md`: suggestions use the provider's own vocabulary and file names |
 | `GLOSSARY.md` | Terms the provider introduces |
 | `CONTRIBUTING.md`, this guide | Provider list, examples |
