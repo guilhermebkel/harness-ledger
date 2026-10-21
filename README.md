@@ -75,7 +75,7 @@ Accept a suggestion and later runs compare the piece before and after the change
 npx skills add guilhermebkel/harness-ledger -g
 ```
 
-The [`skills`](https://github.com/vercel-labs/skills) CLI asks which of your agents (Claude Code, Codex, Cursor) should get the skill. Name them to skip the question (`-a claude-code -a codex -a cursor`), or drop `-g` to install only in the current project. The skill carries its own script, so there is nothing else to install. Running the script needs Node.js 20+; the `skills` CLI itself asks for 22.20+. Update later with `npx skills update`.
+The [`skills`](https://github.com/vercel-labs/skills) CLI asks which of your agents (Claude Code, Codex, Cursor) should get the skill. Name them to skip the question (`-a claude-code -a codex -a cursor`), or drop `-g` to install only in the current project. The skill carries its own script, so there is nothing else to install. Running the script needs Node.js 20+. Update later with `npx skills update`.
 
 ### 2. Analyze your sessions
 
