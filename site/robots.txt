@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://guilhermebkel.github.io/harness-ledger/sitemap.xml
+Sitemap: https://harnessledger.guilherr.me/sitemap.xml
