@@ -71,6 +71,7 @@ const TOOL_NAME_TO_DESCRIBER = new Map<string, ToolDescriber>([
   ["ReadFile", describeRead],
   ["StrReplace", describeEdit],
   ["Write", describeEdit],
+  ["Delete", describeEdit],
   ["EditNotebook", describeEdit],
   ["ApplyPatch", describePatch],
   ["Grep", describeSearch],

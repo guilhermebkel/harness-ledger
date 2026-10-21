@@ -73,6 +73,7 @@ describe("CursorProviderAdapter.parseSession()", () => {
     expect(toolByName("Grep")).toMatchObject({ category: "search", summary: "login" });
     expect(toolByName("StrReplace")).toMatchObject({ key: "Edit", category: "edit", filePath: LOGIN_FILE });
     expect(toolByName("ApplyPatch")).toMatchObject({ key: "Edit", category: "edit", filePath: LOGIN_FILE });
+    expect(toolByName("Delete")).toMatchObject({ key: "Edit", category: "edit", filePath: "/work/my-app/src/old.ts" });
     expect(toolByName("Subagent")).toMatchObject({ category: "delegation", subagentType: "explorer" });
     expect(toolByName("CallMcpTool")).toMatchObject({ key: "github", category: "mcp" });
     expect(toolByName("Brand_New_Tool")).toMatchObject({ key: "Brand_New_Tool", category: "other" });
@@ -80,7 +81,7 @@ describe("CursorProviderAdapter.parseSession()", () => {
   });
 
   it("reports no result, since Cursor transcripts record none", () => {
-    expect(facts.tools).toHaveLength(10);
+    expect(facts.tools).toHaveLength(11);
     expect(facts.tools.every((call) => call.result === undefined)).toBe(true);
     expect(facts.reported.isCostPartial).toBe(true);
   });

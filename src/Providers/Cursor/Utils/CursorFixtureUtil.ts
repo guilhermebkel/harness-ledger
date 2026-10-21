@@ -68,6 +68,7 @@ export class CursorFixtureUtil {
       .tool("Subagent", { subagent_type: "explorer", prompt: "Find the session code", description: "Explore" })
       .tool("CallMcpTool", { server: "github", toolName: "create_issue", arguments: {} })
       .tool("Shell", { command: secretCommand, working_directory: WORK_DIR })
+      .tool("Delete", { path: "/work/my-app/src/old.ts" })
       .tool("Brand_New_Tool", { value: 1 })
       .turnEnded()
       .user("No, keep the tests untouched")
