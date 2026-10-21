@@ -20,7 +20,7 @@
 
 ---
 
-**You added a skill because it seemed useful. You gave a subagent a stronger model "just in case". Your CLAUDE.md grows every time something goes wrong. Which of those changes actually helped?**
+**You added a skill because it seemed useful. You gave a subagent a stronger model "just in case". Your AGENTS.md grows every time something goes wrong. Which of those changes actually helped?**
 
 Your harness is everything around your coding agent: the instructions file, skills, subagents, commands, hooks, MCP servers and plugins. It decides how well the agent works, yet it is usually tuned by gut feeling.
 
@@ -113,7 +113,7 @@ Claude Code itself reports $16.20 for these sessions; the script estimates ~$14.
 
 #1  Enforce a rule that already exists                    subagent: test-runner
     Ran `npm test` 11 times in 6 of 41 sessions; the repo uses `pnpm test`,
-    and CLAUDE.md line 3 already says so.
+    and AGENTS.md line 3 already says so.
     Cost:  at least 38 min · 210k tokens · $1.90
            from each failed `npm test` until `pnpm test` ran, reasoning included
     Proof: session 3f2a… line 14 · session 91bc… line 7 · +4 more
