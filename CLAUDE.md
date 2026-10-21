@@ -14,7 +14,7 @@ ADR 0008 has the reasons; `docs/code-standards.md` ("Architecture") has the rule
   - `Commands/`: one class per CLI command.
   - `Services/`: business rules (signals, attribution, usage, before/after, mentions, store, config, suggestions).
   - `Protocols/`: types only. `Utils/`: static helper classes (guards, env, time, redaction, JSONL, git).
-- `src/Providers/<Provider>/`: one agentic coding tool (Claude Code today), with the same folders as Shared. `Adapters/<Provider>ProviderAdapter.ts` extends `BaseProviderAdapter`; `Utils/<Provider>FixtureUtil.ts` builds a fake home and project in the tool's real format, for tests.
+- `src/Providers/<Provider>/`: one agentic coding tool (`ClaudeCode`, `Codex`, `Cursor`), with the same folders as Shared. `Adapters/<Provider>ProviderAdapter.ts` extends `BaseProviderAdapter`; `Utils/<Provider>FixtureUtil.ts` builds a fake home and project in the tool's real format, for tests.
 - Tests sit next to the file they test (`*.test.ts`). There is no `test/` folder.
 - `dist/harness-ledger.mjs`: the bundled script the skill runs. Generated; only the `Release` workflow commits it (ADR 0004).
 - `site/`: the landing page, static files with no build step. The `Pages` workflow publishes it to GitHub Pages on every merge to `master` that touches `site/`, so it is the one thing that reaches users without a release. The `Release` workflow rewrites the version and date in its footer and the sitemap `lastmod`, then starts `Pages`; the rest is edited by hand.

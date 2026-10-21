@@ -16,4 +16,17 @@ export class SessionUtil {
   static isMainThread(thread: ThreadRef): boolean {
     return thread.id === SessionUtil.MAIN_THREAD_ID;
   }
+
+  static platformFromPath(projectDir: string | undefined): string | undefined {
+    if (projectDir === undefined) {
+      return undefined;
+    }
+    if (/^[A-Za-z]:[\\/]/.test(projectDir)) {
+      return "win32";
+    }
+    if (projectDir.startsWith("/Users/")) {
+      return "darwin";
+    }
+    return projectDir.startsWith("/home/") ? "linux" : undefined;
+  }
 }
