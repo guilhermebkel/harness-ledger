@@ -83,7 +83,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "v$VERSION" --title "v$VERSION" --generate-notes --verify-tag
-      # Why: a push made with GITHUB_TOKEN doesn't start other workflows, so the release has to start Pages itself.
       - name: Publish the landing page with the new version
         env:
           GH_TOKEN: ${{ github.token }}
