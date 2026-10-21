@@ -17,7 +17,8 @@ ADR 0008 has the reasons; `docs/code-standards.md` ("Architecture") has the rule
 - `src/Providers/<Provider>/`: one agentic coding tool (Claude Code today), with the same folders as Shared. `Adapters/<Provider>ProviderAdapter.ts` extends `BaseProviderAdapter`; `Utils/<Provider>FixtureUtil.ts` builds a fake home and project in the tool's real format, for tests.
 - Tests sit next to the file they test (`*.test.ts`). There is no `test/` folder.
 - `dist/harness-ledger.mjs`: the bundled script the skill runs. Generated; only the `Release` workflow commits it (ADR 0004).
-- `.github/workflows/`: `ci.yml` (shared checks), `release.yml` (cuts a version, by hand) and one workflow per provider (`claude-code.yml` validates the plugin and skill).
+- `site/`: the landing page, static files with no build step. The `Pages` workflow publishes it to GitHub Pages on every merge to `master` that touches `site/`, so it is the one thing that reaches users without a release. Keep its version and numbers in line with the README.
+- `.github/workflows/`: `ci.yml` (shared checks), `release.yml` (cuts a version, by hand), `pages.yml` (publishes `site/`) and one workflow per provider (`claude-code.yml` validates the plugin and skill).
 - `scripts/`: `build.mjs` (bundle), `survey-transcripts.mjs` (the shape of a folder of transcripts, without their content) and `eslint-local-rules.mjs` (this repo's own lint rules, tested next to it).
 - `README.md` (for users), `CONTRIBUTING.md` (for contributors), `SECURITY.md` (what counts as a vulnerability: anything that leaks session data) and `CODE_OF_CONDUCT.md`. `.github/ISSUE_TEMPLATE/` has the bug, feature, mapping-gap and rule-question forms; `docs/assets/` holds the README banner.
 - Adding a provider (Codex, Cursor, ...): follow `docs/adding-a-provider.md`. It covers finding the sessions, exporting a sample of the last 7 days, learning the format, mapping it to the shared model and checking it on real sessions.
