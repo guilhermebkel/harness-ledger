@@ -67,13 +67,17 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
       - name: Rebuild dist/ from scratch, so a renamed bundle leaves no old file behind
         run: rm -rf dist && pnpm build
+      - name: Ship the bundle inside the skill, for agents that install only the skill
+        run: |
+          mkdir -p skills/audit-harness/scripts
+          cp dist/harness-ledger.mjs skills/audit-harness/scripts/harness-ledger.mjs
       - name: Check the package against the bundle it ships
         run: pnpm release:check
       - name: Commit, tag and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json site/ dist/
+          git add package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json site/ dist/ skills/audit-harness/scripts/
           if ! git diff --cached --quiet; then
             git commit -m "release: v$VERSION [skip ci]"
           fi

@@ -7,7 +7,7 @@ Analyzes the setup around a coding agent, using the sessions the agent already s
 ### The harness
 
 **Provider**:
-The agentic coding tool whose sessions and harness are read, such as Claude Code (later Codex or Cursor). Each provider has its own adapter in `src/Providers/`.
+The agentic coding tool whose sessions and harness are read, such as Claude Code, Codex or Cursor. Each provider has its own adapter in `src/Providers/`.
 _Avoid_: agent (the model doing the work), IDE, client
 
 **Harness**:
