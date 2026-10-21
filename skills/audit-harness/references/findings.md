@@ -96,9 +96,9 @@ History: <transcriptsAvailable> transcripts since <oldestAt>; retention <retenti
 
 ## Suggestions
 
-| # | What to do | Where to change | Problem | Sessions | Time | Input tokens | Output tokens | Cost | Id |
+| # | Problem | What to do | Where to change | Sessions | Time | Input tokens | Output tokens | Cost | Id |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Enforce a rule that already exists | test-runner agent (`.claude/agents/test-runner.md`) | Runs `npm test` (fails), then `pnpm test` | 3 of 20 | ≥ 38 min | ≥ 1.2M | ≥ 40k | ≥ $2.10 | sug-1a2b3c4d |
+| 1 | Runs `npm test` (fails), then `pnpm test` | Enforce a rule that already exists | test-runner agent (`.claude/agents/test-runner.md`) | 3 of 20 | ≥ 38 min | ≥ 1.2M | ≥ 40k | ≥ $2.10 | sug-1a2b3c4d |
 
 _Time, tokens and cost add up the whole period (<N> sessions), not one session: what these problems already cost, not a promised saving. ≥ means at least, ≤ at most, ~ about. They come from transcript timestamps and token usage, with idle time left out. Together the suggestions cover <covered>; no cost is counted in two rows._
 
