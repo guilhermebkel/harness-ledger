@@ -1,0 +1,782 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><style>:root{color-scheme:light;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui;background:#fafafa}img{max-width:100%}[hidden]{display:none!important}</style><title>harness-ledger: Claude Code plugin to audit your agent harness</title>
+<meta name="description" content="harness-ledger is a Claude Code plugin that reads your saved session transcripts, finds the harness piece behind each problem and suggests fixes with costs.">
+<link rel="canonical" href="https://guilhermebkel.github.io/harness-ledger/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#16120e">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="harness-ledger">
+<meta property="og:title" content="harness-ledger: Claude Code plugin to audit your agent harness">
+<meta property="og:description" content="Reads the session transcripts Claude Code already saves, names the piece behind each problem, and checks whether the fix worked.">
+<meta property="og:url" content="https://guilhermebkel.github.io/harness-ledger/">
+<meta property="og:image" content="https://guilhermebkel.github.io/harness-ledger/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="harness-ledger: Your agent's sessions already know what to fix.">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://guilhermebkel.github.io/harness-ledger/#website","url":"https://guilhermebkel.github.io/harness-ledger/","name":"harness-ledger","inLanguage":"en","publisher":{"@id":"https://guilhermebkel.github.io/harness-ledger/#author"}},{"@type":"Person","@id":"https://guilhermebkel.github.io/harness-ledger/#author","name":"Guilherme Mota","url":"https://github.com/guilhermebkel","sameAs":["https://github.com/guilhermebkel"]},{"@type":"SoftwareApplication","@id":"https://guilhermebkel.github.io/harness-ledger/#app","name":"harness-ledger","description":"harness-ledger is a Claude Code plugin that reads your saved session transcripts, finds the harness piece behind each problem and suggests fixes with evidence and costs.","applicationCategory":"DeveloperApplication","applicationSubCategory":"Claude Code plugin","operatingSystem":"Any (requires Claude Code)","softwareVersion":"0.3.2","softwareRequirements":"Claude Code, Node.js 20+","url":"https://guilhermebkel.github.io/harness-ledger/","downloadUrl":"https://github.com/guilhermebkel/harness-ledger","codeRepository":"https://github.com/guilhermebkel/harness-ledger","license":"https://github.com/guilhermebkel/harness-ledger/blob/master/LICENSE","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"author":{"@id":"https://guilhermebkel.github.io/harness-ledger/#author"}},{"@type":"WebPage","@id":"https://guilhermebkel.github.io/harness-ledger/#page","url":"https://guilhermebkel.github.io/harness-ledger/","name":"harness-ledger: Claude Code plugin to audit your agent harness","description":"harness-ledger is a Claude Code plugin that reads your saved session transcripts, finds the harness piece behind each problem and suggests fixes with costs.","isPartOf":{"@id":"https://guilhermebkel.github.io/harness-ledger/#website"},"about":{"@id":"https://guilhermebkel.github.io/harness-ledger/#app"},"primaryImageOfPage":"https://guilhermebkel.github.io/harness-ledger/og.png","dateModified":"2026-10-21"},{"@type":"FAQPage","@id":"https://guilhermebkel.github.io/harness-ledger/#faq","mainEntity":[{"@type":"Question","name":"Does it change my harness?","acceptedAnswer":{"@type":"Answer","text":"Only if you ask it to, one suggestion at a time, with confirmation, and only in harness files: instructions, skills, subagents, commands, hooks and settings. Pieces from plugins or managed settings are never edited. Findings about them become recommendations."}},{"@type":"Question","name":"How much history does it need?","acceptedAnswer":{"@type":"Answer","text":"It works from the first run, on whatever sessions you have. Patterns across sessions need a few sessions to show up, and before and after comparisons need a minimum on each side. Below that, the report says the evidence is partial instead of guessing."}},{"@type":"Question","name":"How accurate are the costs?","acceptedAnswer":{"@type":"Answer","text":"They are estimates with a stated method. Time excludes idle gaps, tokens come from the transcripts, and money comes from a price table you can override in.harness-ledger/config.json. Each signal says whether its number is a lower bound, an upper bound or an estimate."}},{"@type":"Question","name":"A finding looks wrong for my project. What do I do?","acceptedAnswer":{"@type":"Answer","text":"Reject it and it won't come back. If the rule behind it seems off, ask for a rule question: the script builds a prefilled issue with the signal and your own words, and nothing from your sessions."}}]}]}</script>
+</head><body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout concept: one centered hero whose diagram draws the product (tangle -> line -> harness),
+   then split compositions that alternate sides, a list, a receipt, a statement band and a narrow FAQ. */
+:root {
+  color-scheme: dark;
+
+  --bg: oklch(0.145 0.006 65);
+  --surface-1: oklch(0.185 0.007 65);
+  --surface-2: oklch(0.225 0.008 65);
+  --surface-3: oklch(0.275 0.009 65);
+  --text: oklch(0.955 0.008 80);
+  --text-2: oklch(0.775 0.012 75);
+  --text-3: oklch(0.625 0.012 70);
+  --border: color-mix(in oklch, var(--text) 9%, transparent);
+  --border-strong: color-mix(in oklch, var(--text) 17%, transparent);
+  --accent: oklch(0.765 0.087 68);
+  --accent-contrast: oklch(0.2 0.02 60);
+  --accent-soft: color-mix(in oklch, var(--accent) 14%, transparent);
+  --success: oklch(0.76 0.12 150);
+  --danger: oklch(0.7 0.15 27);
+
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-hand: "Caveat", "Segoe Script", "Bradley Hand", cursive;
+
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.875rem;
+  --fs-md: 1rem;
+  --fs-lg: 1.125rem;
+  --fs-xl: clamp(1.25rem, 1.1rem + 0.6vw, 1.5rem);
+  --fs-h2: clamp(1.875rem, 1.3rem + 2.4vw, 3rem);
+  --fs-display: clamp(2.25rem, 1.1rem + 5.4vw, 5.25rem);
+
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+
+  --shadow-lg: 0 4px 8px oklch(0 0 0 / 0.25), 0 24px 48px -12px oklch(0 0 0 / 0.55);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --gutter: clamp(16px, 4vw, 40px);
+  --max-w: 1200px;
+  --section-gap: clamp(88px, 7vw + 40px, 160px);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; scrollbar-color: color-mix(in oklch, var(--text) 24%, transparent) transparent; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--font-sans); font-size: var(--fs-md); line-height: 1.55;
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  overflow-x: clip;
+}
+h1, h2, h3, p, dl, dd, figure, ul { margin: 0; }
+ul { padding: 0; list-style: none; }
+h1, h2, h3 { font-weight: 600; letter-spacing: -0.03em; text-wrap: balance; line-height: 1.08; }
+p { text-wrap: pretty; }
+a { color: inherit; text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+code, .mono { font-family: var(--font-mono); }
+::selection { background: color-mix(in oklch, var(--accent) 30%, transparent); color: var(--text); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: var(--r-sm); }
+.icon { width: 1.125em; height: 1.125em; flex: none; }
+.num { font-variant-numeric: tabular-nums; }
+
+.wrap { width: min(100% - 2 * var(--gutter), var(--max-w)); margin-inline: auto; }
+.section { padding-top: var(--section-gap); scroll-margin-top: 72px; }
+.section__head { max-width: 720px; display: grid; gap: 16px; }
+.section__head h2 { font-size: var(--fs-h2); }
+.lede { color: var(--text-2); font-size: var(--fs-lg); max-width: 56ch; }
+
+/* ---------- buttons ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 44px; padding: 0 20px; border-radius: var(--r-md); border: 1px solid transparent;
+  font-size: var(--fs-sm); font-weight: 500; white-space: nowrap; text-decoration: none;
+  transition: transform 160ms var(--ease-out), background 160ms var(--ease-out), border-color 160ms var(--ease-out), filter 160ms var(--ease-out);
+}
+.btn:active { transform: translateY(1px) scale(0.99); }
+.btn--light { background: var(--text); color: var(--bg); height: 38px; padding: 0 14px; }
+.btn--light:hover { background: color-mix(in oklch, var(--text) 88%, var(--bg)); }
+.btn--quiet { border-color: var(--border-strong); height: 38px; padding: 0 14px; color: var(--text-2); }
+.btn--quiet:hover { color: var(--text); background: color-mix(in oklch, var(--text) 6%, transparent); }
+.btn--glass {
+  background: linear-gradient(to bottom, color-mix(in oklch, var(--text) 9%, transparent), color-mix(in oklch, var(--text) 4%, transparent));
+  border-color: var(--border-strong);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.07);
+}
+.btn--glass:hover { background: linear-gradient(to bottom, color-mix(in oklch, var(--text) 13%, transparent), color-mix(in oklch, var(--text) 6%, transparent)); }
+.btn--accent {
+  background: linear-gradient(to bottom, color-mix(in oklch, var(--accent) 86%, white), var(--accent));
+  color: var(--accent-contrast); border-color: color-mix(in oklch, var(--accent) 78%, black);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.28), 0 1px 2px oklch(0 0 0 / 0.3);
+}
+.btn--accent:hover { filter: brightness(1.06); }
+
+/* ---------- nav ---------- */
+.nav {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 50;
+  background: color-mix(in oklch, var(--bg) 80%, transparent);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+}
+.nav__in { height: 64px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: 500; color: var(--accent); }
+.brand__mark { width: 26px; height: 26px; }
+.nav__links { display: flex; gap: 28px; }
+.nav__links a { color: var(--text-3); text-decoration: none; font-size: var(--fs-sm); transition: color 160ms var(--ease-out); }
+.nav__links a:hover { color: var(--text); }
+.nav__cta { display: flex; justify-content: flex-end; gap: 10px; }
+
+/* ---------- hero ---------- */
+.hero { position: relative; padding-top: clamp(40px, 5vw, 72px); text-align: center; overflow: clip; }
+.hero::before {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 760px; pointer-events: none;
+  background: radial-gradient(ellipse 46% 52% at 50% 0%, color-mix(in oklch, var(--accent) 12%, transparent), transparent 72%);
+}
+.hero__in { position: relative; display: grid; justify-items: center; }
+.display { font-size: var(--fs-display); line-height: 1.02; letter-spacing: -0.04em; max-width: 12.6em; }
+.u { position: relative; display: inline-block; white-space: nowrap; }
+.u__svg { position: absolute; left: -1%; width: 102%; bottom: -0.2em; height: 0.2em; overflow: visible; color: var(--accent); }
+.u__path { fill: none; stroke: currentColor; stroke-width: 4px; stroke-linecap: round; vector-effect: non-scaling-stroke; stroke-dasharray: 1; stroke-dashoffset: 0; }
+.hero__sub { margin-top: 24px; max-width: 54ch; color: var(--text-2); font-size: clamp(1rem, 0.95rem + 0.35vw, 1.25rem); }
+.hero__sub code { color: var(--accent); font-size: 0.92em; }
+
+.install {
+  position: relative; width: min(100%, 640px); margin-top: 28px; text-align: left;
+  background: var(--surface-1); border: 1px solid var(--border-strong); border-radius: var(--r-lg);
+  padding: 16px 60px 16px 20px; font-family: var(--font-mono); font-size: 0.8125rem; line-height: 1.75;
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.05), var(--shadow-lg);
+}
+.install code { display: block; overflow-wrap: anywhere; color: var(--text-2); }
+.install .cmd { color: var(--accent); }
+.copy {
+  position: absolute; top: 10px; right: 10px; width: 38px; height: 38px; display: grid; place-items: center;
+  background: transparent; border: 1px solid transparent; border-radius: var(--r-md); color: var(--text-3);
+  transition: background 160ms var(--ease-out), color 160ms var(--ease-out);
+}
+.copy:hover { background: var(--surface-2); color: var(--text); }
+.copy .icon { width: 18px; height: 18px; }
+.copy .icon--ok, .copy[data-copied="true"] .icon--copy { display: none; }
+.copy[data-copied="true"] .icon--ok { display: block; color: var(--success); }
+.hero__actions { margin-top: 16px; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+
+/* ---------- flow diagram ---------- */
+.flow { position: relative; margin-top: clamp(16px, 2vw, 24px); width: min(100%, 1200px); color: var(--accent); }
+.flow::before {
+  content: ""; position: absolute; inset: 10% 8% 0 24%; pointer-events: none;
+  background: radial-gradient(ellipse 50% 50% at 50% 50%, color-mix(in oklch, var(--accent) 9%, transparent), transparent 70%);
+}
+.flow__svg { position: relative; display: block; width: 100%; height: auto; overflow: visible; }
+.flow__svg--m { display: none; max-width: 420px; margin-inline: auto; }
+.flow .t { fill: none; stroke: var(--text-3); stroke-opacity: 0.32; stroke-width: 1.2; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 0; }
+.flow .t--accent { stroke: var(--accent); stroke-opacity: 0.5; }
+.flow .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 0; filter: drop-shadow(0 0 7px color-mix(in oklch, var(--accent) 38%, transparent)); }
+.flow .line--thin { stroke-width: 1.5; stroke-opacity: 0.8; filter: none; }
+.flow .back { fill: none; stroke: var(--accent); stroke-opacity: 0.55; stroke-width: 1.5; stroke-dasharray: 5 6; stroke-linecap: round; }
+.flow .chip rect { fill: var(--surface-2); stroke: var(--border-strong); }
+.flow .chip text { fill: var(--text-2); font: 500 11px/1 var(--font-mono); }
+.flow .chip .chip__x { fill: var(--danger); font-size: 11px; }
+.flow .node circle { fill: var(--bg); stroke: var(--accent); stroke-width: 1.75; }
+.flow .node__n { fill: var(--accent); font: 500 13px/1 var(--font-mono); text-anchor: middle; }
+.flow .node__l { fill: var(--text); font: 500 12px/1 var(--font-mono); letter-spacing: 0.08em; text-anchor: middle; }
+.flow .node__s { fill: var(--text-3); font: 400 11px/1 var(--font-mono); text-anchor: middle; }
+.flow .node__l--m, .flow .node__s--m { text-anchor: start; }
+.flow .ends circle { fill: var(--bg); stroke: var(--accent); stroke-width: 1.75; }
+.flow .ends text { fill: var(--text-2); font: 500 13px/1 var(--font-mono); }
+.flow .cmp__l { fill: var(--accent); font: 500 12px/1 var(--font-mono); letter-spacing: 0.08em; }
+.flow .cmp__s { fill: var(--text-3); font: 400 11px/1 var(--font-mono); }
+.flow .robot { filter: drop-shadow(0 6px 14px oklch(0 0 0 / 0.5)); }
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes draw { from { stroke-dashoffset: 1; } }
+  @keyframes fade { from { opacity: 0; } }
+  @keyframes pop { from { opacity: 0; transform: scale(0.6); } }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+  .display, .hero__sub, .install, .hero__actions { animation: rise 700ms var(--ease-out) both; }
+  .hero__sub { animation-delay: 90ms; }
+  .install { animation-delay: 170ms; }
+  .hero__actions { animation-delay: 240ms; }
+  .u__path { animation: draw 800ms var(--ease-out) 450ms backwards; }
+  .flow .t { animation: draw 900ms var(--ease-out) var(--d, 0s) backwards; }
+  .flow .chip, .flow .ends, .flow .cmp, .flow .robot { animation: fade 500ms ease-out var(--d, 0s) backwards; }
+  .flow .line { animation: draw 800ms var(--ease-out) var(--d, 0s) backwards; }
+  .flow .back { stroke-dasharray: 5 6; animation: fade 600ms ease-out var(--d, 0s) backwards; }
+  .flow .node { transform-box: fill-box; transform-origin: center; animation: pop 450ms var(--ease-out) var(--d, 0s) backwards; }
+}
+
+/* ---------- report ---------- */
+.split { display: grid; gap: clamp(32px, 5vw, 72px); align-items: start; }
+.report { margin-top: 48px; background: var(--surface-1); border: 1px solid var(--border-strong); border-radius: var(--r-lg); overflow: hidden; box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.04), var(--shadow-lg); }
+.report__bar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; padding: 14px 20px; border-bottom: 1px solid var(--border); font: 400 var(--fs-xs)/1.4 var(--font-mono); color: var(--text-3); }
+.report__bar strong { font-weight: 500; color: var(--text-2); }
+.report__body { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
+.tabs { display: grid; align-content: start; gap: 4px; padding: 12px; border-right: 1px solid var(--border); }
+.tab { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; text-align: left; padding: 14px; border-radius: var(--r-md); border: 1px solid transparent; background: transparent; color: var(--text-2); transition: background 160ms var(--ease-out), color 160ms var(--ease-out); }
+.tab:hover { background: color-mix(in oklch, var(--text) 4%, transparent); }
+.tab[aria-selected="true"] { background: var(--surface-2); border-color: var(--border); color: var(--text); }
+.tab__n { grid-row: span 2; font: 500 var(--fs-sm)/1.5 var(--font-mono); color: var(--text-3); }
+.tab[aria-selected="true"] .tab__n { color: var(--accent); }
+.tab__t { font-weight: 500; font-size: var(--fs-md); line-height: 1.35; }
+.tab__s { font: 400 var(--fs-xs)/1.4 var(--font-mono); color: var(--text-3); }
+.panel { padding: clamp(20px, 3vw, 32px); display: grid; gap: 24px; align-content: start; min-height: 440px; }
+.panel__head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.panel__head h3 { font-size: var(--fs-xl); letter-spacing: -0.02em; }
+.pill { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--border-strong); font: 400 var(--fs-xs)/1 var(--font-mono); color: var(--text-2); }
+.panel__ev { color: var(--text-2); max-width: 58ch; }
+.panel__ev code, .faq code, .step code { font-size: 0.88em; padding: 0.1em 0.4em; border-radius: var(--r-sm); background: var(--surface-3); color: var(--text); }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: var(--r-md); }
+.stat { padding: 14px 16px; display: grid; gap: 4px; }
+.stat + .stat { border-left: 1px solid var(--border); }
+.stat__k { font: 400 var(--fs-xs)/1.3 var(--font-mono); color: var(--text-3); }
+.stat__v { font: 500 var(--fs-lg)/1.25 var(--font-mono); font-variant-numeric: tabular-nums; }
+.bound { font: 400 var(--fs-xs)/1 var(--font-mono); color: var(--accent); margin-right: 0.45em; }
+.panel__note { font: 400 var(--fs-xs)/1.5 var(--font-mono); color: var(--text-3); margin-top: -12px; }
+.kv { display: grid; gap: 10px; }
+.kv__row { display: grid; grid-template-columns: 56px 1fr; gap: 14px; align-items: baseline; font-size: var(--fs-sm); }
+.kv__k { font: 500 var(--fs-xs)/1.6 var(--font-mono); color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; }
+.kv__v { color: var(--text-2); }
+.kv__v--mono { font: 400 var(--fs-xs)/1.7 var(--font-mono); }
+.fix { background: var(--accent-soft); border: 1px solid color-mix(in oklch, var(--accent) 28%, transparent); border-radius: var(--r-md); padding: 14px 16px; color: var(--text); font-size: var(--fs-sm); }
+.report__foot { padding: 12px 20px; border-top: 1px solid var(--border); font: 400 var(--fs-xs)/1.4 var(--font-mono); color: var(--text-3); }
+
+/* ---------- how ---------- */
+.how { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
+.how__intro { display: grid; gap: 20px; position: sticky; top: 104px; }
+.how__intro h2 { font-size: var(--fs-h2); }
+.how__note { font: 400 var(--fs-sm)/1.6 var(--font-mono); color: var(--text-3); }
+.steps { display: grid; position: relative; }
+.steps::before { content: ""; position: absolute; left: 19px; top: 20px; bottom: 20px; width: 2px; background: linear-gradient(to bottom, var(--accent), color-mix(in oklch, var(--accent) 30%, transparent)); border-radius: 2px; }
+.step { position: relative; display: grid; grid-template-columns: 40px 1fr; gap: 24px; padding-bottom: 40px; }
+.step:last-child { padding-bottom: 0; }
+.step__n { position: relative; z-index: 1; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; background: var(--bg); border: 2px solid var(--accent); color: var(--accent); font: 500 var(--fs-sm)/1 var(--font-mono); }
+.step__body { display: grid; gap: 8px; padding-top: 6px; }
+.step__top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.step h3 { font-size: var(--fs-xl); letter-spacing: -0.02em; }
+.step p { color: var(--text-2); max-width: 52ch; }
+
+/* ---------- findings ---------- */
+.rows { margin-top: 56px; display: grid; }
+.rows__head, .row { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 4fr) minmax(0, 4fr); gap: 32px; }
+.rows__head { padding-bottom: 12px; font: 500 var(--fs-xs)/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); }
+.row { padding: 28px 0; border-top: 1px solid var(--border); align-items: baseline; transition: background 200ms var(--ease-out); }
+.row:last-child { border-bottom: 1px solid var(--border); }
+.row__c { font-size: var(--fs-xl); font-weight: 500; letter-spacing: -0.02em; line-height: 1.25; }
+.row__w { color: var(--text-2); }
+.row__f { display: flex; gap: 12px; align-items: baseline; color: var(--text); }
+.row__f .icon { color: var(--accent); transform: translateY(0.18em); }
+.aside { margin-top: 56px; display: grid; gap: 14px; justify-items: start; max-width: 60ch; }
+.aside__hand { font-family: var(--font-hand); font-weight: 600; font-size: clamp(2.25rem, 1.6rem + 2.6vw, 3.5rem); line-height: 1.05; color: var(--text); letter-spacing: 0; }
+.aside p { color: var(--text-2); }
+.aside .small { color: var(--text-3); font-size: var(--fs-sm); }
+
+.signals { margin-top: 72px; display: grid; gap: 16px; }
+.signals__label { font-size: var(--fs-sm); color: var(--text-3); }
+.marquee { overflow: hidden; -webkit-mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent); mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent); }
+.marquee__track { display: flex; width: max-content; gap: 48px; padding-right: 48px; font: 400 var(--fs-md)/1.4 var(--font-mono); color: var(--text-2); animation: marquee 60s linear infinite; }
+.marquee__track span { white-space: nowrap; }
+.marquee:hover .marquee__track { animation-play-state: paused; }
+@keyframes marquee { to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) { .marquee__track { animation: none; flex-wrap: wrap; width: auto; } .marquee__track [aria-hidden] { display: none; } }
+
+/* ---------- numbers ---------- */
+.nums { grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); align-items: start; }
+.nums__main { display: grid; gap: 40px; }
+.principles { display: grid; }
+.principles li { padding: 20px 0; border-top: 1px solid var(--border); display: grid; gap: 4px; }
+.principles li:first-child { border-top: 0; padding-top: 0; }
+.principles strong { font-weight: 500; font-size: var(--fs-lg); letter-spacing: -0.01em; }
+.principles span { color: var(--text-2); max-width: 56ch; }
+.ledger { position: sticky; top: 104px; background: var(--surface-1); border: 1px solid var(--border-strong); border-radius: var(--r-lg); padding: 24px; display: grid; gap: 14px; font-family: var(--font-mono); box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.04), var(--shadow-lg); }
+.ledger__head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: var(--fs-xs); color: var(--text-3); }
+.ledger__head strong { color: var(--text); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
+.ledger__row { display: flex; align-items: baseline; gap: 10px; font-size: var(--fs-sm); }
+.ledger__row .k { color: var(--text-2); }
+.ledger__row .lead { flex: 1; min-width: 12px; border-bottom: 1px dotted var(--border-strong); transform: translateY(-3px); }
+.ledger__row .v { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ledger__rule { height: 1px; background: var(--border-strong); margin: 4px 0; }
+.ledger__foot { font-size: var(--fs-xs); color: var(--text-3); line-height: 1.5; }
+
+/* ---------- privacy ---------- */
+.privacy { padding-top: var(--section-gap); scroll-margin-top: 72px; }
+.privacy__band { position: relative; border-top: 1px solid var(--border); padding-top: clamp(48px, 6vw, 88px); }
+.privacy__big { font-size: clamp(2.5rem, 1.2rem + 5.4vw, 5.25rem); line-height: 1.02; letter-spacing: -0.04em; max-width: 14ch; }
+.privacy__big em { font-style: normal; color: var(--accent); }
+.facts { margin-top: clamp(40px, 5vw, 72px); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px clamp(32px, 6vw, 96px); }
+.fact { display: grid; gap: 8px; align-content: start; }
+.fact h3 { font-size: var(--fs-lg); letter-spacing: -0.01em; font-weight: 500; }
+.fact p { color: var(--text-2); max-width: 52ch; }
+.fact code { font-size: 0.88em; color: var(--text); }
+.agents { margin-top: clamp(48px, 6vw, 80px); display: flex; flex-wrap: wrap; gap: 12px; }
+.agent { display: flex; align-items: center; gap: 12px; padding: 12px 18px; border: 1px solid var(--border-strong); border-radius: 999px; font-size: var(--fs-sm); text-decoration: none; }
+.agent b { font-weight: 500; }
+.agent span { color: var(--text-3); }
+.agent .icon { color: var(--text-3); }
+.agent--on { background: var(--accent-soft); border-color: color-mix(in oklch, var(--accent) 35%, transparent); }
+.agent--on .icon { color: var(--accent); }
+a.agent:hover { background: color-mix(in oklch, var(--text) 5%, transparent); }
+
+/* ---------- faq ---------- */
+.faq { width: min(100%, 780px); margin: 0 auto; }
+.faq__head { text-align: center; margin: 0 auto 48px; justify-items: center; }
+.faq details { border-top: 1px solid var(--border); }
+.faq details:last-child { border-bottom: 1px solid var(--border); }
+.faq summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 22px 0; font-size: var(--fs-lg); font-weight: 500; letter-spacing: -0.01em; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: ""; flex: none; width: 14px; height: 14px; background: linear-gradient(currentColor, currentColor) center / 100% 1.5px no-repeat, linear-gradient(currentColor, currentColor) center / 1.5px 100% no-repeat; color: var(--text-3); transition: transform 240ms var(--ease-out); }
+.faq details[open] summary::after { transform: rotate(45deg); color: var(--accent); }
+.faq summary:hover { color: var(--accent); }
+.faq .a { padding: 0 0 24px; color: var(--text-2); max-width: 62ch; }
+
+/* ---------- cta + footer ---------- */
+.cta { position: relative; text-align: center; padding-bottom: var(--section-gap); }
+.cta::before { content: ""; position: absolute; inset: 20% 0 0 0; pointer-events: none; background: radial-gradient(ellipse 45% 55% at 50% 60%, color-mix(in oklch, var(--accent) 10%, transparent), transparent 70%); }
+.cta__in { position: relative; display: grid; justify-items: center; gap: 20px; }
+.cta h2 { font-size: clamp(2.25rem, 1.2rem + 4.6vw, 4.5rem); letter-spacing: -0.04em; line-height: 1.04; max-width: 16ch; }
+.cta__hand { font-family: var(--font-hand); font-weight: 600; font-size: clamp(2rem, 1.5rem + 2vw, 3rem); color: var(--accent); line-height: 1; }
+.cta .install { margin-top: 20px; }
+.cta__note { font-size: var(--fs-sm); color: var(--text-3); }
+.cta__run { width: min(100%, 640px); text-align: left; display: grid; gap: 8px; margin-top: 8px; }
+.cta__run .install { margin-top: 0; padding-block: 12px; }
+.cta__run p { font-size: var(--fs-sm); color: var(--text-3); padding-left: 4px; }
+.footer { border-top: 1px solid var(--border); padding-block: 40px; }
+.footer__in { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 24px 40px; }
+.footer__links { display: flex; flex-wrap: wrap; gap: 8px 28px; font-size: var(--fs-sm); }
+.footer__links a { color: var(--text-3); text-decoration: none; transition: color 160ms var(--ease-out); }
+.footer__links a:hover { color: var(--text); }
+.footer__legal { width: 100%; font-size: var(--fs-xs); color: var(--text-3); }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1023px) {
+  .nav__links { display: none; }
+  .nav__in { grid-template-columns: 1fr auto; }
+  .how { grid-template-columns: minmax(0, 1fr); }
+  .how__intro, .ledger { position: static; }
+  .nums { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 859px) {
+  .report__body { grid-template-columns: minmax(0, 1fr); }
+  .tabs { border-right: 0; border-bottom: 1px solid var(--border); }
+  .panel { min-height: 0; }
+}
+@media (max-width: 767px) {
+  .flow__svg--d { display: none; }
+  .flow__svg--m { display: block; }
+  .rows__head { display: none; }
+  .row { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 24px 0; }
+  .facts { grid-template-columns: minmax(0, 1fr); }
+  .stats { grid-template-columns: minmax(0, 1fr); }
+  .stat + .stat { border-left: 0; border-top: 1px solid var(--border); }
+  .kv__row { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .btn--quiet { display: none; }
+  .hero__actions .btn { flex: 1 1 auto; }
+  .step { gap: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+</style>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><symbol id="i-check-circle" viewBox="0 0 256 256" fill="currentColor"><path d="M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></symbol><symbol id="i-book-open" viewBox="0 0 256 256" fill="currentColor"><path d="M232,48H160a40,40,0,0,0-32,16A40,40,0,0,0,96,48H24a8,8,0,0,0-8,8V200a8,8,0,0,0,8,8H96a24,24,0,0,1,24,24,8,8,0,0,0,16,0,24,24,0,0,1,24-24h72a8,8,0,0,0,8-8V56A8,8,0,0,0,232,48ZM96,192H32V64H96a24,24,0,0,1,24,24V200A39.81,39.81,0,0,0,96,192Zm128,0H160a39.81,39.81,0,0,0-24,8V88a24,24,0,0,1,24-24h64Z"/></symbol><symbol id="i-check" viewBox="0 0 256 256" fill="currentColor"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></symbol><symbol id="i-github-logo" viewBox="0 0 256 256" fill="currentColor"><path d="M208.31,75.68A59.78,59.78,0,0,0,202.93,28,8,8,0,0,0,196,24a59.75,59.75,0,0,0-48,24H124A59.75,59.75,0,0,0,76,24a8,8,0,0,0-6.93,4,59.78,59.78,0,0,0-5.38,47.68A58.14,58.14,0,0,0,56,104v8a56.06,56.06,0,0,0,48.44,55.47A39.8,39.8,0,0,0,96,192v8H72a24,24,0,0,1-24-24A40,40,0,0,0,8,136a8,8,0,0,0,0,16,24,24,0,0,1,24,24,40,40,0,0,0,40,40H96v16a8,8,0,0,0,16,0V192a24,24,0,0,1,48,0v40a8,8,0,0,0,16,0V192a39.8,39.8,0,0,0-8.44-24.53A56.06,56.06,0,0,0,216,112v-8A58.14,58.14,0,0,0,208.31,75.68ZM200,112a40,40,0,0,1-40,40H112a40,40,0,0,1-40-40v-8a41.74,41.74,0,0,1,6.9-22.48A8,8,0,0,0,80,73.83a43.81,43.81,0,0,1,.79-33.58,43.88,43.88,0,0,1,32.32,20.06A8,8,0,0,0,119.82,64h32.35a8,8,0,0,0,6.74-3.69,43.87,43.87,0,0,1,32.32-20.06A43.81,43.81,0,0,1,192,73.83a8.09,8.09,0,0,0,1,7.65A41.72,41.72,0,0,1,200,104Z"/></symbol><symbol id="i-clock" viewBox="0 0 256 256" fill="currentColor"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></symbol><symbol id="i-arrow-right" viewBox="0 0 256 256" fill="currentColor"><path d="M221.66,133.66l-72,72a8,8,0,0,1-11.32-11.32L196.69,136H40a8,8,0,0,1,0-16H196.69L138.34,61.66a8,8,0,0,1,11.32-11.32l72,72A8,8,0,0,1,221.66,133.66Z"/></symbol><symbol id="i-star" viewBox="0 0 256 256" fill="currentColor"><path d="M239.18,97.26A16.38,16.38,0,0,0,224.92,86l-59-4.76L143.14,26.15a16.36,16.36,0,0,0-30.27,0L90.11,81.23,31.08,86a16.46,16.46,0,0,0-9.37,28.86l45,38.83L53,211.75a16.38,16.38,0,0,0,24.5,17.82L128,198.49l50.53,31.08A16.4,16.4,0,0,0,203,211.75l-13.76-58.07,45-38.83A16.43,16.43,0,0,0,239.18,97.26Zm-15.34,5.47-48.7,42a8,8,0,0,0-2.56,7.91l14.88,62.8a.37.37,0,0,1-.17.48c-.18.14-.23.11-.38,0l-54.72-33.65a8,8,0,0,0-8.38,0L69.09,215.94c-.15.09-.19.12-.38,0a.37.37,0,0,1-.17-.48l14.88-62.8a8,8,0,0,0-2.56-7.91l-48.7-42c-.12-.1-.23-.19-.13-.5s.18-.27.33-.29l63.92-5.16A8,8,0,0,0,103,91.86l24.62-59.61c.08-.17.11-.25.35-.25s.27.08.35.25L153,91.86a8,8,0,0,0,6.75,4.92l63.92,5.16c.15,0,.24,0,.33.29S224,102.63,223.84,102.73Z"/></symbol><symbol id="i-copy" viewBox="0 0 256 256" fill="currentColor"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z"/></symbol></svg>
+
+<header class="nav">
+  <div class="wrap nav__in">
+    <a class="brand" href="#top" aria-label="harness-ledger, back to top">
+      <svg class="brand__mark" viewBox="0 0 26 26" aria-hidden="true"><path d="M3 13h20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="6.5" cy="13" r="3" fill="var(--bg)" stroke="currentColor" stroke-width="2"/><circle cx="13" cy="13" r="3" fill="var(--bg)" stroke="currentColor" stroke-width="2"/><circle cx="19.5" cy="13" r="3" fill="var(--bg)" stroke="currentColor" stroke-width="2"/></svg>
+      harness-ledger
+    </a>
+    <nav class="nav__links" aria-label="Sections">
+      <a href="#how">How it works</a>
+      <a href="#findings">Findings</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <div class="nav__cta">
+      <a class="btn btn--quiet" href="https://github.com/guilhermebkel/harness-ledger#readme" target="_blank" rel="noopener"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-book-open"/></svg> Docs</a>
+      <a class="btn btn--light" href="https://github.com/guilhermebkel/harness-ledger" target="_blank" rel="noopener"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-github-logo"/></svg> GitHub</a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="wrap hero__in">
+      <h1 class="display">Your agent's sessions already know <span class="u">what to fix.<svg class="u__svg" viewBox="0 0 300 20" preserveAspectRatio="none" aria-hidden="true"><path class="u__path" pathLength="1" d="M3 13C48 5 110 17 176 9S268 7 297 12"/></svg></span></h1>
+      <p class="hero__sub">harness-ledger is a Claude Code plugin that reads the transcripts your agent already saves, names the piece behind each problem, and checks whether the fix worked.</p>
+
+      <div class="install" id="hero-install">
+        <code><span class="cmd">/plugin</span> marketplace add guilhermebkel/harness-ledger</code>
+        <code><span class="cmd">/plugin</span> install harness-ledger@guilhermebkel</code>
+        <button class="copy" type="button" data-copy="/plugin marketplace add guilhermebkel/harness-ledger&#10;/plugin install harness-ledger@guilhermebkel" aria-label="Copy install command"><svg class="icon icon--copy" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg><svg class="icon icon--ok" aria-hidden="true" focusable="false"><use href="#i-check"/></svg></button>
+      </div>
+      <div class="hero__actions">
+        <a class="btn btn--glass" href="https://github.com/guilhermebkel/harness-ledger" target="_blank" rel="noopener"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-star"/></svg> Star on GitHub</a>
+      </div>
+
+      <div class="flow">
+        <svg class="flow__svg flow__svg--d" viewBox="0 0 1200 440" role="img" aria-labelledby="flowd-t flowd-d">
+<title id="flowd-t">How harness-ledger works</title>
+<desc id="flowd-d">A tangle of session events converges into one line with three steps, read, map and suggest, then fans out to the pieces of your harness: CLAUDE.md, skills, subagents and hooks. A dashed line returns to the start for the before and after comparison.</desc>
+<defs><marker id="arr-d" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<g class="tangle"><path class="t" pathLength="1" style="--d:0.00s" d="M17 23 C102 -50 161 223 160 207 S226 277 203 225 S228 201 302 145 S402 242 430 220"/>
+<path class="t t--accent" pathLength="1" style="--d:0.05s" d="M18 55 C88 81 99 -44 94 36 S119 115 204 122 S335 375 332 350 S389 209 430 220"/>
+<path class="t" pathLength="1" style="--d:0.10s" d="M30 88 C60 42 119 250 152 299 S260 39 212 57 S449 239 366 177 S400 219 430 220"/>
+<path class="t" pathLength="1" style="--d:0.15s" d="M12 116 C106 64 137 228 87 269 S278 203 195 156 S232 44 304 124 S391 217 430 220"/>
+<path class="t" pathLength="1" style="--d:0.20s" d="M22 131 C120 153 23 260 92 275 S290 187 205 133 S268 347 320 366 S380 243 430 220"/>
+<path class="t t--accent" pathLength="1" style="--d:0.25s" d="M8 159 C84 218 110 78 147 155 S149 270 195 251 S408 199 326 202 S382 203 430 220"/>
+<path class="t" pathLength="1" style="--d:0.30s" d="M25 199 C74 232 145 181 102 102 S273 410 204 391 S247 153 330 69 S384 236 430 220"/>
+<path class="t" pathLength="1" style="--d:0.35s" d="M9 222 C74 151 18 255 96 304 S256 314 235 354 S285 66 372 108 S382 214 430 220"/>
+<path class="t" pathLength="1" style="--d:0.00s" d="M4 249 C36 271 198 397 112 369 S182 168 246 252 S332 459 296 376 S390 231 430 220"/>
+<path class="t t--accent" pathLength="1" style="--d:0.05s" d="M30 273 C93 319 130 310 87 238 S303 372 250 297 S396 357 324 290 S399 223 430 220"/>
+<path class="t" pathLength="1" style="--d:0.10s" d="M11 306 C48 346 55 286 130 261 S313 344 272 364 S346 312 357 251 S379 225 430 220"/>
+<path class="t" pathLength="1" style="--d:0.15s" d="M7 332 C72 394 161 295 140 219 S173 66 209 34 S384 123 311 94 S386 228 430 220"/>
+<path class="t" pathLength="1" style="--d:0.20s" d="M13 355 C65 302 218 357 149 377 S172 150 237 150 S403 434 365 353 S389 209 430 220"/>
+<path class="t t--accent" pathLength="1" style="--d:0.25s" d="M12 383 C67 430 101 279 134 218 S195 118 271 202 S406 58 368 46 S378 203 430 220"/>
+<path class="t" pathLength="1" style="--d:0.30s" d="M1 415 C69 364 87 39 151 120 S264 228 241 200 S396 340 363 394 S378 219 430 220"/></g>
+<g class="chip" style="--d:0.20s"><rect x="22" y="52" width="105" height="24" rx="6"/><text x="34" y="68">$ npm test</text><text class="chip__x" x="109" y="68">✕</text></g><g class="chip" style="--d:0.30s"><rect x="150" y="108" width="145" height="24" rx="6"/><text x="162" y="124">re-read src/app.ts</text></g><g class="chip" style="--d:0.40s"><rect x="14" y="186" width="111" height="24" rx="6"/><text x="26" y="202">you: use pnpm</text></g><g class="chip" style="--d:0.50s"><rect x="196" y="246" width="152" height="24" rx="6"/><text x="208" y="262">permission denied</text><text class="chip__x" x="330" y="262">✕</text></g><g class="chip" style="--d:0.60s"><rect x="44" y="318" width="98" height="24" rx="6"/><text x="56" y="334">fix loop x4</text></g><g class="chip" style="--d:0.70s"><rect x="168" y="370" width="171" height="24" rx="6"/><text x="180" y="386">same request, 7th time</text></g>
+<path class="line" pathLength="1" style="--d:.55s" d="M430 220H900"/>
+<g class="fan">
+<path class="line line--thin" pathLength="1" style="--d:1.15s" d="M900 220C960 220 960 92 1020 92"/>
+<path class="line line--thin" pathLength="1" style="--d:1.2s" d="M900 220C960 220 960 172 1020 172"/>
+<path class="line line--thin" pathLength="1" style="--d:1.25s" d="M900 220C960 220 960 270 1020 270"/>
+<path class="line line--thin" pathLength="1" style="--d:1.3s" d="M900 220C960 220 960 350 1020 350"/>
+</g>
+<g class="ends" style="--d:1.5s">
+<circle cx="1020" cy="92" r="5"/><circle cx="1020" cy="172" r="5"/><circle cx="1020" cy="270" r="5"/><circle cx="1020" cy="350" r="5"/>
+<text x="1038" y="97">CLAUDE.md</text><text x="1038" y="177">skills</text><text x="1038" y="275">subagents</text><text x="1038" y="355">hooks</text>
+</g>
+<path class="back" style="--d:1.35s" marker-end="url(#arr-d)" d="M1020 360C1020 440 430 440 430 242"/>
+<g class="node" style="--d:.75s"><circle cx="520" cy="220" r="17"/><text class="node__n" x="520" y="225">1</text><text class="node__l" x="520" y="190">READ</text><text class="node__s" x="520" y="264">parse transcripts</text></g>
+<g class="node" style="--d:.95s"><circle cx="650" cy="220" r="17"/><text class="node__n" x="650" y="225">2</text><text class="node__l" x="650" y="190">MAP</text><text class="node__s" x="650" y="264">inventory harness</text></g>
+<g class="node" style="--d:1.15s"><circle cx="780" cy="220" r="17"/><text class="node__n" x="780" y="225">3</text><text class="node__l" x="780" y="190">SUGGEST</text><text class="node__s" x="780" y="264">classify and cost</text></g>
+<image class="robot" style="--d:1.2s" href="data:image/webp;base64,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" x="585" y="278" width="130" height="116"/>
+<text class="cmp" style="--d:1.7s" x="1020" y="432" text-anchor="end"><tspan class="cmp__l">4 COMPARE</tspan> <tspan class="cmp__s">before and after you accept a change</tspan></text>
+</svg>
+        <svg class="flow__svg flow__svg--m" viewBox="0 0 360 590" role="img" aria-labelledby="flowm-t flowm-d">
+<title id="flowm-t">How harness-ledger works</title>
+<desc id="flowm-d">A tangle of session events converges into one line with three steps, read, map and suggest, then fans out to CLAUDE.md, skills, subagents and hooks. A dashed line returns to the start for the before and after comparison.</desc>
+<defs><marker id="arr-m" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<g class="tangle"><path class="t" pathLength="1" style="--d:0.00s" d="M10 16 C46 84 252 86 48 93 S286 152 180 190"/>
+<path class="t t--accent" pathLength="1" style="--d:0.05s" d="M49 6 C46 46 193 69 44 81 S127 166 180 190"/>
+<path class="t" pathLength="1" style="--d:0.10s" d="M81 7 C117 42 215 46 40 114 S110 131 180 190"/>
+<path class="t" pathLength="1" style="--d:0.15s" d="M119 18 C94 86 192 74 97 117 S226 168 180 190"/>
+<path class="t" pathLength="1" style="--d:0.20s" d="M152 9 C136 45 74 43 124 100 S61 154 180 190"/>
+<path class="t t--accent" pathLength="1" style="--d:0.25s" d="M177 9 C215 58 125 64 237 73 S294 121 180 190"/>
+<path class="t" pathLength="1" style="--d:0.00s" d="M219 18 C161 79 140 69 43 72 S103 168 180 190"/>
+<path class="t" pathLength="1" style="--d:0.05s" d="M244 16 C295 84 133 58 187 109 S86 157 180 190"/>
+<path class="t" pathLength="1" style="--d:0.10s" d="M288 18 C233 86 57 57 211 116 S142 166 180 190"/>
+<path class="t t--accent" pathLength="1" style="--d:0.15s" d="M318 9 C296 46 53 47 233 120 S99 122 180 190"/>
+<path class="t" pathLength="1" style="--d:0.20s" d="M360 13 C349 52 208 81 168 91 S73 166 180 190"/></g>
+<g class="chip" style="--d:0.20s"><rect x="16" y="30" width="105" height="24" rx="6"/><text x="28" y="46">$ npm test</text><text class="chip__x" x="103" y="46">✕</text></g><g class="chip" style="--d:0.30s"><rect x="150" y="62" width="145" height="24" rx="6"/><text x="162" y="78">re-read src/app.ts</text></g><g class="chip" style="--d:0.40s"><rect x="30" y="98" width="152" height="24" rx="6"/><text x="42" y="114">permission denied</text><text class="chip__x" x="164" y="114">✕</text></g><g class="chip" style="--d:0.50s"><rect x="196" y="118" width="98" height="24" rx="6"/><text x="208" y="134">fix loop x4</text></g>
+<path class="line" pathLength="1" style="--d:.55s" d="M180 190V400"/>
+<g class="fan">
+<path class="line line--thin" pathLength="1" style="--d:1.15s" d="M180 400C180 460 45 440 45 510"/>
+<path class="line line--thin" pathLength="1" style="--d:1.2s" d="M180 400C180 460 125 450 125 510"/>
+<path class="line line--thin" pathLength="1" style="--d:1.25s" d="M180 400C180 460 235 450 235 510"/>
+<path class="line line--thin" pathLength="1" style="--d:1.3s" d="M180 400C180 460 315 440 315 510"/>
+</g>
+<g class="ends" style="--d:1.5s">
+<circle cx="45" cy="514" r="5"/><circle cx="125" cy="514" r="5"/><circle cx="235" cy="514" r="5"/><circle cx="315" cy="514" r="5"/>
+<text x="45" y="542" text-anchor="middle">CLAUDE.md</text><text x="125" y="542" text-anchor="middle">skills</text><text x="235" y="542" text-anchor="middle">subagents</text><text x="315" y="542" text-anchor="middle">hooks</text>
+</g>
+<path class="back" style="--d:1.35s" marker-end="url(#arr-m)" d="M326 518C358 480 358 250 192 196"/>
+<g class="node" style="--d:.75s"><circle cx="180" cy="245" r="17"/><text class="node__n" x="180" y="250">1</text><text class="node__l node__l--m" x="212" y="241">READ</text><text class="node__s node__s--m" x="212" y="257">parse transcripts</text></g>
+<g class="node" style="--d:.95s"><circle cx="180" cy="305" r="17"/><text class="node__n" x="180" y="310">2</text><text class="node__l node__l--m" x="212" y="301">MAP</text><text class="node__s node__s--m" x="212" y="317">inventory harness</text></g>
+<g class="node" style="--d:1.15s"><circle cx="180" cy="365" r="17"/><text class="node__n" x="180" y="370">3</text><text class="node__l node__l--m" x="212" y="361">SUGGEST</text><text class="node__s node__s--m" x="212" y="377">classify and cost</text></g>
+<image class="robot" style="--d:1.2s" href="data:image/webp;base64,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" x="14" y="236" width="140" height="125"/>
+<text class="cmp" style="--d:1.7s" x="180" y="580" text-anchor="middle"><tspan class="cmp__l">4 COMPARE</tspan> <tspan class="cmp__s">before and after</tspan></text>
+</svg>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="report">
+    <div class="wrap">
+      <div class="section__head">
+        <h2>A report you can check line by line.</h2>
+        <p class="lede">Each suggestion names the piece to change, what it cost, and the session and line that prove it.</p>
+      </div>
+
+      <div class="report">
+        <div class="report__bar"><strong>Analyzed 41 sessions (last 30 days)</strong><span>3 suggestions</span></div>
+        <div class="report__body">
+          <div class="tabs" role="tablist" aria-label="Findings in the report">
+            <button class="tab" role="tab" id="tab-1" aria-controls="panel-1" aria-selected="true" type="button"><span class="tab__n">#1</span><span class="tab__t">Enforce a rule that already exists</span><span class="tab__s">subagent: test-runner</span></button>
+            <button class="tab" role="tab" id="tab-2" aria-controls="panel-2" aria-selected="false" tabindex="-1" type="button"><span class="tab__n">#2</span><span class="tab__t">Fix an instruction</span><span class="tab__s">subagent: code-reviewer</span></button>
+            <button class="tab" role="tab" id="tab-3" aria-controls="panel-3" aria-selected="false" tabindex="-1" type="button"><span class="tab__n">#3</span><span class="tab__t">Change the structure</span><span class="tab__s">repeated request</span></button>
+          </div>
+
+          <div class="panel" role="tabpanel" id="panel-1" aria-labelledby="tab-1" tabindex="0">
+            <div class="panel__head"><h3>Enforce a rule that already exists</h3><span class="pill">subagent: test-runner</span></div>
+            <p class="panel__ev">Ran <code>npm test</code> 11 times in 6 of 41 sessions. The repo uses <code>pnpm test</code>, and CLAUDE.md line 3 already says so.</p>
+            <div class="stats">
+              <div class="stat"><span class="stat__k">Time</span><span class="stat__v"><span class="bound">at least</span>38 min</span></div>
+              <div class="stat"><span class="stat__k">Tokens</span><span class="stat__v">210k</span></div>
+              <div class="stat"><span class="stat__k">Money</span><span class="stat__v">$1.90</span></div>
+            </div>
+            <p class="panel__note">Counted from each failed npm test until pnpm test ran, reasoning included.</p>
+            <div class="kv">
+              <div class="kv__row"><span class="kv__k">Proof</span><span class="kv__v kv__v--mono">session 3f2a… line 14<br>session 91bc… line 7<br>+4 more</span></div>
+              <div class="kv__row"><span class="kv__k">Fix</span><div class="fix">A hook that rewrites <code>npm test</code> to <code>pnpm test</code> in this repo, not more text.</div></div>
+              <div class="kv__row"><span class="kv__k">Then</span><span class="kv__v">Compare test-runner after a few sessions to see if it stopped.</span></div>
+            </div>
+          </div>
+
+          <div class="panel" role="tabpanel" id="panel-2" aria-labelledby="tab-2" tabindex="0" hidden>
+            <div class="panel__head"><h3>Fix an instruction</h3><span class="pill">subagent: code-reviewer</span></div>
+            <p class="panel__ev">Re-read 9 files the main session had just read, in 5 of 41 sessions.</p>
+            <div class="stats">
+              <div class="stat"><span class="stat__k">Time</span><span class="stat__v"><span class="bound">about</span>12 min</span></div>
+              <div class="stat"><span class="stat__k">Tokens</span><span class="stat__v">340k</span></div>
+              <div class="stat"><span class="stat__k">Money</span><span class="stat__v">$1.10</span></div>
+            </div>
+            <div class="kv">
+              <div class="kv__row"><span class="kv__k">Proof</span><span class="kv__v kv__v--mono">9 re-reads, each with its session and line</span></div>
+              <div class="kv__row"><span class="kv__k">Fix</span><div class="fix">Pass the changed-files summary when delegating. The report includes the proposed text.</div></div>
+            </div>
+          </div>
+
+          <div class="panel" role="tabpanel" id="panel-3" aria-labelledby="tab-3" tabindex="0" hidden>
+            <div class="panel__head"><h3>Change the structure</h3><span class="pill">repeated request</span></div>
+            <p class="panel__ev">"Generate the changelog entry from the last PRs", asked in 7 of 41 sessions.</p>
+            <div class="stats">
+              <div class="stat"><span class="stat__k">Time</span><span class="stat__v"><span class="bound">about</span>25 min</span></div>
+              <div class="stat"><span class="stat__k">Tokens</span><span class="stat__v">180k</span></div>
+              <div class="stat"><span class="stat__k">Money</span><span class="stat__v">$0.95</span></div>
+            </div>
+            <div class="kv">
+              <div class="kv__row"><span class="kv__k">Proof</span><span class="kv__v kv__v--mono">7 requests, each with its session and line</span></div>
+              <div class="kv__row"><span class="kv__k">Fix</span><div class="fix">Turn it into a skill. The report includes a draft SKILL.md.</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="report__foot">Illustrative output.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="how">
+    <div class="wrap split how">
+      <div class="how__intro">
+        <h2>A script counts. Your agent judges.</h2>
+        <p class="lede">Numbers have to be reproducible, so the model never estimates one. What the model adds is judgment: telling real friction from ordinary work and writing the fix.</p>
+        <p class="how__note">Run it on the strongest reasoning model you have.</p>
+      </div>
+      <ol class="steps" style="list-style:none;margin:0;padding:0">
+        <li class="step">
+          <span class="step__n">1</span>
+          <div class="step__body"><div class="step__top"><h3>Read</h3><span class="pill">local script</span></div><p>Parses the session transcripts your agent already saves on your machine. Nothing to log, nothing to set up.</p></div>
+        </li>
+        <li class="step">
+          <span class="step__n">2</span>
+          <div class="step__body"><div class="step__top"><h3>Map</h3><span class="pill">local script</span></div><p>Inventories the harness: the instructions file, skills, subagents, commands, hooks, MCP servers and plugins.</p></div>
+        </li>
+        <li class="step">
+          <span class="step__n">3</span>
+          <div class="step__body"><div class="step__top"><h3>Suggest</h3><span class="pill">your agent</span></div><p>Groups signals by cause, separates real friction from ordinary work, classifies each finding and writes the change. The script supplies every number.</p></div>
+        </li>
+        <li class="step">
+          <span class="step__n">4</span>
+          <div class="step__body"><div class="step__top"><h3>Compare</h3><span class="pill">local script</span></div><p>After you accept a change, later runs compare that piece before and after, in errors, corrections, time and cost.</p></div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="section" id="findings">
+    <div class="wrap">
+      <div class="section__head">
+        <h2>Each finding gets a class. The class picks the fix.</h2>
+      </div>
+      <div class="rows" role="list">
+        <div class="rows__head" aria-hidden="true"><span>Class</span><span>When</span><span>Fix</span></div>
+        <div class="row" role="listitem"><span class="row__c">Rule exists, but is ignored</span><span class="row__w">The instruction is there. The agent doesn't follow it.</span><span class="row__f"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-right"/></svg>Enforce it with a script, hook or check.</span></div>
+        <div class="row" role="listitem"><span class="row__c">Partial or outdated instruction</span><span class="row__w">It exists but is incomplete, or contradicts the repo today.</span><span class="row__f"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-right"/></svg>Fix the text in the right piece.</span></div>
+        <div class="row" role="listitem"><span class="row__c">Missing instruction</span><span class="row__w">Nothing in the harness covers it.</span><span class="row__f"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-right"/></svg>Add it where it belongs.</span></div>
+        <div class="row" role="listitem"><span class="row__c">Structure change</span><span class="row__w">A pattern repeats across sessions.</span><span class="row__f"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-right"/></svg>Turn it into a skill, subagent or script, or remove an unused piece.</span></div>
+      </div>
+
+      <div class="aside">
+        <p class="aside__hand">More text is rarely the fix.</p>
+        <p>When a rule is already written and the agent ignores it, the answer is a hook or a check, not a longer prompt. The plugin tells those cases apart.</p>
+        <p class="small">Problems in a piece you don't control become recommendations. Findings already suggested, rejected or changed are listed, never repeated.</p>
+      </div>
+
+      <div class="signals">
+        <p class="signals__label">The signals it reads:</p>
+        <div class="marquee">
+          <div class="marquee__track">
+            <span>failed commands</span><span>fix loops</span><span>wrong commands</span><span>repeated file reads</span><span>subagents re-reading</span><span>user corrections</span><span>rejected plans</span><span>permission denials</span><span>repeated requests</span><span>manual procedures</span><span>heavy context</span><span>unused pieces</span><span>oversized pieces</span><span>API errors</span>
+            <span aria-hidden="true">failed commands</span><span aria-hidden="true">fix loops</span><span aria-hidden="true">wrong commands</span><span aria-hidden="true">repeated file reads</span><span aria-hidden="true">subagents re-reading</span><span aria-hidden="true">user corrections</span><span aria-hidden="true">rejected plans</span><span aria-hidden="true">permission denials</span><span aria-hidden="true">repeated requests</span><span aria-hidden="true">manual procedures</span><span aria-hidden="true">heavy context</span><span aria-hidden="true">unused pieces</span><span aria-hidden="true">oversized pieces</span><span aria-hidden="true">API errors</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="numbers">
+    <div class="wrap split nums">
+      <div class="nums__main">
+        <div class="section__head">
+          <h2>Costs come with their limits.</h2>
+          <p class="lede">Time, tokens and money are counted by a local script. The numbers are why you can trust a finding, so each one says what it is.</p>
+        </div>
+        <ul class="principles">
+          <li><strong>Each number says what kind it is.</strong><span>At least, at most or about: a lower bound, an upper bound or an estimate. Numbers of different kinds are never added together.</span></li>
+          <li><strong>Each number says how often.</strong><span>"11 times in 6 of 41 sessions", so one bad session doesn't pass for a habit.</span></li>
+          <li><strong>They measure what was spent, not what you'll save.</strong><span>A saving is claimed only after a before and after comparison shows it.</span></li>
+          <li><strong>Your agent's own figure sits beside the estimate.</strong><span>Claude Code records its cost per session. The report shows both and never sums them.</span></li>
+          <li><strong>Thin evidence is marked partial.</strong><span>With the reason, instead of being rounded up into a finding.</span></li>
+        </ul>
+      </div>
+      <aside class="ledger" aria-label="Example cost ledger">
+        <div class="ledger__head"><strong>Cost ledger</strong><span>Illustrative output</span></div>
+        <div class="ledger__row"><span class="k">Failures</span><span class="lead"></span><span class="v"><span class="bound">at least</span>52 min</span></div>
+        <div class="ledger__row"><span class="k">Re-reads</span><span class="lead"></span><span class="v"><span class="bound">about</span>18 min</span></div>
+        <div class="ledger__row"><span class="k">Corrected turns</span><span class="lead"></span><span class="v"><span class="bound">at most</span>40 min</span></div>
+        <div class="ledger__rule"></div>
+        <div class="ledger__row"><span class="k">Claude Code reports</span><span class="lead"></span><span class="v">$16.20</span></div>
+        <div class="ledger__row"><span class="k">Script estimates</span><span class="lead"></span><span class="v"><span class="bound">about</span>$14</span></div>
+        <p class="ledger__foot">Both figures are shown. They are never summed.</p>
+      </aside>
+    </div>
+  </section>
+
+  <section class="privacy" id="privacy">
+    <div class="wrap">
+      <div class="privacy__band">
+        <h2 class="privacy__big">Your sessions never leave <em>your machine.</em></h2>
+        <div class="facts">
+          <div class="fact"><h3>Read in place</h3><p>Transcripts are read where they are, never copied, never sent. Only derived, redacted findings are stored, in <code>.harness-ledger/</code> in your project.</p></div>
+          <div class="fact"><h3>Secrets stay out</h3><p>Every string that can reach a report goes through redaction. Hooks and MCP servers are kept as names and shapes, never their commands, arguments or env values.</p></div>
+          <div class="fact"><h3>No telemetry</h3><p>When the script meets something it can't map, the report offers a link to a prefilled GitHub issue holding only names and counts. You read it and decide whether to send it.</p></div>
+          <div class="fact"><h3>Your retention, untouched</h3><p>Claude Code deletes transcripts older than 30 days by default. The plugin tells you how much history you have and never changes that setting.</p></div>
+        </div>
+        <div class="agents">
+          <div class="agent agent--on"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg><b>Claude Code</b><span>Supported, as a plugin</span></div>
+          <a class="agent" href="https://github.com/guilhermebkel/harness-ledger/issues/3" target="_blank" rel="noopener"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg><b>Codex</b><span>Planned</span></a>
+          <a class="agent" href="https://github.com/guilhermebkel/harness-ledger/issues/4" target="_blank" rel="noopener"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg><b>Cursor</b><span>Planned</span></a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="faq">
+    <div class="wrap faq">
+      <div class="section__head faq__head"><h2>Questions</h2></div>
+      <details>
+        <summary>Does it change my harness?</summary>
+        <p class="a">Only if you ask it to, one suggestion at a time, with confirmation, and only in harness files: instructions, skills, subagents, commands, hooks and settings. Pieces from plugins or managed settings are never edited. Findings about them become recommendations.</p>
+      </details>
+      <details>
+        <summary>How much history does it need?</summary>
+        <p class="a">It works from the first run, on whatever sessions you have. Patterns across sessions need a few sessions to show up, and before and after comparisons need a minimum on each side. Below that, the report says the evidence is partial instead of guessing.</p>
+      </details>
+      <details>
+        <summary>How accurate are the costs?</summary>
+        <p class="a">They are estimates with a stated method. Time excludes idle gaps, tokens come from the transcripts, and money comes from a price table you can override in <code>.harness-ledger/config.json</code>. Each signal says whether its number is a lower bound, an upper bound or an estimate.</p>
+      </details>
+      <details>
+        <summary>A finding looks wrong for my project. What do I do?</summary>
+        <p class="a">Reject it and it won't come back. If the rule behind it seems off, ask for a rule question: the script builds a prefilled issue with the signal and your own words, and nothing from your sessions.</p>
+      </details>
+    </div>
+  </section>
+
+  <section class="section cta" id="install">
+    <div class="wrap cta__in">
+      <h2>Stop tuning your harness by feel.</h2>
+      <p class="cta__hand">Let your sessions show you.</p>
+      <div class="install">
+        <code><span class="cmd">/plugin</span> marketplace add guilhermebkel/harness-ledger</code>
+        <code><span class="cmd">/plugin</span> install harness-ledger@guilhermebkel</code>
+      </div>
+      <div class="cta__run">
+        <div class="install">
+          <code><span class="cmd">/harness-ledger:audit-harness</span></code>
+          <button class="copy" type="button" data-copy="/harness-ledger:audit-harness" aria-label="Copy audit command"><svg class="icon icon--copy" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg><svg class="icon icon--ok" aria-hidden="true" focusable="false"><use href="#i-check"/></svg></button>
+        </div>
+        <p>Open Claude Code in your project, pick your strongest reasoning model with <span class="mono">/model</span>, and run it. It works on the sessions you already have. Requires Node.js 20+.</p>
+      </div>
+      <div class="hero__actions" style="animation:none">
+        <button class="btn btn--accent" type="button" data-copy="/plugin marketplace add guilhermebkel/harness-ledger&#10;/plugin install harness-ledger@guilhermebkel" data-label="Copy install command"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg><span>Copy install command</span></button>
+        <a class="btn btn--glass" href="https://github.com/guilhermebkel/harness-ledger" target="_blank" rel="noopener"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-star"/></svg> Star on GitHub</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap footer__in">
+    <a class="brand" href="#top">
+      <svg class="brand__mark" viewBox="0 0 26 26" aria-hidden="true"><path d="M3 13h20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="6.5" cy="13" r="3" fill="var(--bg)" stroke="currentColor" stroke-width="2"/><circle cx="13" cy="13" r="3" fill="var(--bg)" stroke="currentColor" stroke-width="2"/><circle cx="19.5" cy="13" r="3" fill="var(--bg)" stroke="currentColor" stroke-width="2"/></svg>
+      harness-ledger
+    </a>
+    <nav class="footer__links" aria-label="Project links">
+      <a href="https://github.com/guilhermebkel/harness-ledger" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/guilhermebkel/harness-ledger/releases" target="_blank" rel="noopener">Releases</a>
+      <a href="https://github.com/guilhermebkel/harness-ledger/issues" target="_blank" rel="noopener">Issues</a>
+      <a href="https://github.com/guilhermebkel/harness-ledger/blob/master/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a>
+      <a href="https://github.com/guilhermebkel/harness-ledger/blob/master/SECURITY.md" target="_blank" rel="noopener">Security</a>
+    </nav>
+    <p class="footer__legal">MIT License, Guilherme Mota. Version 0.3.2, page updated <time datetime="2026-10-21">October 21, 2026</time>.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  // Tabs
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"]'));
+  function select(tab, focus) {
+    tabs.forEach(function (t) {
+      var on = t === tab;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+      var p = document.getElementById(t.getAttribute('aria-controls'));
+      if (p) p.hidden = !on;
+    });
+    if (focus) tab.focus();
+  }
+  tabs.forEach(function (tab, i) {
+    tab.addEventListener('click', function () { select(tab, false); });
+    tab.addEventListener('keydown', function (e) {
+      var next = null;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowRight') next = tabs[(i + 1) % tabs.length];
+      if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') next = tabs[(i - 1 + tabs.length) % tabs.length];
+      if (e.key === 'Home') next = tabs[0];
+      if (e.key === 'End') next = tabs[tabs.length - 1];
+      if (next) { e.preventDefault(); select(next, true); }
+    });
+  });
+
+  // Copy buttons
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+  function flash(btn) {
+    var label = btn.querySelector('span');
+    var original = label ? label.textContent : null;
+    btn.setAttribute('data-copied', 'true');
+    if (label) label.textContent = 'Copied';
+    setTimeout(function () {
+      btn.removeAttribute('data-copied');
+      if (label && original) label.textContent = original;
+    }, 1600);
+  }
+  document.querySelectorAll('[data-copy]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var text = btn.getAttribute('data-copy');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { flash(btn); }, function () { fallbackCopy(text); flash(btn); });
+      } else { fallbackCopy(text); flash(btn); }
+    });
+  });
+})();
+
+</script>
+</body></html>

@@ -1,0 +1,16 @@
+# harness-ledger
+
+> harness-ledger is a Claude Code plugin that reads the session transcripts Claude Code already saves, maps the project's harness (instructions, skills, subagents, commands, hooks, settings) and suggests evidence-based changes with their costs.
+
+Numbers (time, tokens, money) come from a local script, never from the model. Transcripts stay on the machine; links that leave it carry only shapes, names and counts. Install with `/plugin marketplace add guilhermebkel/harness-ledger`, then `/plugin install harness-ledger@guilhermebkel`, and run `/harness-ledger:audit-harness`.
+
+## Docs
+
+- [README](https://github.com/guilhermebkel/harness-ledger#readme): what it does, install, report format
+- [Releases](https://github.com/guilhermebkel/harness-ledger/releases): versions and notes
+- [Security](https://github.com/guilhermebkel/harness-ledger/blob/master/SECURITY.md): what counts as a vulnerability
+
+## Optional
+
+- [Contributing](https://github.com/guilhermebkel/harness-ledger/blob/master/CONTRIBUTING.md)
+- [Issues](https://github.com/guilhermebkel/harness-ledger/issues)
