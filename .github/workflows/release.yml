@@ -31,7 +31,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Bump the version in package.json, plugin.json and the landing page
+      - name: Bump the version in package.json and the landing page
         env:
           BUMP: ${{ inputs.bump }}
         run: |
@@ -41,12 +41,6 @@ jobs:
           node -e '
             const fs = require("node:fs");
             const { version } = JSON.parse(fs.readFileSync("package.json", "utf8"));
-            const pluginPath = ".claude-plugin/plugin.json";
-            const plugin = fs.readFileSync(pluginPath, "utf8");
-            fs.writeFileSync(pluginPath, plugin.replace(/"version": "[^"]*"/, `"version": "${version}"`));
-            const marketplacePath = ".claude-plugin/marketplace.json";
-            const marketplace = fs.readFileSync(marketplacePath, "utf8");
-            fs.writeFileSync(marketplacePath, marketplace.replace(/"ref": "[^"]*"/, `"ref": "v${version}"`));
             const sitePath = "site/index.html";
             const site = fs.readFileSync(sitePath, "utf8");
             const footerPattern = /Version [^,<]*, page updated <time datetime="[^"]*">[^<]*<\/time>/;
@@ -77,7 +71,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json site/ dist/ skills/audit-harness/scripts/
+          git add package.json site/ dist/ skills/audit-harness/scripts/
           if ! git diff --cached --quiet; then
             git commit -m "release: v$VERSION [skip ci]"
           fi

@@ -11,8 +11,7 @@
   <a href="https://github.com/guilhermebkel/harness-ledger/releases/latest"><img src="https://img.shields.io/github/v/release/guilhermebkel/harness-ledger?color=d4a574&label=release" alt="Latest release" /></a>
   <a href="https://github.com/guilhermebkel/harness-ledger/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/guilhermebkel/harness-ledger/ci.yml?branch=master&label=CI" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow" alt="License: MIT" /></a>
-  <a href="https://code.claude.com/docs/en/plugins"><img src="https://img.shields.io/badge/Claude_Code-plugin-8A2BE2" alt="Claude Code plugin" /></a>
-  <img src="https://img.shields.io/badge/Telemetry-none-2ea44f" alt="No telemetry" />
+    <img src="https://img.shields.io/badge/Telemetry-none-2ea44f" alt="No telemetry" />
 </p>
 
 <p align="center">
@@ -27,7 +26,7 @@ Your harness is everything around your coding agent: the instructions file, skil
 
 `harness-ledger` reads the session transcripts your agent already saves on your machine, maps your current harness, and tells you **which piece is causing which problem, what it cost you in time and tokens, and what to change**, with the exact session and step behind every suggestion. Then it checks whether the change helped.
 
-> **More text is rarely the fix.** When a rule is already written and the agent ignores it, the answer is a hook or a check, not a longer prompt. The plugin tells those cases apart.
+> **More text is rarely the fix.** When a rule is already written and the agent ignores it, the answer is a hook or a check, not a longer prompt. The skill tells those cases apart.
 
 ---
 
@@ -76,21 +75,9 @@ Accept a suggestion and later runs compare the piece before and after the change
 npx skills add guilhermebkel/harness-ledger -g
 ```
 
-The [`skills`](https://github.com/vercel-labs/skills) CLI asks which of your agents (Claude Code, Codex, Cursor) should get the skill. Name them to skip the question (`-a claude-code -a codex -a cursor`), or drop `-g` to install only in the current project. The skill carries its own script, so there is nothing else to install. Running the script needs Node.js 20+; the `skills` CLI itself asks for 22.20+. Update later with `npx skills update`.
+The [`skills`](https://github.com/vercel-labs/skills) CLI asks which of your agents (Claude Code, Codex, Cursor) should get the skill. Name them to skip the question (`-a claude-code -a codex -a cursor`), or drop `-g` to install only in the current project. The skill carries its own script, so there is nothing else to install. Running the script needs Node.js 20+; the `skills` CLI itself asks for 22.20+. Update later with `npx skills update`. In Claude Code the skill runs as `/audit-harness`.
 
-<details>
-<summary><b>Claude Code plugin</b></summary>
-
-The Claude Code plugin installs from the release tag and updates through `/plugin`:
-
-```text
-/plugin marketplace add guilhermebkel/harness-ledger
-/plugin install harness-ledger@guilhermebkel
-```
-
-Its command is `/harness-ledger:audit-harness`; with the skill installed by `npx`, it is `/audit-harness`.
-
-</details>
+Installed the old Claude Code plugin? Remove it with `/plugin uninstall harness-ledger@guilhermebkel`, then install the skill as above.
 
 ### 2. Analyze your sessions
 
@@ -212,7 +199,7 @@ To see what a run of the skill cost you, look at its own row the next time you a
 
 | Agent | Status |
 | --- | --- |
-| Claude Code | ✅ Supported, as a skill (or as a plugin) |
+| Claude Code | ✅ Supported, as a skill |
 | Codex | ✅ Supported, as a skill. Cost is partial: some token counts are not recorded |
 | Cursor | ✅ Supported, as a skill. Cost is partial: transcripts record no tokens, tool results, model or times, so failure signals that need a result don't appear |
 

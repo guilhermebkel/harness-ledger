@@ -72,7 +72,7 @@ A good pull request:
 - does one thing, and says why in the description;
 - passes `pnpm check`;
 - adds or updates tests, including a fixture case for any new transcript format;
-- leaves `dist/`, `version` and the marketplace `ref` alone (releases change those);
+- leaves `dist/`, `skills/audit-harness/scripts/` and `version` alone (releases change those);
 - has no session data, real paths or company names anywhere.
 
 Reviews look at behavior first, then at the rules lint can't check: whether a comment says something the code doesn't, whether a name says what a map holds, whether a test would fail if the code broke.

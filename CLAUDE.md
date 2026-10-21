@@ -1,6 +1,6 @@
 # harness-ledger
 
-A Claude Code plugin that reads the session transcripts the agent already saves, maps the project's harness, and suggests evidence-based changes. Vocabulary is in `GLOSSARY.md`; decisions are in `docs/adr/`; planned work (v2 Bench, Codex, Cursor) is in GitHub issues.
+A skill for Claude Code, Codex and Cursor that reads the session transcripts the agent already saves, maps the project's harness, and suggests evidence-based changes. Vocabulary is in `GLOSSARY.md`; decisions are in `docs/adr/`; planned work (v2 Bench, Codex, Cursor) is in GitHub issues.
 
 ## Layout
 
@@ -18,7 +18,7 @@ ADR 0008 has the reasons; `docs/code-standards.md` ("Architecture") has the rule
 - Tests sit next to the file they test (`*.test.ts`). There is no `test/` folder.
 - `dist/harness-ledger.mjs`: the bundled script the skill runs. Generated; only the `Release` workflow commits it (ADR 0004).
 - `site/`: the landing page, static files with no build step. The `Pages` workflow publishes it to GitHub Pages on every merge to `master` that touches `site/`, so it is the one thing that reaches users without a release. The `Release` workflow rewrites the version and date in its footer and the sitemap `lastmod`, then starts `Pages`; the rest is edited by hand.
-- `.github/workflows/`: `ci.yml` (shared checks), `release.yml` (cuts a version, by hand), `pages.yml` (publishes `site/`) and one workflow per provider (`claude-code.yml` validates the plugin and skill).
+- `.github/workflows/`: `ci.yml` (shared checks), `release.yml` (cuts a version, by hand), `pages.yml` (publishes `site/`) and one workflow per provider (`claude-code.yml` validates the skill).
 - `scripts/`: `build.mjs` (bundle), `survey-transcripts.mjs` (the shape of a folder of transcripts, without their content) and `eslint-local-rules.mjs` (this repo's own lint rules, tested next to it).
 - `README.md` (for users), `CONTRIBUTING.md` (for contributors), `SECURITY.md` (what counts as a vulnerability: anything that leaks session data) and `CODE_OF_CONDUCT.md`. `.github/ISSUE_TEMPLATE/` has the bug, feature, mapping-gap and rule-question forms; `docs/assets/` holds the README banner.
 - Adding a provider (Codex, Cursor, ...): follow `docs/adding-a-provider.md`. It covers finding the sessions, exporting a sample of the last 7 days, learning the format, mapping it to the shared model, checking it on real sessions and, in its last step, every file outside `src/Providers/` that must change too (README, site, skill, CI, glossary, issues).
@@ -35,7 +35,7 @@ pnpm quality        # knip (dead code, unused exports and deps), dpdm (import cy
 pnpm build          # src/ -> dist/harness-ledger.mjs
 pnpm check          # all of the above, building to a scratch file so dist/ is untouched (CI runs this)
 node dist/harness-ledger.mjs --help
-claude plugin validate .claude-plugin/plugin.json && claude plugin validate skills
+claude plugin validate skills
 ```
 
 ## Rules
@@ -50,7 +50,7 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 - Layers import only the ones below them: Protocols < Utils < Services/Adapters < Commands < Modules (enforced by lint; `docs/code-standards.md`).
 - Put each test next to the file it tests, named `<File>.test.ts`, with every test under a top-level `describe("ClassName.method()")` naming the public method it goes through (enforced by lint, `local/describe-target`), and follow `docs/test-standards.md`: expected values written by hand, exact assertions, no logic in tests, doubles only at the process's edges (lint enforces part of it).
 - Import with the `@/` alias and the `.ts` file name (`@/Shared/Utils/TimeUtil.ts`), in the same folder too; never `../`, `./` or `.js` (enforced by lint). The alias is defined in `tsconfig.json` (`paths`) and mirrored in `vitest.config.mjs`.
-- Don't commit `dist/`, and don't change `version` or the marketplace `ref` (ADR 0004): users install from the tag in `.claude-plugin/marketplace.json`, not from `master`, so these change only in a release commit. If a local `pnpm build` changed `dist/`, discard that (`git checkout dist/`).
+- Don't commit `dist/` or `skills/audit-harness/scripts/`, and don't change `version` (ADR 0004): they change only in a release commit. If a local `pnpm build` changed `dist/`, discard that (`git checkout dist/`).
 - Use pnpm, never npm: commit `pnpm-lock.yaml`, never `package-lock.json` (ADR 0004).
 - Runtime code uses only Node built-ins (Node 20+). No runtime dependencies (ADR 0004).
 - No comments by default. Write one only for a hidden rule someone could break by changing the code, starting with `Why:`, right above the line where the rule happens: never as a file header, above a whole function, class or type, or in `Protocols/` (enforced by lint, `local/comment-placement`). Delete a comment the code already says. Name maps and records `keyToValue` (`local/map-name`) and put units in names, not comments.
@@ -63,7 +63,7 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 - `skills/audit-harness/SKILL.md` description is loaded in every user session: keep it short.
 - A new provider is not done until the checklist in the last section of `docs/adding-a-provider.md` is complete; when a change adds a file that repeats the provider list, add it to that checklist in the same pull request.
 - The landing page repeats things the code decides: the install commands, the signals, the finding classes, the supported agents and the retention note. When a change touches any of them, update `site/index.html` and `site/llms.txt` in the same pull request, and keep them in line with the README.
-- A merge reaches no one until a release, except `site/`. Cut one with the `Release` workflow (`.github/workflows/release.yml`, run by hand from the Actions tab on `master`, choosing patch, minor or major): in one commit it bumps `version` in `plugin.json` and `package.json`, points the marketplace `ref` at `vX.Y.Z`, runs `pnpm release:check` (adds publint) and rebuilds `dist/`; then it tags `vX.Y.Z` and publishes a GitHub Release with generated notes.
+- The skill is distributed only as a skill, installed with `npx skills add guilhermebkel/harness-ledger -g` (ADR 0011), which reads `master`: a merge reaches users at once for `skills/` and `site/`, and the bundled script changes only in a release. Cut one with the `Release` workflow (`.github/workflows/release.yml`, run by hand from the Actions tab on `master`, choosing patch, minor or major): in one commit it bumps `version` in `package.json`, runs `pnpm release:check` (adds publint) and rebuilds `dist/` and `skills/audit-harness/scripts/`; then it tags `vX.Y.Z` and publishes a GitHub Release with generated notes.
 
 ## Agent skills
 

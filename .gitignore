@@ -3,6 +3,5 @@ coverage/
 .harness-ledger/
 *.log
 .DS_Store
-# The plugin uses pnpm: Claude Code skips dependency installs for plugins with a
-# pnpm lockfile, so pnpm-lock.yaml is committed. Never commit an npm lockfile.
+# The repo uses pnpm, so pnpm-lock.yaml is committed. Never commit an npm lockfile.
 package-lock.json

@@ -1,5 +1,5 @@
 name: Feature request
-description: A signal, a flow, an agent or anything else you'd like the plugin to do.
+description: A signal, a flow, an agent or anything else you'd like the skill to do.
 title: "[feature] "
 labels: ["enhancement", "needs-triage"]
 body:
@@ -7,7 +7,7 @@ body:
     id: problem
     attributes:
       label: The problem
-      description: What do you see in your sessions or your harness that the plugin misses today?
+      description: What do you see in your sessions or your harness that the skill misses today?
       placeholder: My agent keeps ... and the analysis doesn't flag it.
     validations:
       required: true

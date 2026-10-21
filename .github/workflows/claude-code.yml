@@ -4,7 +4,6 @@ on:
   push:
     branches: [master]
     paths: &claude-code-paths
-      - ".claude-plugin/**"
       - "skills/**"
       - "src/Providers/ClaudeCode/**"
       - "dist/**"
@@ -13,7 +12,7 @@ on:
     paths: *claude-code-paths
 
 jobs:
-  validate-plugin:
+  validate-skill:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,12 +26,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install the Claude Code CLI
         run: npm install --global @anthropic-ai/claude-code
-      # The plugin root holds this repo's CLAUDE.md (for contributors), which plugins don't load;
-      # that is the one expected warning, so the manifest is checked without --strict.
-      - name: Validate the plugin manifest
-        run: claude plugin validate .claude-plugin/plugin.json
-      - name: Validate the marketplace entry
-        run: claude plugin validate --strict .claude-plugin/marketplace.json
       - name: Validate the skill
         run: claude plugin validate --strict skills
       - name: The bundled script the skill runs starts
