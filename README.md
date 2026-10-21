@@ -3,7 +3,7 @@
 <p align="center">
   <strong>Every piece of your coding agent's harness, with what it costs you and the receipts.</strong>
   <br />
-  <em>Reads the sessions your agent already saves, names the piece behind each problem, and checks whether the fix worked. Built for Claude Code; Codex and Cursor are next.</em>
+  <em>Reads the sessions your agent already saves, names the piece behind each problem, and checks whether the fix worked. Works with Claude Code, Codex and Cursor.</em>
 </p>
 
 <p align="center">
@@ -70,22 +70,32 @@ Accept a suggestion and later runs compare the piece before and after the change
 
 ## Quick start
 
-### 1. Install the plugin
+### 1. Install
+
+**Claude Code**, as a plugin:
 
 ```text
 /plugin marketplace add guilhermebkel/harness-ledger
 /plugin install harness-ledger@guilhermebkel
 ```
 
-Requires Node.js 20+.
+**Codex and Cursor**, as a skill (any agent the [`skills`](https://github.com/vercel-labs/skills) CLI supports works the same way):
+
+```bash
+npx skills add guilhermebkel/harness-ledger -a codex -a cursor
+```
+
+Add `-g` to install for every project. The skill carries its own script, so there is nothing else to install. Requires Node.js 20+ to run it (the `skills` CLI itself asks for Node.js 22.20+).
 
 ### 2. Analyze your sessions
 
-Open Claude Code in your project, pick your strongest reasoning model with `/model`, and run:
+Open your agent in the project, pick its strongest reasoning model, and run the skill. In Claude Code:
 
 ```text
 /harness-ledger:audit-harness
 ```
+
+In Codex and Cursor, ask the agent to run the `audit-harness` skill (for example, "use audit-harness to audit my harness").
 
 It works on the sessions you already have, from the first run. No extra logging, no setup.
 
@@ -198,8 +208,10 @@ To see what a run of the skill cost you, look at its own row the next time you a
 | Agent | Status |
 | --- | --- |
 | Claude Code | ✅ Supported, as a plugin |
-| Codex | 🔜 Planned ([#3](https://github.com/guilhermebkel/harness-ledger/issues/3)) |
-| Cursor | 🔜 Planned ([#4](https://github.com/guilhermebkel/harness-ledger/issues/4)) |
+| Codex | ✅ Supported, as a skill. Cost is partial: some token counts are not recorded |
+| Cursor | ✅ Supported, as a skill. Cost is partial: transcripts record no tokens, tool results, model or times, so failure signals that need a result don't appear |
+
+Point the script at another agent with `--provider codex` or `--provider cursor`. `HARNESS_LEDGER_CODEX_HOME` and `HARNESS_LEDGER_CURSOR_HOME` relocate their folders (`~/.codex`, `~/.cursor`) when yours live elsewhere.
 
 Each agent is a provider: one folder that reads its own transcripts and settings into a shared model. Want yours? [`docs/adding-a-provider.md`](docs/adding-a-provider.md) walks through it.
 
@@ -208,7 +220,7 @@ Each agent is a provider: one folder that reads its own transcripts and settings
 - **Everything runs locally.** Transcripts are read in place, never copied, never sent. Only derived, redacted findings are stored, in `.harness-ledger/`.
 - **Secrets stay out.** Every string that can reach a report goes through redaction. Hooks and MCP servers are kept as names and shapes, never their commands, arguments or env values.
 - **No telemetry.** When the script meets something it can't map (a new transcript format, a model with no price), the report offers a link to a prefilled GitHub issue holding only names and counts. You read it and decide whether to send it.
-- **Your retention, untouched.** Claude Code deletes transcripts older than 30 days by default. The plugin tells you how much history you have and never changes that setting.
+- **Your retention, untouched.** Claude Code deletes transcripts older than 30 days by default; Codex and Cursor keep theirs. The skill tells you how much history you have and never changes that setting.
 
 Found a way around any of this? See [SECURITY.md](SECURITY.md).
 
@@ -261,7 +273,6 @@ Reject it (it won't come back), and if the rule behind it seems off, ask for a r
 ## Roadmap
 
 - [x] **Insights:** history analysis, harness inventory, classified and costed findings, suggestions, before/after comparison.
-- [ ] **Codex and Cursor** providers ([#3](https://github.com/guilhermebkel/harness-ledger/issues/3), [#4](https://github.com/guilhermebkel/harness-ledger/issues/4)).
 - [ ] **Bench** ([#2](https://github.com/guilhermebkel/harness-ledger/issues/2)): prove a suggestion before adopting it. Replay tasks from your sessions with different models, reasoning effort, subagents or pieces; filter by tests; blind review with a calibrated judge; recommend the cheapest configuration that still does the job.
 - [ ] **Cross-agent comparison:** when a project uses more than one agent, compare which harness fails less on similar tasks.
 - [ ] **Team mode:** aggregate sessions across a team.

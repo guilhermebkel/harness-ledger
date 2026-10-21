@@ -7,7 +7,7 @@ Thanks for helping. This project gets better mostly from people running it on th
 - **Send a mapping gap.** When a report lists something the script couldn't map (a new transcript line, an unknown model, a check tool it doesn't know), it gives you a prefilled issue link with only names and counts. Read it, then send it. That's how new agent versions get supported.
 - **Question a rule.** A finding that's wrong for your project ("that command is supposed to fail here") is a rule question. Ask the skill for one, or open the [rule question form](https://github.com/guilhermebkel/harness-ledger/issues/new?template=rule-question.yml).
 - **Report a bug or ask for a feature** with the [issue forms](https://github.com/guilhermebkel/harness-ledger/issues/new/choose).
-- **Add a provider** (Codex, Cursor, ...). [`docs/adding-a-provider.md`](docs/adding-a-provider.md) walks through it, from finding the sessions to checking the result.
+- **Add a provider** (Claude Code, Codex and Cursor exist; others are welcome). [`docs/adding-a-provider.md`](docs/adding-a-provider.md) walks through it, from finding the sessions to checking the result.
 - **Improve a signal, the cost model or the docs.**
 
 For anything large, open an issue first so we can agree on the approach.

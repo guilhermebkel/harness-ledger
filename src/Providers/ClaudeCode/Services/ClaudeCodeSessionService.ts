@@ -9,7 +9,6 @@ import type {
 import type {
   CompactionTrigger,
   SessionFacts,
-  ThreadFacts,
   ThreadRef,
   TokenUsage,
   ToolCall,
@@ -25,7 +24,7 @@ import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.ts";
 import { PathUtil } from "@/Shared/Utils/PathUtil.ts";
 import { RedactUtil } from "@/Shared/Utils/RedactUtil.ts";
 import { SessionUtil } from "@/Shared/Utils/SessionUtil.ts";
-import { TimeUtil } from "@/Shared/Utils/TimeUtil.ts";
+import { ThreadSummaryUtil } from "@/Shared/Utils/ThreadSummaryUtil.ts";
 import type {
   ClaudeCodeParseContext,
   ClaudeCodeToolCallContext,
@@ -272,7 +271,7 @@ export class ClaudeCodeSessionService {
 
     facts.messages = [...context.messageIdToMessage.values()];
     // Why: older transcripts have no environment record; the working directory's shape still tells the platform.
-    facts.environment.platform ??= this.platformFromPath(facts.projectDir);
+    facts.environment.platform ??= SessionUtil.platformFromPath(facts.projectDir);
     this.summarizeThreads(context, options.idleMs);
     return facts;
   }
@@ -322,39 +321,17 @@ export class ClaudeCodeSessionService {
 
   private summarizeThreads(context: ClaudeCodeParseContext, idleMs: number): void {
     const facts = context.facts;
-    for (const [threadId, eventsAtMs] of context.threadIdToEventsAtMs) {
-      eventsAtMs.sort((left, right) => left - right);
-      const isMain = threadId === SessionUtil.MAIN_THREAD_ID;
-      const threadFacts: ThreadFacts = {
-        thread: isMain
-          ? SessionUtil.mainThread()
-          : {
-              id: threadId,
-              agentType: this.knownTypeOfThread(facts, threadId),
-            },
-        activeMs: TimeUtil.activeTime(eventsAtMs, idleMs),
-        firstEventAtMs: eventsAtMs[0],
-        lastEventAtMs: eventsAtMs.at(-1),
-        promptHash: context.threadIdToFirstPromptHash.get(threadId),
-      };
-      facts.threads.push(threadFacts);
-      if (isMain) {
-        facts.activeMs = threadFacts.activeMs;
-        facts.startedAtMs = threadFacts.firstEventAtMs;
-        facts.endedAtMs = threadFacts.lastEventAtMs;
-      }
-    }
+    ThreadSummaryUtil.summarize({
+      facts,
+      idleMs,
+      threadIdToEventsAtMs: context.threadIdToEventsAtMs,
+      threadIdToFirstPromptHash: context.threadIdToFirstPromptHash,
+    });
     if (facts.startedAtMs === undefined) {
       const allEventsAtMs = [...context.threadIdToEventsAtMs.values()].flat().sort((left, right) => left - right);
       facts.startedAtMs = allEventsAtMs[0];
       facts.endedAtMs = allEventsAtMs.at(-1);
     }
-  }
-
-  private knownTypeOfThread(facts: SessionFacts, threadId: string): string {
-    return facts.tools.find((call) => call.thread.id === threadId)?.thread.agentType
-      ?? facts.messages.find((message) => message.thread.id === threadId)?.thread.agentType
-      ?? UNKNOWN_SUBAGENT_TYPE;
   }
 
   private relabelThread(facts: SessionFacts, threadId: string, agentType: string): void {
@@ -594,19 +571,6 @@ export class ClaudeCodeSessionService {
       ref: this.evidenceFactory(context, line)(text),
       occurredAtMs: line.occurredAtMs,
     });
-  }
-
-  private platformFromPath(projectDir: string | undefined): string | undefined {
-    if (projectDir === undefined) {
-      return undefined;
-    }
-    if (/^[A-Za-z]:[\\/]/.test(projectDir)) {
-      return "win32";
-    }
-    if (projectDir.startsWith("/Users/")) {
-      return "darwin";
-    }
-    return projectDir.startsWith("/home/") ? "linux" : undefined;
   }
 
   private readEnvironment(context: ClaudeCodeParseContext, snapshot: UnknownRecord | undefined): void {

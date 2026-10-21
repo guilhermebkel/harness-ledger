@@ -20,3 +20,28 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+
+  skill-install:
+    runs-on: ubuntu-latest
+    env:
+      DISABLE_TELEMETRY: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Install the skill the way a user does, for every supported agent
+        run: |
+          mkdir -p skills/audit-harness/scripts
+          cp dist/harness-ledger.mjs skills/audit-harness/scripts/harness-ledger.mjs
+          WORK=$(mktemp -d)
+          (cd "$WORK" && npx --yes skills@1.7.4 add "$GITHUB_WORKSPACE" -a claude-code -a codex -a cursor --copy -y)
+          for dir in .agents/skills .claude/skills; do
+            node "$WORK/$dir/audit-harness/scripts/harness-ledger.mjs" --help > /dev/null
+            test -f "$WORK/$dir/audit-harness/references/findings.md"
+          done
+

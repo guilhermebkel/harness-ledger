@@ -53,7 +53,7 @@ These are starting points, not rules; read the piece and what it loads (skill fi
 
 When the project has no instruction file, the person has been repeating context by hand in every session. Propose the harness in the order of their work, using `process` (stages in order, with sessions, steps, failures and commands):
 
-1. **A first `CLAUDE.md`** (class Missing instruction, piece `instructions:project`), drafted only from evidence:
+1. **A first instruction file** (`CLAUDE.md` for Claude Code, `AGENTS.md` for Codex and Cursor) (class Missing instruction, piece `instructions:project`), drafted only from evidence:
    - **Commands** from `commonCommands`: the ones run in several sessions, written as in `example`, including the setup they needed (a version manager, an env var, a timeout). A command that keeps failing is not one to recommend.
    - **Corrections** the person made more than once, as rules (the excerpts of `user_correction` and rejected plans hold their words).
    - **Conventions** they stated while correcting ("follow the repo's pattern for X").

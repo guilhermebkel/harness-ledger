@@ -1,4 +1,6 @@
 import { ClaudeCodeProviderAdapter } from "@/Providers/ClaudeCode/Adapters/ClaudeCodeProviderAdapter.ts";
+import { CodexProviderAdapter } from "@/Providers/Codex/Adapters/CodexProviderAdapter.ts";
+import { CursorProviderAdapter } from "@/Providers/Cursor/Adapters/CursorProviderAdapter.ts";
 import type { BaseProviderAdapter } from "@/Shared/Adapters/BaseProviderAdapter.ts";
 import type { ProviderType } from "@/Shared/Protocols/ProviderProtocol.ts";
 
@@ -9,6 +11,8 @@ export class ProviderModule {
 
   private static readonly TYPE_TO_FACTORY: Record<ProviderType, ProviderFactory> = {
     "claude-code": () => new ClaudeCodeProviderAdapter(),
+    "codex": () => new CodexProviderAdapter(),
+    "cursor": () => new CursorProviderAdapter(),
   };
 
   static create(type: ProviderType = ProviderModule.DEFAULT_PROVIDER): BaseProviderAdapter {

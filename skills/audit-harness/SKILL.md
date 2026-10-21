@@ -1,6 +1,6 @@
 ---
 name: audit-harness
-description: Analyzes this project's coding-agent harness (CLAUDE.md, skills, subagents, commands, hooks, MCP servers, plugins) against the session transcripts already saved on this machine, and suggests evidence-based changes. Use when the user asks to improve, audit or clean up their harness, asks why the agent keeps making the same mistake, asks whether a skill, subagent or instruction is worth it, or asks whether a harness change helped.
+description: Analyzes this project's coding-agent harness (instruction files, skills, subagents, commands, hooks, MCP servers, plugins) against the session transcripts already saved on this machine, and suggests evidence-based changes. Use when the user asks to improve, audit or clean up their harness, asks why the agent keeps making the same mistake, asks whether a skill, subagent or instruction is worth it, or asks whether a harness change helped.
 argument-hint: "[what to analyze, e.g. 'only code-reviewer, last 2 weeks' or 'did my change help?']"
 model: opus
 ---
@@ -9,7 +9,7 @@ model: opus
 
 You turn deterministic signals from the user's own sessions into a short list of classified, evidence-backed suggestions for their harness. The numbers come from a local script; your job is to judge, classify and write the change. Never invent a number, a session or a step.
 
-The request: $ARGUMENTS
+The request: $ARGUMENTS (when this line shows no text or the literal variable, use what the user just asked)
 
 ## The model
 
@@ -17,15 +17,17 @@ The script counts; you judge. Grouping signals by cause, telling real friction f
 
 ## The script
 
-All data comes from the bundled script. Run it with Bash from the project root:
+All data comes from the bundled script, `scripts/harness-ledger.mjs` inside this skill's folder (the folder that holds this `SKILL.md`; take the path from where the skill was loaded). Run it with Bash from the project root:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/dist/harness-ledger.mjs" <command> [options]
+node "<this skill's folder>/scripts/harness-ledger.mjs" <command> --provider <type> [options]
 ```
+
+`<type>` is the agent you are running in: `claude-code`, `codex` or `cursor`. Pass it on every command, so the script reads that agent's sessions.
 
 It needs Node.js 20+. If `node` is missing or older, look for a newer one the person already has (`nvm`, `fnm`, `volta`, `mise`, or `~/.nvm/versions/node/*/bin/node`), use it and say which in one line; stop only if there is none. It reads transcripts in place, prints JSON, and writes only to `.harness-ledger/` in the project.
 
-Always pass `--exclude-session ${CLAUDE_SESSION_ID}` to `analyze`, `compare` and `status`, so the session running this analysis isn't counted.
+In Claude Code, always pass `--exclude-session ${CLAUDE_SESSION_ID}` to `analyze`, `compare` and `status`, so the session running this analysis isn't counted. Other agents don't give the skill a session id: leave the option out and say in one line that the current session is part of the data.
 
 | Command | Use it for |
 | --- | --- |
@@ -48,7 +50,7 @@ Read the request and pick one flow. If it's empty or vague, use flow 1.
 3. **Compare a change** — "did my change to X help?", "is it better since I edited CLAUDE.md?".
 4. **Manage suggestions** — "show pending suggestions", "apply the second one", "reject X".
 
-Before any flow, read `references/findings.md` in this skill's folder (`${CLAUDE_SKILL_DIR}/references/findings.md`). It has the classes, the rules and the report format. Follow it exactly.
+Before any flow, read `references/findings.md` in this skill's folder (`references/findings.md` next to this file). It has the classes, the rules and the report format. Follow it exactly.
 
 ## Flow 1 and 2: analyze
 
@@ -103,7 +105,7 @@ If `.harness-ledger/` is not in `.gitignore` and the project is a git repo, ask 
 Only when the user explicitly asks for a specific suggestion. Then:
 
 1. Show the exact change (a diff or the new text) and the file it touches, and wait for a yes.
-2. Only edit harness files: `CLAUDE.md`, `CLAUDE.local.md`, files under `.claude/` (agents, skills, commands, settings hooks and permissions), and `.mcp.json`. User-level files under `~/.claude/` only when the user names them. Never edit plugin files (they're overwritten on update; suggest the change to the plugin's author instead), application code, or retention settings.
+2. Only edit harness files: the instruction files (`CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`), files under the agent's project folder (`.claude/`, `.codex/`, `.cursor/`, `.agents/`: agents, skills, commands, rules, hooks and permissions), and `.mcp.json`. User-level files under the agent's home folder (`~/.claude/`, `~/.codex/`, `~/.cursor/`) only when the user names them. Never edit plugin files (they're overwritten on update; suggest the change to the plugin's author instead), application code, or retention settings.
 3. Prefer the smallest change that fixes the cause. For "Rule exists, but is ignored", that is a hook, a script or a permission rule — not more text.
 4. After editing, run `suggestions set <id> applied`. Tell the user that running the comparison after a few more sessions (at least the configured minimum per side) will show whether it helped.
 5. If the project is a git repo, offer to commit the change on a branch; don't commit or push unless asked.

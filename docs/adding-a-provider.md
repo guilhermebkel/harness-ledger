@@ -1,6 +1,6 @@
 # Adding a provider
 
-How to add support for another agentic coding tool (a provider, see `GLOSSARY.md`) such as Codex or Cursor. The layout and its rules are in ADR 0008; open specs are in GitHub issues (#3 Codex, #4 Cursor). Follow the steps in order: each one gives the next one its input.
+How to add support for another agentic coding tool (a provider, see `GLOSSARY.md`) such as Codex or Cursor (both already added, so their folders are good examples). The layout and its rules are in ADR 0008; planned work is in GitHub issues. Follow the steps in order: each one gives the next one its input.
 
 ## 1. Find where the provider keeps its sessions
 
@@ -80,8 +80,7 @@ src/Providers/<Provider>/
 
 - Add the type to `ProviderType` and one entry to `ProviderModule`. Nothing in `src/Shared/` should need the provider's names; if it does, extend the shared model instead (ADR 0008, enforced by lint).
 - Reproduce every format case you found in step 3 in the fixture, with made-up content, and test it next to the adapter.
-- Add `.github/workflows/<provider>.yml`, triggered by changes to the provider's folder and its plugin manifest, like `claude-code.yml`.
-- Add the provider's plugin manifest beside the others, pointing at the same `skills/` folder (issues #3 and #4 have the details per provider).
+- If the provider has its own plugin manifest, add it beside the others, pointing at the same `skills/` folder, with a `.github/workflows/<provider>.yml` that validates it, like `claude-code.yml`. Providers that install the skill through `npx skills add` need neither.
 
 ## 6. Check it on the real sample
 
@@ -97,3 +96,23 @@ HARNESS_LEDGER_<PROVIDER>_HOME=<sample home> node dist/harness-ledger.mjs analyz
 - The signals make sense: open a few `evidence` lines and check them against the transcript.
 
 Every surprise is a fixture case and a test before it's a fix.
+
+## 7. Update everything outside `src/Providers/`
+
+Code is not the whole change. These files repeat what the code decides, so a provider is not done until each one is checked. Search for an existing provider's name (`grep -rIil cursor --exclude-dir=node_modules --exclude-dir=dist .`) to catch anything missing here.
+
+| Where | What to change |
+| --- | --- |
+| `src/Shared/Protocols/ProviderProtocol.ts` and `src/Shared/Modules/ProviderModule.ts` (+ test) | The `ProviderType` entry and its factory |
+| `CLAUDE.md` | The provider list in the Layout section |
+| `README.md` | Supported-agents table, tagline, retention note (does the provider delete old transcripts?), `--provider` usage with the provider's home variables, roadmap |
+| `site/index.html` and `site/llms.txt` | Agent cards, retention text, title, description, Open Graph, JSON-LD `softwareRequirements`. Merging to `master` publishes `site/` at once, so land it with the release |
+| Skill install path | The agent's skill folders in the install commands (README and site) and the `skills add` check in `ci.yml` |
+| `skills/audit-harness/` | `SKILL.md` and `references/findings.md`: suggestions use the provider's own vocabulary and file names |
+| `GLOSSARY.md` | Terms the provider introduces |
+| `CONTRIBUTING.md`, this guide | Provider list, examples |
+| `docs/adr/` | A new ADR only if the provider changes a decision (for example a database instead of JSONL) |
+| `docs/cost-model.md` and `SignalService` | When the provider reports no tokens or results, say how the cost is marked partial |
+| `.github/workflows/` | `ci.yml` covers shared checks. Add `<provider>.yml` only when the provider has a plugin manifest to validate |
+| GitHub issues | Comment on and close the provider's issue; open one for each known gap (unmapped tools, inventory pieces, formats not read) |
+

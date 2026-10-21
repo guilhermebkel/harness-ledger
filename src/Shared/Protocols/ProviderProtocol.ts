@@ -1,4 +1,4 @@
-export type ProviderType = "claude-code";
+export type ProviderType = "claude-code" | "codex" | "cursor";
 
 export interface TranscriptFileStat {
   file: string;

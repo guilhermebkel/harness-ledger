@@ -14,14 +14,14 @@ ADR 0008 has the reasons; `docs/code-standards.md` ("Architecture") has the rule
   - `Commands/`: one class per CLI command.
   - `Services/`: business rules (signals, attribution, usage, before/after, mentions, store, config, suggestions).
   - `Protocols/`: types only. `Utils/`: static helper classes (guards, env, time, redaction, JSONL, git).
-- `src/Providers/<Provider>/`: one agentic coding tool (Claude Code today), with the same folders as Shared. `Adapters/<Provider>ProviderAdapter.ts` extends `BaseProviderAdapter`; `Utils/<Provider>FixtureUtil.ts` builds a fake home and project in the tool's real format, for tests.
+- `src/Providers/<Provider>/`: one agentic coding tool (`ClaudeCode`, `Codex`, `Cursor`), with the same folders as Shared. `Adapters/<Provider>ProviderAdapter.ts` extends `BaseProviderAdapter`; `Utils/<Provider>FixtureUtil.ts` builds a fake home and project in the tool's real format, for tests.
 - Tests sit next to the file they test (`*.test.ts`). There is no `test/` folder.
 - `dist/harness-ledger.mjs`: the bundled script the skill runs. Generated; only the `Release` workflow commits it (ADR 0004).
 - `site/`: the landing page, static files with no build step. The `Pages` workflow publishes it to GitHub Pages on every merge to `master` that touches `site/`, so it is the one thing that reaches users without a release. The `Release` workflow rewrites the version and date in its footer and the sitemap `lastmod`, then starts `Pages`; the rest is edited by hand.
 - `.github/workflows/`: `ci.yml` (shared checks), `release.yml` (cuts a version, by hand), `pages.yml` (publishes `site/`) and one workflow per provider (`claude-code.yml` validates the plugin and skill).
 - `scripts/`: `build.mjs` (bundle), `survey-transcripts.mjs` (the shape of a folder of transcripts, without their content) and `eslint-local-rules.mjs` (this repo's own lint rules, tested next to it).
 - `README.md` (for users), `CONTRIBUTING.md` (for contributors), `SECURITY.md` (what counts as a vulnerability: anything that leaks session data) and `CODE_OF_CONDUCT.md`. `.github/ISSUE_TEMPLATE/` has the bug, feature, mapping-gap and rule-question forms; `docs/assets/` holds the README banner.
-- Adding a provider (Codex, Cursor, ...): follow `docs/adding-a-provider.md`. It covers finding the sessions, exporting a sample of the last 7 days, learning the format, mapping it to the shared model and checking it on real sessions.
+- Adding a provider (Codex, Cursor, ...): follow `docs/adding-a-provider.md`. It covers finding the sessions, exporting a sample of the last 7 days, learning the format, mapping it to the shared model, checking it on real sessions and, in its last step, every file outside `src/Providers/` that must change too (README, site, skill, CI, glossary, issues).
 
 ## Commands
 
@@ -61,6 +61,7 @@ claude plugin validate .claude-plugin/plugin.json && claude plugin validate skil
 - Every string that can reach output passes through `RedactUtil.redact()` / `RedactUtil.excerpt()`. Hook and MCP entries keep names and shapes only (ADR 0007). Add a test with a fake secret for any new output path.
 - Transcript formats are internal: parse defensively, count unknown lines, never throw on a bad line. Add new format cases to the provider's fixture (`ClaudeCodeFixtureUtil`).
 - `skills/audit-harness/SKILL.md` description is loaded in every user session: keep it short.
+- A new provider is not done until the checklist in the last section of `docs/adding-a-provider.md` is complete; when a change adds a file that repeats the provider list, add it to that checklist in the same pull request.
 - The landing page repeats things the code decides: the install commands, the signals, the finding classes, the supported agents and the retention note. When a change touches any of them, update `site/index.html` and `site/llms.txt` in the same pull request, and keep them in line with the README.
 - A merge reaches no one until a release, except `site/`. Cut one with the `Release` workflow (`.github/workflows/release.yml`, run by hand from the Actions tab on `master`, choosing patch, minor or major): in one commit it bumps `version` in `plugin.json` and `package.json`, points the marketplace `ref` at `vX.Y.Z`, runs `pnpm release:check` (adds publint) and rebuilds `dist/`; then it tags `vX.Y.Z` and publishes a GitHub Release with generated notes.
 
