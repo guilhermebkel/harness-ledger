@@ -75,19 +75,17 @@ Accept a suggestion and later runs compare the piece before and after the change
 npx skills add guilhermebkel/harness-ledger -g
 ```
 
-The [`skills`](https://github.com/vercel-labs/skills) CLI asks which of your agents (Claude Code, Codex, Cursor) should get the skill. Name them to skip the question (`-a claude-code -a codex -a cursor`), or drop `-g` to install only in the current project. The skill carries its own script, so there is nothing else to install. Running the script needs Node.js 20+; the `skills` CLI itself asks for 22.20+. Update later with `npx skills update`. In Claude Code the skill runs as `/audit-harness`.
+The [`skills`](https://github.com/vercel-labs/skills) CLI asks which of your agents (Claude Code, Codex, Cursor) should get the skill. Name them to skip the question (`-a claude-code -a codex -a cursor`), or drop `-g` to install only in the current project. The skill carries its own script, so there is nothing else to install. Running the script needs Node.js 20+; the `skills` CLI itself asks for 22.20+. Update later with `npx skills update`.
 
 Installed the old Claude Code plugin? Remove it with `/plugin uninstall harness-ledger@guilhermebkel`, then install the skill as above.
 
 ### 2. Analyze your sessions
 
-Open your agent in the project, pick its strongest reasoning model, and run the skill. In Claude Code:
+Open your agent in the project, pick its strongest reasoning model, and run the skill, the same way in Claude Code, Codex and Cursor:
 
 ```text
 /audit-harness
 ```
-
-In Codex and Cursor, ask the agent to run the `audit-harness` skill (for example, "use audit-harness to audit my harness").
 
 It works on the sessions you already have, from the first run. No extra logging, no setup.
 
