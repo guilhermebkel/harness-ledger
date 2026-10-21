@@ -9,7 +9,7 @@ Now there is one path for every provider: `npx skills add guilhermebkel/harness-
 - The skill carries its own script (`skills/audit-harness/scripts/harness-ledger.mjs`), because the CLI copies only that folder. `SKILL.md` runs the script from there with `--provider <type>`.
 - The CLI installs from the default branch, not from a tag. A merge that changes `skills/` or `site/` reaches users at once; the bundled script changes only in a release, so a `SKILL.md` that needs new script behavior waits for the release or the script lags behind it. Keep the script's flags backward compatible for one release.
 - `version` lives only in `package.json`. The `Release` workflow bumps it, rebuilds `dist/` and the skill's script, tags the commit and publishes the GitHub Release.
-- Updates are `npx skills update`. People who installed the old plugin remove it with `/plugin uninstall` and install the skill; the README says so.
+- Updates are `npx skills update`.
 - The `skill-install` job in `ci.yml` installs the skill into a temporary folder and runs the installed script. There is no per-provider workflow.
 - Adding a provider adds no manifest: it needs its skill folder in the `skills` CLI's agent list, and the checklist in `docs/adding-a-provider.md`.
 
