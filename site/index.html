@@ -1,12 +1,12 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><style>:root{color-scheme:light;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui;background:#fafafa}img{max-width:100%}[hidden]{display:none!important}</style><title>harness-ledger: audit your coding agent's harness (Claude Code, Codex, Cursor)</title>
-<meta name="description" content="harness-ledger is a plugin and skill for Claude Code, Codex and Cursor that reads your saved session transcripts, finds the harness piece behind each problem and suggests fixes with costs.">
+<meta name="description" content="harness-ledger is a skill for Claude Code, Codex and Cursor that reads your saved session transcripts, finds the harness piece behind each problem and suggests fixes with costs.">
 <link rel="canonical" href="https://harnessledger.guilherr.me/">
 <meta name="robots" content="index, follow, max-image-preview:large">
 <meta name="theme-color" content="#16120e">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="harness-ledger">
-<meta property="og:title" content="harness-ledger: Claude Code plugin to audit your agent harness">
+<meta property="og:title" content="harness-ledger: audit your coding agent's harness (Claude Code, Codex, Cursor)">
 <meta property="og:description" content="Reads the session transcripts your agent already saves, names the piece behind each problem, and checks whether the fix worked.">
 <meta property="og:url" content="https://harnessledger.guilherr.me/">
 <meta property="og:image" content="https://harnessledger.guilherr.me/og.png">
@@ -15,7 +15,7 @@
 <meta property="og:image:alt" content="harness-ledger: Your agent's sessions already know what to fix.">
 <meta property="og:locale" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://harnessledger.guilherr.me/#website","url":"https://harnessledger.guilherr.me/","name":"harness-ledger","inLanguage":"en","publisher":{"@id":"https://harnessledger.guilherr.me/#author"}},{"@type":"Person","@id":"https://harnessledger.guilherr.me/#author","name":"Guilherme Mota","url":"https://github.com/guilhermebkel","sameAs":["https://github.com/guilhermebkel"]},{"@type":"SoftwareApplication","@id":"https://harnessledger.guilherr.me/#app","name":"harness-ledger","description":"harness-ledger is a plugin and skill for Claude Code, Codex and Cursor that reads your saved session transcripts, finds the harness piece behind each problem and suggests fixes with evidence and costs.","applicationCategory":"DeveloperApplication","applicationSubCategory":"Claude Code plugin","operatingSystem":"Any (requires Claude Code)","softwareVersion":"0.3.2","softwareRequirements":"Claude Code, Codex or Cursor, Node.js 20+","url":"https://harnessledger.guilherr.me/","downloadUrl":"https://github.com/guilhermebkel/harness-ledger","codeRepository":"https://github.com/guilhermebkel/harness-ledger","license":"https://github.com/guilhermebkel/harness-ledger/blob/master/LICENSE","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"author":{"@id":"https://harnessledger.guilherr.me/#author"}},{"@type":"WebPage","@id":"https://harnessledger.guilherr.me/#page","url":"https://harnessledger.guilherr.me/","name":"harness-ledger: Claude Code plugin to audit your agent harness","description":"harness-ledger is a Claude Code plugin that reads your saved session transcripts, finds the harness piece behind each problem and suggests fixes with costs.","isPartOf":{"@id":"https://harnessledger.guilherr.me/#website"},"about":{"@id":"https://harnessledger.guilherr.me/#app"},"primaryImageOfPage":"https://harnessledger.guilherr.me/og.png","dateModified":"2026-10-21"},{"@type":"FAQPage","@id":"https://harnessledger.guilherr.me/#faq","mainEntity":[{"@type":"Question","name":"Does it change my harness?","acceptedAnswer":{"@type":"Answer","text":"Only if you ask it to, one suggestion at a time, with confirmation, and only in harness files: instructions, skills, subagents, commands, hooks and settings. Pieces from plugins or managed settings are never edited. Findings about them become recommendations."}},{"@type":"Question","name":"How much history does it need?","acceptedAnswer":{"@type":"Answer","text":"It works from the first run, on whatever sessions you have. Patterns across sessions need a few sessions to show up, and before and after comparisons need a minimum on each side. Below that, the report says the evidence is partial instead of guessing."}},{"@type":"Question","name":"How accurate are the costs?","acceptedAnswer":{"@type":"Answer","text":"They are estimates with a stated method. Time excludes idle gaps, tokens come from the transcripts, and money comes from a price table you can override in.harness-ledger/config.json. Each signal says whether its number is a lower bound, an upper bound or an estimate."}},{"@type":"Question","name":"A finding looks wrong for my project. What do I do?","acceptedAnswer":{"@type":"Answer","text":"Reject it and it won't come back. If the rule behind it seems off, ask for a rule question: the script builds a prefilled issue with the signal and your own words, and nothing from your sessions."}}]}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://harnessledger.guilherr.me/#website","url":"https://harnessledger.guilherr.me/","name":"harness-ledger","inLanguage":"en","publisher":{"@id":"https://harnessledger.guilherr.me/#author"}},{"@type":"Person","@id":"https://harnessledger.guilherr.me/#author","name":"Guilherme Mota","url":"https://github.com/guilhermebkel","sameAs":["https://github.com/guilhermebkel"]},{"@type":"SoftwareApplication","@id":"https://harnessledger.guilherr.me/#app","name":"harness-ledger","description":"harness-ledger is a skill for Claude Code, Codex and Cursor that reads your saved session transcripts, finds the harness piece behind each problem and suggests fixes with evidence and costs.","applicationCategory":"DeveloperApplication","applicationSubCategory":"Agent skill","operatingSystem":"Any","softwareVersion":"0.3.2","softwareRequirements":"Claude Code, Codex or Cursor, Node.js 20+","url":"https://harnessledger.guilherr.me/","downloadUrl":"https://github.com/guilhermebkel/harness-ledger","codeRepository":"https://github.com/guilhermebkel/harness-ledger","license":"https://github.com/guilhermebkel/harness-ledger/blob/master/LICENSE","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"author":{"@id":"https://harnessledger.guilherr.me/#author"}},{"@type":"WebPage","@id":"https://harnessledger.guilherr.me/#page","url":"https://harnessledger.guilherr.me/","name":"harness-ledger: audit your coding agent's harness (Claude Code, Codex, Cursor)","description":"harness-ledger is a skill for Claude Code, Codex and Cursor that reads your saved session transcripts, finds the harness piece behind each problem and suggests fixes with costs.","isPartOf":{"@id":"https://harnessledger.guilherr.me/#website"},"about":{"@id":"https://harnessledger.guilherr.me/#app"},"primaryImageOfPage":"https://harnessledger.guilherr.me/og.png","dateModified":"2026-10-21"},{"@type":"FAQPage","@id":"https://harnessledger.guilherr.me/#faq","mainEntity":[{"@type":"Question","name":"Does it change my harness?","acceptedAnswer":{"@type":"Answer","text":"Only if you ask it to, one suggestion at a time, with confirmation, and only in harness files: instructions, skills, subagents, commands, hooks and settings. Pieces from plugins or managed settings are never edited. Findings about them become recommendations."}},{"@type":"Question","name":"How much history does it need?","acceptedAnswer":{"@type":"Answer","text":"It works from the first run, on whatever sessions you have. Patterns across sessions need a few sessions to show up, and before and after comparisons need a minimum on each side. Below that, the report says the evidence is partial instead of guessing."}},{"@type":"Question","name":"How accurate are the costs?","acceptedAnswer":{"@type":"Answer","text":"They are estimates with a stated method. Time excludes idle gaps, tokens come from the transcripts, and money comes from a price table you can override in.harness-ledger/config.json. Each signal says whether its number is a lower bound, an upper bound or an estimate."}},{"@type":"Question","name":"A finding looks wrong for my project. What do I do?","acceptedAnswer":{"@type":"Answer","text":"Reject it and it won't come back. If the rule behind it seems off, ask for a rule question: the script builds a prefilled issue with the signal and your own words, and nothing from your sessions."}}]}]}</script>
 </head><body>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -406,9 +406,8 @@ a.agent:hover { background: color-mix(in oklch, var(--text) 5%, transparent); }
       <p class="hero__sub">harness-ledger works with Claude Code, Codex and Cursor: it reads the transcripts your agent already saves, names the piece behind each problem, and checks whether the fix worked.</p>
 
       <div class="install" id="hero-install">
-        <code><span class="cmd">/plugin</span> marketplace add guilhermebkel/harness-ledger</code>
-        <code><span class="cmd">/plugin</span> install harness-ledger@guilhermebkel</code>
-        <button class="copy" type="button" data-copy="/plugin marketplace add guilhermebkel/harness-ledger&#10;/plugin install harness-ledger@guilhermebkel" aria-label="Copy install command"><svg class="icon icon--copy" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg><svg class="icon icon--ok" aria-hidden="true" focusable="false"><use href="#i-check"/></svg></button>
+        <code><span class="cmd">npx</span> skills add guilhermebkel/harness-ledger -g</code>
+        <button class="copy" type="button" data-copy="npx skills add guilhermebkel/harness-ledger -g" aria-label="Copy install command"><svg class="icon icon--copy" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg><svg class="icon icon--ok" aria-hidden="true" focusable="false"><use href="#i-check"/></svg></button>
       </div>
       <div class="hero__actions">
         <a class="btn btn--glass" href="https://github.com/guilhermebkel/harness-ledger" target="_blank" rel="noopener"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-star"/></svg> Star on GitHub</a>
@@ -599,7 +598,7 @@ a.agent:hover { background: color-mix(in oklch, var(--text) 5%, transparent); }
 
       <div class="aside">
         <p class="aside__hand">More text is rarely the fix.</p>
-        <p>When a rule is already written and the agent ignores it, the answer is a hook or a check, not a longer prompt. The plugin tells those cases apart.</p>
+        <p>When a rule is already written and the agent ignores it, the answer is a hook or a check, not a longer prompt. The skill tells those cases apart.</p>
         <p class="small">Problems in a piece you don't control become recommendations. Findings already suggested, rejected or changed are listed, never repeated.</p>
       </div>
 
@@ -654,9 +653,9 @@ a.agent:hover { background: color-mix(in oklch, var(--text) 5%, transparent); }
           <div class="fact"><h3>Your retention, untouched</h3><p>Claude Code deletes transcripts older than 30 days by default; Codex and Cursor keep theirs. The skill tells you how much history you have and never changes that setting.</p></div>
         </div>
         <div class="agents">
-          <div class="agent agent--on"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg><b>Claude Code</b><span>Supported, as a plugin</span></div>
-          <div class="agent agent--on"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg><b>Codex</b><span>Supported, as a skill</span></div>
-          <div class="agent agent--on"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg><b>Cursor</b><span>Supported, as a skill</span></div>
+          <div class="agent agent--on"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg><b>Claude Code</b><span>Supported</span></div>
+          <div class="agent agent--on"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg><b>Codex</b><span>Supported</span></div>
+          <div class="agent agent--on"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg><b>Cursor</b><span>Supported</span></div>
         </div>
       </div>
     </div>
@@ -689,18 +688,17 @@ a.agent:hover { background: color-mix(in oklch, var(--text) 5%, transparent); }
       <h2>Stop tuning your harness by feel.</h2>
       <p class="cta__hand">Let your sessions show you.</p>
       <div class="install">
-        <code><span class="cmd">/plugin</span> marketplace add guilhermebkel/harness-ledger</code>
-        <code><span class="cmd">/plugin</span> install harness-ledger@guilhermebkel</code>
+        <code><span class="cmd">npx</span> skills add guilhermebkel/harness-ledger -g</code>
       </div>
       <div class="cta__run">
         <div class="install">
-          <code><span class="cmd">/harness-ledger:audit-harness</span></code>
-          <button class="copy" type="button" data-copy="/harness-ledger:audit-harness" aria-label="Copy audit command"><svg class="icon icon--copy" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg><svg class="icon icon--ok" aria-hidden="true" focusable="false"><use href="#i-check"/></svg></button>
+          <code><span class="cmd">/audit-harness</span></code>
+          <button class="copy" type="button" data-copy="/audit-harness" aria-label="Copy audit command"><svg class="icon icon--copy" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg><svg class="icon icon--ok" aria-hidden="true" focusable="false"><use href="#i-check"/></svg></button>
         </div>
-        <p>Open your agent in the project, pick its strongest reasoning model and run it. In Codex and Cursor, install the skill with <span class="mono">npx skills add guilhermebkel/harness-ledger -a codex -a cursor</span>. It works on the sessions you already have. Requires Node.js 20+.</p>
+        <p>Open your agent in the project, pick its strongest reasoning model and run it. The installer asks which of your agents (Claude Code, Codex, Cursor) should get the skill. In Codex and Cursor, ask the agent to run the <span class="mono">audit-harness</span> skill. It works on the sessions you already have. Requires Node.js 20+.</p>
       </div>
       <div class="hero__actions" style="animation:none">
-        <button class="btn btn--accent" type="button" data-copy="/plugin marketplace add guilhermebkel/harness-ledger&#10;/plugin install harness-ledger@guilhermebkel" data-label="Copy install command"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg><span>Copy install command</span></button>
+        <button class="btn btn--accent" type="button" data-copy="npx skills add guilhermebkel/harness-ledger -g" data-label="Copy install command"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg><span>Copy install command</span></button>
         <a class="btn btn--glass" href="https://github.com/guilhermebkel/harness-ledger" target="_blank" rel="noopener"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-star"/></svg> Star on GitHub</a>
       </div>
     </div>

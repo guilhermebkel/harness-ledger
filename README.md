@@ -11,8 +11,7 @@
   <a href="https://github.com/guilhermebkel/harness-ledger/releases/latest"><img src="https://img.shields.io/github/v/release/guilhermebkel/harness-ledger?color=d4a574&label=release" alt="Latest release" /></a>
   <a href="https://github.com/guilhermebkel/harness-ledger/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/guilhermebkel/harness-ledger/ci.yml?branch=master&label=CI" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow" alt="License: MIT" /></a>
-  <a href="https://code.claude.com/docs/en/plugins"><img src="https://img.shields.io/badge/Claude_Code-plugin-8A2BE2" alt="Claude Code plugin" /></a>
-  <img src="https://img.shields.io/badge/Telemetry-none-2ea44f" alt="No telemetry" />
+    <img src="https://img.shields.io/badge/Telemetry-none-2ea44f" alt="No telemetry" />
 </p>
 
 <p align="center">
@@ -27,7 +26,7 @@ Your harness is everything around your coding agent: the instructions file, skil
 
 `harness-ledger` reads the session transcripts your agent already saves on your machine, maps your current harness, and tells you **which piece is causing which problem, what it cost you in time and tokens, and what to change**, with the exact session and step behind every suggestion. Then it checks whether the change helped.
 
-> **More text is rarely the fix.** When a rule is already written and the agent ignores it, the answer is a hook or a check, not a longer prompt. The plugin tells those cases apart.
+> **More text is rarely the fix.** When a rule is already written and the agent ignores it, the answer is a hook or a check, not a longer prompt. The skill tells those cases apart.
 
 ---
 
@@ -72,27 +71,20 @@ Accept a suggestion and later runs compare the piece before and after the change
 
 ### 1. Install
 
-**Claude Code**, as a plugin:
-
-```text
-/plugin marketplace add guilhermebkel/harness-ledger
-/plugin install harness-ledger@guilhermebkel
-```
-
-**Codex and Cursor**, as a skill (any agent the [`skills`](https://github.com/vercel-labs/skills) CLI supports works the same way):
-
 ```bash
-npx skills add guilhermebkel/harness-ledger -a codex -a cursor
+npx skills add guilhermebkel/harness-ledger -g
 ```
 
-Add `-g` to install for every project. The skill carries its own script, so there is nothing else to install. Requires Node.js 20+ to run it (the `skills` CLI itself asks for Node.js 22.20+).
+The [`skills`](https://github.com/vercel-labs/skills) CLI asks which of your agents (Claude Code, Codex, Cursor) should get the skill. Name them to skip the question (`-a claude-code -a codex -a cursor`), or drop `-g` to install only in the current project. The skill carries its own script, so there is nothing else to install. Running the script needs Node.js 20+; the `skills` CLI itself asks for 22.20+. Update later with `npx skills update`. In Claude Code the skill runs as `/audit-harness`.
+
+Installed the old Claude Code plugin? Remove it with `/plugin uninstall harness-ledger@guilhermebkel`, then install the skill as above.
 
 ### 2. Analyze your sessions
 
 Open your agent in the project, pick its strongest reasoning model, and run the skill. In Claude Code:
 
 ```text
-/harness-ledger:audit-harness
+/audit-harness
 ```
 
 In Codex and Cursor, ask the agent to run the `audit-harness` skill (for example, "use audit-harness to audit my harness").
@@ -103,13 +95,13 @@ It works on the sessions you already have, from the first run. No extra logging,
 
 ```text
 # Focus on one piece or period
-/harness-ledger:audit-harness only the code-reviewer subagent, last 2 weeks
+/audit-harness only the code-reviewer subagent, last 2 weeks
 
 # Check whether a change helped
-/harness-ledger:audit-harness did my change to code-reviewer help?
+/audit-harness did my change to code-reviewer help?
 
 # Review what was suggested before
-/harness-ledger:audit-harness show pending suggestions
+/audit-harness show pending suggestions
 ```
 
 Suggestions are never applied on their own. Applying one always asks first and only touches harness files.
@@ -199,7 +191,7 @@ node dist/harness-ledger.mjs --help
 
 Everything it prints is JSON. It writes only to `.harness-ledger/` in your project.
 
-To see what a run of the skill cost you, look at its own row the next time you analyze: `node dist/harness-ledger.mjs analyze --piece skill:harness-ledger:audit-harness`.
+To see what a run of the skill cost you, look at its own row the next time you analyze: `node dist/harness-ledger.mjs analyze --piece skill:audit-harness`.
 
 </details>
 
@@ -207,9 +199,9 @@ To see what a run of the skill cost you, look at its own row the next time you a
 
 | Agent | Status |
 | --- | --- |
-| Claude Code | ✅ Supported, as a plugin |
-| Codex | ✅ Supported, as a skill. Cost is partial: some token counts are not recorded |
-| Cursor | ✅ Supported, as a skill. Cost is partial: transcripts record no tokens, tool results, model or times, so failure signals that need a result don't appear |
+| Claude Code | ✅ Supported |
+| Codex | ✅ Supported. Cost is partial: some token counts are not recorded |
+| Cursor | ✅ Supported. Cost is partial: transcripts record no tokens, tool results, model or times, so failure signals that need a result don't appear |
 
 Point the script at another agent with `--provider codex` or `--provider cursor`. `HARNESS_LEDGER_CODEX_HOME` and `HARNESS_LEDGER_CURSOR_HOME` relocate their folders (`~/.codex`, `~/.cursor`) when yours live elsewhere.
 

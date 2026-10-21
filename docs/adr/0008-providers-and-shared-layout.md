@@ -23,7 +23,7 @@ src/
 - Provider vocabulary is translated at the boundary. For example, the adapter sets each tool call's `category` (`shell`, `read`, `edit`, …), so shared detectors never see a tool name such as `Bash`.
 - Code is written as classes: Utils are static-only classes, Services are instances with their dependencies passed to the constructor, Commands are classes with a `run` method. Runtime constants live as static members of the class that owns them; Protocols hold only types.
 - Tests sit next to the file they test (`ClaudeCodeProviderAdapter.test.ts`). There is no `test/` folder.
-- Each provider has its own CI workflow (`.github/workflows/claude-code.yml`), triggered by changes to that provider's files; `ci.yml` runs the shared checks on every change.
+- `ci.yml` runs the shared checks on every change, including every provider's tests.
 
 ## Consequences
 

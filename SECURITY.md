@@ -25,7 +25,7 @@ Helpful to include:
 
 ## Scope
 
-The plugin runs locally. The analysis script reads transcripts in place, prints JSON and writes only to `.harness-ledger/` in the analyzed project. It makes no network calls; issue links are built for you to open and send yourself.
+The skill runs locally. The analysis script reads transcripts in place, prints JSON and writes only to `.harness-ledger/` in the analyzed project. It makes no network calls; issue links are built for you to open and send yourself.
 
 In scope:
 
@@ -44,4 +44,4 @@ Out of scope:
 
 ## Supported versions
 
-Fixes go into the next release. Update with `/plugin` → Installed → Update, or `claude plugin update harness-ledger@guilhermebkel`.
+Fixes go into the next release. Update with `npx skills update`.

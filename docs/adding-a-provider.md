@@ -80,7 +80,7 @@ src/Providers/<Provider>/
 
 - Add the type to `ProviderType` and one entry to `ProviderModule`. Nothing in `src/Shared/` should need the provider's names; if it does, extend the shared model instead (ADR 0008, enforced by lint).
 - Reproduce every format case you found in step 3 in the fixture, with made-up content, and test it next to the adapter.
-- If the provider has its own plugin manifest, add it beside the others, pointing at the same `skills/` folder, with a `.github/workflows/<provider>.yml` that validates it, like `claude-code.yml`. Providers that install the skill through `npx skills add` need neither.
+- Install is the same for every provider (`npx skills add`, ADR 0011): no manifest to add. Check that the `skills` CLI lists the agent and where it keeps skills, and put that folder in the README.
 
 ## 6. Check it on the real sample
 
@@ -107,12 +107,12 @@ Code is not the whole change. These files repeat what the code decides, so a pro
 | `CLAUDE.md` | The provider list in the Layout section |
 | `README.md` | Supported-agents table, tagline, retention note (does the provider delete old transcripts?), `--provider` usage with the provider's home variables, roadmap |
 | `site/index.html` and `site/llms.txt` | Agent cards, retention text, title, description, Open Graph, JSON-LD `softwareRequirements`. Merging to `master` publishes `site/` at once, so land it with the release |
-| Skill install path | The agent's skill folders in the install commands (README and site) and the `skills add` check in `ci.yml` |
+| Skill install path | The agent's skill folders for `npx skills add` (the default install for every provider) in the README and site, and the `skill-install` check in `ci.yml` |
 | `skills/audit-harness/` | `SKILL.md` and `references/findings.md`: suggestions use the provider's own vocabulary and file names |
 | `GLOSSARY.md` | Terms the provider introduces |
 | `CONTRIBUTING.md`, this guide | Provider list, examples |
 | `docs/adr/` | A new ADR only if the provider changes a decision (for example a database instead of JSONL) |
 | `docs/cost-model.md` and `SignalService` | When the provider reports no tokens or results, say how the cost is marked partial |
-| `.github/workflows/` | `ci.yml` covers shared checks. Add `<provider>.yml` only when the provider has a plugin manifest to validate |
+| `.github/workflows/` | `ci.yml` covers shared checks and the skill install. Add `<provider>.yml` only for a check that needs the provider's own CLI |
 | GitHub issues | Comment on and close the provider's issue; open one for each known gap (unmapped tools, inventory pieces, formats not read) |
 
