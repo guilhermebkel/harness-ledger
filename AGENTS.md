@@ -17,6 +17,7 @@ ADR 0008 has the reasons; `docs/code-standards.md` ("Architecture") has the rule
 - `src/Providers/<Provider>/`: one agentic coding tool (`ClaudeCode`, `Codex`, `Cursor`), with the same folders as Shared. `Adapters/<Provider>ProviderAdapter.ts` extends `BaseProviderAdapter`; `Utils/<Provider>FixtureUtil.ts` builds a fake home and project in the tool's real format, for tests.
 - Tests sit next to the file they test (`*.test.ts`). There is no `test/` folder.
 - `dist/harness-ledger.mjs`: the bundled script the skill runs. Generated; only the `Release` workflow commits it (ADR 0004).
+- `design/`: the logo, its variants, web icons, guidelines and presentation. Not in the skill. `design/README.md` says how to rebuild it.
 - `site/`: the landing page, static files with no build step. The `Pages` workflow publishes it to GitHub Pages on every merge to `master` that touches `site/`, so it is the one thing that reaches users without a release. The `Release` workflow rewrites the version and date in its footer and the sitemap `lastmod`, then starts `Pages`; the rest is edited by hand.
 - `.github/workflows/`: `ci.yml` (shared checks, plus a job that installs the skill with `npx skills add` and runs the installed script), `release.yml` (cuts a version, by hand) and `pages.yml` (publishes `site/`).
 - `scripts/`: `build.mjs` (bundle), `survey-transcripts.mjs` (the shape of a folder of transcripts, without their content) and `eslint-local-rules.mjs` (this repo's own lint rules, tested next to it).
