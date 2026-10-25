@@ -1,0 +1,34 @@
+{
+  "brand": "harness-ledger",
+  "tagline": "Every piece of your agent's harness, with the receipts",
+  "brief": "A skill for Claude Code, Codex and Cursor that reads the session transcripts your agent already saves, names the harness piece behind each problem and checks whether the fix worked.",
+  "adjectives": ["precise", "honest", "technical", "warm"],
+  "criteria": "Success: recognisable at 16 px, works in one colour, speaks of records and links, distinct from generic AI marks.",
+  "industry": "software",
+  "mockups": ["readme", "app-icon", "website", "terminal", "sticker", "social"],
+  "nav": ["How it works", "Signals", "GitHub"],
+  "brand_color": "#d8a976",
+  "tile_color": "#0c0a08",
+  "greyscale": false,
+  "final": true,
+  "designer": "harness-ledger",
+  "concepts": [{
+    "name": "Three rings",
+    "symbol": "../svg/symbol-light.svg",
+    "lockup": "../svg/horizontal-light.svg",
+    "stacked": "../svg/stacked-light.svg",
+    "symbol_on_tile": "../svg/symbol-dark.svg",
+    "symbol_on_dark": "../svg/symbol-dark.svg",
+    "lockup_on_dark": "../svg/horizontal-dark.svg",
+    "stacked_on_tile": "../svg/stacked-dark.svg",
+    "stacked_on_dark": "../svg/stacked-dark.svg",
+    "idea": "Three fused rings, one chain of records: each session is a link in the ledger.",
+    "rationale": [
+      "Reads as a chain of links, which is what a ledger is, with no explanation needed",
+      "One union of three rings on a 26-unit grid, so it stays solid down to 16 px",
+      "Colours come from the site: ink, amber and, on light backgrounds, a deeper amber"
+    ]
+  }],
+  "recommendation": "Three rings: simple, one colour, and it is the mark the site already uses.",
+  "next_steps": ["Apply it to the README", "Use the favicon and app icon from the kit"]
+}

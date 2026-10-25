@@ -1,4 +1,9 @@
-<h1 align="center">harness-ledger</h1>
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="design/svg/horizontal-dark.svg" />
+    <img src="design/svg/horizontal-light.svg" alt="harness-ledger" width="360" />
+  </picture>
+</h1>
 
 <p align="center">
   <strong>Every piece of your coding agent's harness, with what it costs you and the receipts.</strong>
