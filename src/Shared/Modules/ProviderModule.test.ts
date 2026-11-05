@@ -6,16 +6,17 @@ describe("ProviderModule.create()", () => {
     expect(ProviderModule.create().type).toBe(ProviderModule.DEFAULT_PROVIDER);
   });
 
-  it.each(["claude-code", "codex", "cursor"] as const)("creates the %s provider", (type) => {
+  it.each(["claude-code", "codex", "cursor", "antigravity"] as const)("creates the %s provider", (type) => {
     expect(ProviderModule.create(type).type).toBe(type);
   });
 });
 
 describe("ProviderModule.isProviderType()", () => {
   it("knows which provider types exist", () => {
-    expect(ProviderModule.types()).toStrictEqual(["claude-code", "codex", "cursor"]);
+    expect(ProviderModule.types()).toStrictEqual(["claude-code", "codex", "cursor", "antigravity"]);
     expect(ProviderModule.isProviderType("codex")).toBe(true);
     expect(ProviderModule.isProviderType("cursor")).toBe(true);
+    expect(ProviderModule.isProviderType("antigravity")).toBe(true);
     expect(ProviderModule.isProviderType("toString")).toBe(false);
     expect(ProviderModule.isProviderType("windsurf")).toBe(false);
   });

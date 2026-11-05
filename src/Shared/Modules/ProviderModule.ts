@@ -1,3 +1,4 @@
+import { AntigravityProviderAdapter } from "@/Providers/Antigravity/Adapters/AntigravityProviderAdapter.ts";
 import { ClaudeCodeProviderAdapter } from "@/Providers/ClaudeCode/Adapters/ClaudeCodeProviderAdapter.ts";
 import { CodexProviderAdapter } from "@/Providers/Codex/Adapters/CodexProviderAdapter.ts";
 import { CursorProviderAdapter } from "@/Providers/Cursor/Adapters/CursorProviderAdapter.ts";
@@ -13,6 +14,7 @@ export class ProviderModule {
     "claude-code": () => new ClaudeCodeProviderAdapter(),
     "codex": () => new CodexProviderAdapter(),
     "cursor": () => new CursorProviderAdapter(),
+    "antigravity": () => new AntigravityProviderAdapter(),
   };
 
   static create(type: ProviderType = ProviderModule.DEFAULT_PROVIDER): BaseProviderAdapter {
