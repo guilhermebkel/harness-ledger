@@ -19,4 +19,8 @@ export class AntigravityPathUtil {
   static lastConversationsFile(homeDir: string): string {
     return join(homeDir, "cache", "last_conversations.json");
   }
+
+  static builtinSkillsDir(homeDir: string): string {
+    return join(homeDir, "builtin", "skills");
+  }
 }

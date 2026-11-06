@@ -2,23 +2,26 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import type {
   AntigravityParseContext,
+  AntigravityToolDescription,
   AntigravityTranscriptLine,
 } from "@/Providers/Antigravity/Protocols/AntigravityProtocol.ts";
 import { AntigravityPathUtil } from "@/Providers/Antigravity/Utils/AntigravityPathUtil.ts";
 import type { DiscoverOptions, ParseOptions, TranscriptFile } from "@/Shared/Protocols/ProviderProtocol.ts";
-import type { AssistantMessage, EvidenceRef, SessionFacts } from "@/Shared/Protocols/SessionProtocol.ts";
-import { GuardUtil } from "@/Shared/Utils/GuardUtil.ts";
-import { HashUtil } from "@/Shared/Utils/HashUtil.ts";
-import { JsonlUtil } from "@/Shared/Utils/JsonlUtil.ts";
-import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.ts";
-import { RedactUtil } from "@/Shared/Utils/RedactUtil.ts";
-import { SessionUtil } from "@/Shared/Utils/SessionUtil.ts";
-import { ThreadSummaryUtil } from "@/Shared/Utils/ThreadSummaryUtil.ts";
+import type { AssistantMessage, EvidenceRef, SessionFacts, ToolCall } from "@/Shared/Protocols/SessionProtocol.ts";
+import type { UnknownRecord } from "@/Shared/Protocols/UtilProtocol.ts";
 import { UnknownLineUtil } from "@/Shared/Utils/UnknownLineUtil.ts";
+import { ThreadSummaryUtil } from "@/Shared/Utils/ThreadSummaryUtil.ts";
+import { SessionUtil } from "@/Shared/Utils/SessionUtil.ts";
+import { RedactUtil } from "@/Shared/Utils/RedactUtil.ts";
+import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.ts";
+import { JsonlUtil } from "@/Shared/Utils/JsonlUtil.ts";
+import { HashUtil } from "@/Shared/Utils/HashUtil.ts";
+import { GuardUtil } from "@/Shared/Utils/GuardUtil.ts";
 
 const TRANSCRIPT_FILE_NAME = "transcript.jsonl";
 const LOGS_SUBDIR = join(".system_generated", "logs");
 const MAX_PROMPT_CHARS = 2000;
+const MAX_NAME_CHARS = 60;
 const DEFAULT_IDLE_MINUTES = 5;
 const MS_PER_MINUTE = 60_000;
 const IDLE_MS = DEFAULT_IDLE_MINUTES * MS_PER_MINUTE;
@@ -34,6 +37,86 @@ const TIMED_RECORD_TYPES = new Set<string>([
 const IGNORED_RECORD_TYPES = new Set<string>(["GENERIC", "SYSTEM_MESSAGE", "CHECKPOINT"]);
 
 type RecordHandler = (context: AntigravityParseContext, line: AntigravityTranscriptLine) => void;
+type ToolDescriber = (args: UnknownRecord) => AntigravityToolDescription;
+
+const describeShell: ToolDescriber = (args) => {
+  const command = GuardUtil.asString(args.CommandLine) ?? GuardUtil.asString(args.command) ?? "";
+  return {
+    key: NormalizeUtil.commandKey(command),
+    category: "shell",
+    summary: command,
+  };
+};
+
+const describeRead: ToolDescriber = (args) => {
+  const filePath = GuardUtil.asString(args.Path) ?? GuardUtil.asString(args.path);
+  return {
+    key: "read",
+    category: "read",
+    summary: filePath ?? "read",
+    filePath,
+  };
+};
+
+const describeEdit: ToolDescriber = (args) => {
+  const filePath = GuardUtil.asString(args.Path) ?? GuardUtil.asString(args.path);
+  return {
+    key: "edit",
+    category: "edit",
+    summary: filePath ?? "edit",
+    filePath,
+  };
+};
+
+const describeWrite: ToolDescriber = (args) => {
+  const filePath = GuardUtil.asString(args.Path) ?? GuardUtil.asString(args.path);
+  return {
+    key: "write",
+    category: "edit",
+    summary: filePath ?? "write",
+    filePath,
+  };
+};
+
+const describePlan: ToolDescriber = (args) => {
+  const action = GuardUtil.asString(args.Action) ?? GuardUtil.asString(args.action) ?? "manage_task";
+  return {
+    key: "manage_task",
+    category: "plan",
+    summary: action,
+  };
+};
+
+const describeSearch: ToolDescriber = (args) => {
+  const query = GuardUtil.asString(args.query) ?? "search_web";
+  return {
+    key: "search_web",
+    category: "search",
+    summary: query,
+  };
+};
+
+const describeDelegation: ToolDescriber = (args) => {
+  const subagentType = GuardUtil.asString(args.TypeName) ?? GuardUtil.asString(args.Role) ?? "subagent";
+  const prompt = GuardUtil.asString(args.Prompt);
+  return {
+    key: `spawn_agent:${subagentType}`,
+    category: "delegation",
+    summary: subagentType,
+    subagentType: subagentType,
+    subagentPromptHash: prompt ? HashUtil.sha(prompt) : undefined,
+  };
+};
+
+const NAME_TO_DESCRIBER = new Map<string, ToolDescriber>([
+  ["run_command", describeShell],
+  ["read_file", describeRead],
+  ["edit_file", describeEdit],
+  ["write_file", describeWrite],
+  ["manage_task", describePlan],
+  ["search_web", describeSearch],
+  ["invoke_subagent", describeDelegation],
+]);
 
 export class AntigravitySessionService {
   private readonly recordTypeToHandler = new Map<string, RecordHandler>([
@@ -59,8 +142,8 @@ export class AntigravitySessionService {
       const transcriptPath = join(brainDir, conversationId, LOGS_SUBDIR, TRANSCRIPT_FILE_NAME);
       const fileStat = await stat(transcriptPath).catch(() => undefined);
       const workspace = conversationIdToWorkspace.get(conversationId);
-      const isCandidate = options.shouldReadAllProjects
-        ?? (workspace !== undefined && this.isInsideProject(workspace, options.projectDir));
+      const isCandidate = options.shouldReadAllProjects === true
+        || (workspace !== undefined && this.isInsideProject(workspace, options.projectDir));
       if (!fileStat?.isFile() || !isCandidate) {
         continue;
       }
@@ -138,7 +221,7 @@ export class AntigravitySessionService {
   }
 
   private mergeLastConversations(conversationIdToWorkspace: Map<string, string>, text: string): void {
-    const parsed = GuardUtil.asRecord(JSON.parse(text));
+    const parsed = GuardUtil.asRecord(GuardUtil.parseJson(text));
     if (!parsed) {
       return;
     }
@@ -224,14 +307,27 @@ export class AntigravitySessionService {
     if (!context.threadIdToFirstPromptHash.has(threadId)) {
       context.threadIdToFirstPromptHash.set(threadId, HashUtil.sha(rawContent));
     }
-    const text = RedactUtil.redact(rawContent.slice(0, MAX_PROMPT_CHARS));
+    const redactedContent = RedactUtil.redact(rawContent);
+    const text = redactedContent.slice(0, MAX_PROMPT_CHARS);
     context.facts.prompts.push({
       text,
-      ref: this.makeEvidence(context, line, rawContent),
+      ref: this.makeEvidence(context, line, redactedContent),
       sentAtMs: line.occurredAtMs,
       isCorrection: NormalizeUtil.isCorrection(rawContent),
       isInterruption: false,
     });
+  }
+
+  private describeTool(name: string, args: UnknownRecord): AntigravityToolDescription {
+    const describer = NAME_TO_DESCRIBER.get(name);
+    if (describer) {
+      return describer(args);
+    }
+    return {
+      key: name,
+      category: "other",
+      summary: name,
+    };
   }
 
   private handlePlannerResponse(context: AntigravityParseContext, line: AntigravityTranscriptLine): void {
@@ -246,6 +342,36 @@ export class AntigravitySessionService {
       ref: this.makeEvidence(context, line),
     };
     context.facts.messages.push(message);
+    const rawCalls = GuardUtil.asArray(line.record.tool_calls);
+    for (const [index, item] of rawCalls.entries()) {
+      const callRecord = GuardUtil.asRecord(item);
+      if (!callRecord) {
+        continue;
+      }
+      const rawName = GuardUtil.asString(callRecord.name) ?? "unknown";
+      const args = GuardUtil.asRecord(callRecord.args) ?? {};
+      const description = this.describeTool(rawName, args);
+      const callId = `${line.thread.id}:${line.lineNumber}:${index}`;
+      const name = RedactUtil.excerpt(rawName, MAX_NAME_CHARS);
+      const key = RedactUtil.redact(description.key);
+      const summary = RedactUtil.excerpt(description.summary);
+      const filePath = description.filePath ? RedactUtil.redact(description.filePath) : undefined;
+      const toolCall: ToolCall = {
+        id: callId,
+        name: name,
+        key: key,
+        summary: summary,
+        category: description.category,
+        filePath: filePath,
+        thread: line.thread,
+        ref: this.makeEvidence(context, line, description.summary),
+        calledAtMs: line.occurredAtMs,
+        messageId: message.id,
+        subagentType: description.subagentType,
+        subagentPromptHash: description.subagentPromptHash,
+      };
+      context.facts.tools.push(toolCall);
+    }
   }
 
   private handleErrorMessage(context: AntigravityParseContext, line: AntigravityTranscriptLine): void {

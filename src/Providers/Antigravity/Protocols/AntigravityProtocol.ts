@@ -1,4 +1,4 @@
-import type { SessionFacts, ThreadRef } from "@/Shared/Protocols/SessionProtocol.ts";
+import type { SessionFacts, ThreadRef, ToolCategory } from "@/Shared/Protocols/SessionProtocol.ts";
 import type { UnknownRecord } from "@/Shared/Protocols/UtilProtocol.ts";
 
 export interface AntigravityTranscriptLine {
@@ -16,4 +16,13 @@ export interface AntigravityParseContext {
   currentThread: ThreadRef;
   threadIdToEventsAtMs: Map<string, number[]>;
   threadIdToFirstPromptHash: Map<string, string>;
+}
+
+export interface AntigravityToolDescription {
+  key: string;
+  category: ToolCategory;
+  summary: string;
+  filePath?: string;
+  subagentType?: string;
+  subagentPromptHash?: string;
 }

@@ -2,6 +2,11 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { AntigravityFixture } from "@/Providers/Antigravity/Protocols/AntigravityFixtureProtocol.ts";
 
+export interface AntigravityRawToolCall {
+  name: string;
+  args?: Record<string, unknown>;
+}
+
 export interface PlannerResponseOptions {
   inputTokens?: number;
   outputTokens?: number;
@@ -10,6 +15,7 @@ export interface PlannerResponseOptions {
   thinking?: string;
   stepIndex?: number;
   createdAt?: string;
+  toolCalls?: AntigravityRawToolCall[];
 }
 
 export interface LineOptions {
@@ -36,6 +42,7 @@ export class AntigravityTranscriptBuilder {
       output_tokens: outputTokens,
       content: content,
       thinking: options?.thinking,
+      tool_calls: options?.toolCalls,
     });
   }
 
