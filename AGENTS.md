@@ -1,6 +1,6 @@
 # harness-ledger
 
-A skill for Claude Code, Codex and Cursor that reads the session transcripts the agent already saves, maps the project's harness, and suggests evidence-based changes. Vocabulary is in `GLOSSARY.md`; decisions are in `docs/adr/`; planned work (v2 Bench, Codex, Cursor) is in GitHub issues.
+A skill for Claude Code, Codex, Cursor and Antigravity that reads the session transcripts the agent already saves, maps the project's harness, and suggests evidence-based changes. Vocabulary is in `GLOSSARY.md`; decisions are in `docs/adr/`; planned work (v2 Bench, Codex, Cursor) is in GitHub issues.
 
 ## Layout
 
@@ -14,7 +14,7 @@ ADR 0008 has the reasons; `docs/code-standards.md` ("Architecture") has the rule
   - `Commands/`: one class per CLI command.
   - `Services/`: business rules (signals, attribution, usage, before/after, mentions, store, config, suggestions).
   - `Protocols/`: types only. `Utils/`: static helper classes (guards, env, time, redaction, JSONL, git).
-- `src/Providers/<Provider>/`: one agentic coding tool (`ClaudeCode`, `Codex`, `Cursor`), with the same folders as Shared. `Adapters/<Provider>ProviderAdapter.ts` extends `BaseProviderAdapter`; `Utils/<Provider>FixtureUtil.ts` builds a fake home and project in the tool's real format, for tests.
+- `src/Providers/<Provider>/`: one agentic coding tool (`ClaudeCode`, `Codex`, `Cursor`, `Antigravity`), with the same folders as Shared. `Adapters/<Provider>ProviderAdapter.ts` extends `BaseProviderAdapter`; `Utils/<Provider>FixtureUtil.ts` builds a fake home and project in the tool's real format, for tests.
 - Tests sit next to the file they test (`*.test.ts`). There is no `test/` folder.
 - `dist/harness-ledger.mjs`: the bundled script the skill runs. Generated; only the `Release` workflow commits it (ADR 0004).
 - `design/`: the logo, its variants, web icons, guidelines and presentation. Not in the skill. `design/README.md` says how to rebuild it.
