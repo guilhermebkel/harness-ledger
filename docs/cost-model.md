@@ -66,12 +66,3 @@ Every evidence line carries the cost of its occurrence (`evidence[].cost`, unrou
 
 `compare` reports per piece: error rate, corrections per session, active minutes, input and output tokens, money per invocation, and `recoveryMinutesPerInvocation` (time in failure chains). Corrections and chains count only when the piece was running (its turn, or the failing call); global pieces (instructions, hooks, settings) answer for all of them. Token and recovery moves are reported but don't vote in the verdict: tokens are already in money, recovery time is already in active time.
 
-## Provider-specific cost notes
-
-### Antigravity
-
-- **Usage per call.** Antigravity records token usage per assistant message on each `PLANNER_RESPONSE` step with `input_tokens`, `output_tokens` and `cache_read_tokens` separated. Total tokens are input plus output.
-- **Thinking included in output.** Generated output tokens already include thinking and reasoning tokens; they are never counted twice.
-- **Resumed sessions without double-counting.** Resuming a session with `-c` appends per-step incremental records in `transcript.jsonl`. Cumulative run snapshots (such as CLI `run-*.json`) are not ingested, preventing duplicate token accumulation across turns.
-- **Tool results omitted.** Because `transcript.jsonl` does not reliably correlate execution results to specific tool call IDs, tool results remain omitted (`result: undefined`). Step execution failures in `GENERIC` lines are recorded as unknown line shapes rather than invented tool results or API errors.
-- **Partial monetary cost.** Antigravity models are unpriced (`isCostPartial: true`, `costUsd: undefined`, counted under `totals.unpricedModels`). No estimated USD rates or assumptions about Google subscription or quota tiers are invented.
