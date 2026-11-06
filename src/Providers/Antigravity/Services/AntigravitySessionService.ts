@@ -17,6 +17,7 @@ import { NormalizeUtil } from "@/Shared/Utils/NormalizeUtil.ts";
 import { JsonlUtil } from "@/Shared/Utils/JsonlUtil.ts";
 import { HashUtil } from "@/Shared/Utils/HashUtil.ts";
 import { GuardUtil } from "@/Shared/Utils/GuardUtil.ts";
+import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
 
 const TRANSCRIPT_FILE_NAME = "transcript.jsonl";
 const LOGS_SUBDIR = join(".system_generated", "logs");
@@ -28,13 +29,10 @@ const IDLE_MS = DEFAULT_IDLE_MINUTES * MS_PER_MINUTE;
 const TIMED_RECORD_TYPES = new Set<string>([
   "USER_INPUT",
   "PLANNER_RESPONSE",
-  "GENERIC",
-  "SYSTEM_MESSAGE",
   "ERROR_MESSAGE",
-  "CHECKPOINT",
 ]);
 // Why: Antigravity writes these for context sync or checkpoints; none feeds a signal directly.
-const IGNORED_RECORD_TYPES = new Set<string>(["GENERIC", "SYSTEM_MESSAGE", "CHECKPOINT"]);
+const IGNORED_RECORD_TYPES = new Set<string>(["SYSTEM_MESSAGE", "CHECKPOINT"]);
 
 type RecordHandler = (context: AntigravityParseContext, line: AntigravityTranscriptLine) => void;
 type ToolDescriber = (args: UnknownRecord) => AntigravityToolDescription;
@@ -129,6 +127,9 @@ export class AntigravitySessionService {
     ["ERROR_MESSAGE", (context, line) => {
       this.handleErrorMessage(context, line);
     }],
+    ["GENERIC", (context, line) => {
+      this.handleGeneric(context, line);
+    }],
   ]);
 
   constructor(private readonly homeDir: string) {}
@@ -156,7 +157,9 @@ export class AntigravitySessionService {
         isExactProject: workspace === options.projectDir,
       });
     }
-    return transcripts.sort((left, right) => left.modifiedAtMs - right.modifiedAtMs);
+    return transcripts.sort((left, right) => (
+      left.modifiedAtMs - right.modifiedAtMs || CollectionUtil.compareCodeUnits(left.sessionId, right.sessionId)
+    ));
   }
 
   async parseSession(transcript: TranscriptFile, options?: ParseOptions): Promise<SessionFacts> {
@@ -382,5 +385,14 @@ export class AntigravitySessionService {
       ref: this.makeEvidence(context, line, errorText),
       occurredAtMs: line.occurredAtMs,
     });
+  }
+
+  private handleGeneric(context: AntigravityParseContext, line: AntigravityTranscriptLine): void {
+    const status = GuardUtil.asString(line.record.status);
+    const hasError = status === "ERROR" || line.record.error !== undefined;
+    if (hasError) {
+      // Why: GENERIC errors reflect step/tool execution failures rather than API errors. Because Antigravity transcripts lack call IDs correlating results to specific tool calls, recording as an unknown line shape avoids inventing unverified tool results or misclassifying tool failures as API errors.
+      UnknownLineUtil.record(context.facts, line.record, line.type);
+    }
   }
 }

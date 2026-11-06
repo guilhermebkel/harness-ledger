@@ -10,6 +10,7 @@ import { CollectionUtil } from "@/Shared/Utils/CollectionUtil.ts";
 
 const { FAKE_SECRETS } = AntigravityFixtureUtil;
 const AGENTS_PIECE_ID = "instructions:AGENTS.md";
+const REDACTED_MASK = "[REDACTED]";
 const adapter = new AntigravityProviderAdapter();
 
 let testFixture: AntigravityFixture;
@@ -76,12 +77,12 @@ describe("AntigravityProviderAdapter.discoverTranscripts()", () => {
     expect(extractSessionIds(transcripts)).toStrictEqual(["s1", "s2"]);
   });
 
-  it("reads every project's sessions on request, including unassociated ones", async () => {
+  it("reads every project's sessions on request, including unassociated and orphan ones", async () => {
     const transcripts = await adapter.discoverTranscripts({
       projectDir: testFixture.projectDir,
       shouldReadAllProjects: true,
     });
-    expect(extractSessionIds(transcripts)).toStrictEqual(["s1", "s2", "s_other", "s_unassociated"]);
+    expect(extractSessionIds(transcripts)).toStrictEqual(["s1", "s2", "s_orphan", "s_other", "s_unassociated"]);
   });
 
   it("recovers gracefully when last_conversations.json is corrupted and still discovers from history", async () => {
@@ -109,7 +110,7 @@ describe("AntigravityProviderAdapter.parseSession()", () => {
 
   it("redacts secrets crossing the prompt truncation limit before slicing", () => {
     const boundaryPrompt = parsedFacts.prompts[3];
-    expect(boundaryPrompt?.text).toContain("[REDACTED]");
+    expect(boundaryPrompt?.text).toContain(REDACTED_MASK);
     expect(boundaryPrompt?.text).not.toContain(FAKE_SECRETS.bearerToken);
     expect(boundaryPrompt?.ref.excerpt).not.toContain(FAKE_SECRETS.bearerToken);
   });
@@ -164,20 +165,35 @@ describe("AntigravityProviderAdapter.parseSession()", () => {
     expect(parsedFacts.threads).toHaveLength(1);
   });
 
-  it("records API errors", () => {
-    expect(parsedFacts.apiErrors.map((error) => error.code)).toStrictEqual(["API error rate limited"]);
+  it("records API errors from ERROR_MESSAGE lines with redaction and without classifying GENERIC errors as API errors", () => {
+    expect(parsedFacts.apiErrors).toHaveLength(1);
+    expect(parsedFacts.apiErrors[0]?.code).toContain(REDACTED_MASK);
+    expect(parsedFacts.apiErrors[0]?.code).not.toContain(FAKE_SECRETS.bearerToken);
+    expect(parsedFacts.apiErrors[0]?.ref.excerpt).not.toContain(FAKE_SECRETS.bearerToken);
+  });
+
+  it("records GENERIC ERROR lines in unknownLines without inventing fake tool results", () => {
+    const genericShape = parsedFacts.unknownLines?.find((shape) => shape.type === "GENERIC");
+    expect(genericShape?.type).toBe("GENERIC");
+    expect(genericShape?.count).toBe(1);
+    expect(genericShape?.keys).toContain("error");
+    expect(genericShape?.keys).toContain("status");
+    expect(parsedFacts.tools.every((call) => call.result === undefined)).toBe(true);
   });
 
   it("counts malformed lines as unparsed and records unknown record types", () => {
     expect(parsedFacts.unparsedLines).toBe(1);
-    expect(parsedFacts.unknownLines).toStrictEqual([
-      { type: "brand_new_event", keys: ["detail", "source", "step_index", "type"], count: 1 },
-    ]);
+    const brandNew = parsedFacts.unknownLines?.find((shape) => shape.type === "brand_new_event");
+    expect(brandNew).toStrictEqual({
+      type: "brand_new_event",
+      keys: ["detail", "source", "step_index", "type"],
+      count: 1,
+    });
   });
 
   it("redacts fake secrets from prompts, tools and serialized output", () => {
     const serialized = JSON.stringify(parsedFacts);
-    expect(serialized).toContain("[REDACTED]");
+    expect(serialized).toContain(REDACTED_MASK);
     expect(serialized).not.toContain(FAKE_SECRETS.bearerToken);
   });
 });

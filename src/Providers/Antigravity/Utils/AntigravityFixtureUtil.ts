@@ -117,9 +117,14 @@ export class AntigravityFixtureUtil {
         createdAt: "2026-11-05T10:02:15.000Z",
       })
       .generic("syncing context", { createdAt: "2026-11-05T10:02:16.000Z" })
+      .genericError(
+        `step execution failed with ${FAKE_SECRETS.bearerToken}`,
+        `Encountered error in step execution: ${FAKE_SECRETS.bearerToken}`,
+        { createdAt: "2026-11-05T10:02:16.500Z" },
+      )
       .checkpoint("checkpoint-1", { createdAt: "2026-11-05T10:02:17.000Z" })
       .systemMessage("System notice", { createdAt: "2026-11-05T10:02:18.000Z" })
-      .errorMessage("API error rate limited", { createdAt: "2026-11-05T10:02:19.000Z" })
+      .errorMessage(`API error rate limited with token ${FAKE_SECRETS.bearerToken}`, { createdAt: "2026-11-05T10:02:19.000Z" })
       .unknownLine("brand_new_event", { detail: "extra" })
       .badLine("MALFORMED_JSON_LINE{{{")
       .writeTo(fixture, "s1");
@@ -135,5 +140,9 @@ export class AntigravityFixtureUtil {
       .userInput("Unassociated task", { createdAt: "2026-11-05T13:00:00.000Z" })
       .plannerResponse({ inputTokens: 200, outputTokens: 50, cacheReadTokens: 0 })
       .writeTo(fixture, "s_unassociated");
+    new AntigravityTranscriptBuilder()
+      .userInput("Orphan task without workspace history", { createdAt: "2026-11-05T14:00:00.000Z" })
+      .plannerResponse({ inputTokens: 200, outputTokens: 50, cacheReadTokens: 0 })
+      .writeTo(fixture, "s_orphan");
   }
 }

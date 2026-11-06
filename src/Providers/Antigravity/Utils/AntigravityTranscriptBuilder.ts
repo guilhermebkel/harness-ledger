@@ -50,6 +50,10 @@ export class AntigravityTranscriptBuilder {
     return this.appendEntry("SYSTEM", "GENERIC", "DONE", options, { content });
   }
 
+  genericError(error: string, content: string, options?: LineOptions): this {
+    return this.appendEntry("MODEL", "GENERIC", "ERROR", options, { error, content });
+  }
+
   checkpoint(content: string, options?: LineOptions): this {
     return this.appendEntry("SYSTEM", "CHECKPOINT", "DONE", options, { content });
   }

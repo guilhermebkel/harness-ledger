@@ -203,7 +203,7 @@ To see what a run of the skill cost you, look at its own row the next time you a
 | Claude Code | ✅ Supported |
 | Codex | ✅ Supported. Cost is partial: some token counts are not recorded |
 | Cursor | ✅ Supported. Cost is partial: transcripts record no tokens, tool results, model or times, so failure signals that need a result don't appear |
-| Antigravity | ✅ Supported. Cost is partial: token counts and active time are recorded, but pricing is unestimated; tool results and settings inspection are omitted |
+| Antigravity | ✅ Supported. Cost is partial: token counts and active time are recorded, but pricing is unestimated; tool results and settings inspection are omitted. Project association relies on `history.jsonl` and `last_conversations.json`, which map workspaces to conversations: older sessions or sessions without a recorded workspace are omitted when filtering by project, but included with `--all-projects` |
 
 Point the script at another agent with `--provider codex`, `--provider cursor` or `--provider antigravity`. `HARNESS_LEDGER_CODEX_HOME`, `HARNESS_LEDGER_CURSOR_HOME` and `HARNESS_LEDGER_ANTIGRAVITY_HOME` relocate their folders (`~/.codex`, `~/.cursor`, `~/.gemini/antigravity-cli`) when yours live elsewhere.
 
