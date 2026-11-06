@@ -2,7 +2,7 @@
 // harness-ledger — generated file, edit src/ and run `pnpm build`.
 
 // src/Shared/Modules/CLIModule.ts
-import { readFile as readFile10 } from "node:fs/promises";
+import { readFile as readFile11 } from "node:fs/promises";
 import { parseArgs } from "node:util";
 
 // src/Shared/Utils/CollectionUtil.ts
@@ -441,10 +441,10 @@ var TimeUtil = class _TimeUtil {
     if (!value) {
       return void 0;
     }
-    const relative6 = /^(\d+)\s*([hdwm])$/i.exec(value.trim());
-    if (relative6) {
-      const amount = Number(relative6[1]);
-      const unit = (relative6[2] ?? "d").toLowerCase();
+    const relative7 = /^(\d+)\s*([hdwm])$/i.exec(value.trim());
+    if (relative7) {
+      const amount = Number(relative7[1]);
+      const unit = (relative7[2] ?? "d").toLowerCase();
       return nowAtMs - amount * _TimeUtil.PERIOD_UNIT_TO_MS[unit];
     }
     const absoluteAtMs = Date.parse(value);
@@ -512,7 +512,7 @@ var TokenUsageUtil = class _TokenUsageUtil {
 // src/Shared/Utils/VersionUtil.ts
 var VersionUtil = class {
   // Why: esbuild replaces it at build time; "dev" when running from source.
-  static VERSION = true ? "0.4.4" : "dev";
+  static VERSION = true ? "0.4.5" : "dev";
 };
 
 // src/Shared/Services/AttributionService.ts
@@ -3455,9 +3455,44 @@ var BaseProviderAdapter = class {
   }
 };
 
-// src/Providers/ClaudeCode/Services/ClaudeCodeInventoryService.ts
-import { readdir as readdir2, readFile as readFile4, stat as stat2 } from "node:fs/promises";
-import { basename, join as join4, relative as relative2 } from "node:path";
+// src/Providers/Antigravity/Services/AntigravityInventoryService.ts
+import { readdir as readdir2 } from "node:fs/promises";
+import { join as join4 } from "node:path";
+
+// src/Providers/Antigravity/Utils/AntigravityPathUtil.ts
+import { homedir as homedir3 } from "node:os";
+import { join as join3 } from "node:path";
+
+// src/Shared/Utils/EnvUtil.ts
+var EnvUtil = class {
+  static read(name) {
+    const value = process.env[name];
+    return value === "" ? void 0 : value;
+  }
+};
+
+// src/Providers/Antigravity/Utils/AntigravityPathUtil.ts
+var AntigravityPathUtil = class {
+  static homeDir() {
+    return EnvUtil.read("HARNESS_LEDGER_ANTIGRAVITY_HOME") ?? join3(homedir3(), ".gemini", "antigravity-cli");
+  }
+  static brainDir(homeDir) {
+    return join3(homeDir, "brain");
+  }
+  static historyFile(homeDir) {
+    return join3(homeDir, "history.jsonl");
+  }
+  static lastConversationsFile(homeDir) {
+    return join3(homeDir, "cache", "last_conversations.json");
+  }
+  static builtinSkillsDir(homeDir) {
+    return join3(homeDir, "builtin", "skills");
+  }
+};
+
+// src/Shared/Utils/PieceFileUtil.ts
+import { readFile as readFile3, stat } from "node:fs/promises";
+import { relative } from "node:path";
 
 // src/Shared/Utils/FrontmatterUtil.ts
 var BLOCK_TEXT_MARKERS = /* @__PURE__ */ new Set(["|", ">", "|-", ">-"]);
@@ -3555,6 +3590,591 @@ var FrontmatterUtil = class _FrontmatterUtil {
   }
 };
 
+// src/Shared/Utils/PieceFileUtil.ts
+var MAX_DESCRIPTION_CHARS = 300;
+var PROJECT_SCOPES = /* @__PURE__ */ new Set(["project", "local"]);
+var PieceFileUtil = class _PieceFileUtil {
+  static async fromFile(options) {
+    const text = await readFile3(options.file, "utf8").catch(() => void 0);
+    if (text === void 0) {
+      return void 0;
+    }
+    const { keyToValue } = FrontmatterUtil.parse(text);
+    const fileStat = await stat(options.file).catch(() => void 0);
+    const description = options.description ?? FrontmatterUtil.asText(keyToValue.description);
+    return {
+      id: `${options.kind}:${options.name}`,
+      kind: options.kind,
+      name: options.name,
+      scope: options.scope,
+      path: _PieceFileUtil.displayPath(options.file, options.scope, options.projectDir),
+      hash: HashUtil.sha(text),
+      bytes: Buffer.byteLength(text),
+      approxTokens: NumberUtil.approxTokens(text),
+      description: description?.slice(0, MAX_DESCRIPTION_CHARS),
+      model: options.model ?? FrontmatterUtil.asText(keyToValue.model),
+      modifiedAt: fileStat ? new Date(fileStat.mtimeMs).toISOString() : void 0,
+      modifiedSource: fileStat ? "mtime" : void 0,
+      isEditable: true
+    };
+  }
+  static displayPath(file, scope, projectDir) {
+    const isProjectFile = PROJECT_SCOPES.has(scope);
+    return isProjectFile ? relative(projectDir, file) : PathUtil.tildify(file);
+  }
+  static mcpPiece(options) {
+    return {
+      id: `mcp:${options.name}`,
+      kind: "mcp",
+      name: options.name,
+      scope: options.scope,
+      path: _PieceFileUtil.displayPath(options.file, options.scope, options.projectDir),
+      hash: HashUtil.sha(options.name),
+      bytes: 0,
+      approxTokens: 0,
+      isEditable: true
+    };
+  }
+  static async settled(pending) {
+    const pieces = await Promise.all(pending);
+    return pieces.filter((piece) => piece !== void 0);
+  }
+  static fingerprint(pieces) {
+    return HashUtil.sha(pieces.map((piece) => `${piece.id}=${piece.hash}`).join("\n"));
+  }
+  static withUniqueIds(pieces) {
+    const idToCount = /* @__PURE__ */ new Map();
+    const unique = pieces.map((piece) => {
+      const count = idToCount.get(piece.id) ?? 0;
+      idToCount.set(piece.id, count + 1);
+      return count === 0 ? piece : { ...piece, id: `${piece.id}@${piece.scope}` };
+    });
+    return unique.sort((left, right) => left.id.localeCompare(right.id));
+  }
+};
+
+// src/Providers/Antigravity/Services/AntigravityInventoryService.ts
+var INSTRUCTION_FILES = ["AGENTS.override.md", "AGENTS.md"];
+var SKILL_FILE_NAME = "SKILL.md";
+var AntigravityInventoryService = class {
+  constructor(homeDir) {
+    this.homeDir = homeDir;
+  }
+  async takeInventory(options) {
+    const { projectDir, isProjectOnly } = options;
+    const pieces = [];
+    const instructionPieces = await this.readInstructionPieces(projectDir);
+    pieces.push(...instructionPieces);
+    if (!isProjectOnly) {
+      const managedSkills = await this.readBuiltinSkills(projectDir);
+      pieces.push(...managedSkills);
+    }
+    const uniquePieces = PieceFileUtil.withUniqueIds(pieces);
+    return {
+      provider: "antigravity",
+      projectDir,
+      takenAt: (/* @__PURE__ */ new Date()).toISOString(),
+      fingerprint: PieceFileUtil.fingerprint(uniquePieces),
+      pieces: uniquePieces,
+      retention: { days: 0, source: "Antigravity keeps transcripts until they are deleted" },
+      notes: ["Settings inspection is omitted to prevent reading authentication tokens."]
+    };
+  }
+  async readInstructionPieces(projectDir) {
+    const pieces = [];
+    for (const fileName of INSTRUCTION_FILES) {
+      const file = join4(projectDir, fileName);
+      const piece = await PieceFileUtil.fromFile({
+        file,
+        name: fileName,
+        kind: "instructions",
+        scope: "project",
+        projectDir
+      });
+      if (piece) {
+        pieces.push(piece);
+      }
+    }
+    return pieces;
+  }
+  async readBuiltinSkills(projectDir) {
+    const skillsRoot = AntigravityPathUtil.builtinSkillsDir(this.homeDir);
+    const subdirs = await readdir2(skillsRoot).catch(() => []);
+    const pieces = [];
+    for (const name of subdirs) {
+      const skillFile = join4(skillsRoot, name, SKILL_FILE_NAME);
+      const piece = await PieceFileUtil.fromFile({
+        file: skillFile,
+        kind: "skill",
+        name,
+        scope: "managed",
+        projectDir
+      });
+      if (piece) {
+        pieces.push(piece);
+      }
+    }
+    return pieces;
+  }
+};
+
+// src/Providers/Antigravity/Services/AntigravitySessionService.ts
+import { readdir as readdir3, readFile as readFile4, stat as stat2 } from "node:fs/promises";
+import { join as join5, relative as relative2, sep } from "node:path";
+
+// src/Shared/Utils/UnknownLineUtil.ts
+var MAX_UNKNOWN_TYPE_CHARS = 60;
+var MAX_UNKNOWN_KEYS = 40;
+var UnknownLineUtil = class {
+  static record(facts, record, lineType) {
+    const type = RedactUtil.excerpt(lineType ?? "(no type)", MAX_UNKNOWN_TYPE_CHARS);
+    const keys = Object.keys(record).sort(CollectionUtil.compareCodeUnits).slice(0, MAX_UNKNOWN_KEYS).map((key) => RedactUtil.excerpt(key, MAX_UNKNOWN_TYPE_CHARS));
+    const shapes = facts.unknownLines ?? [];
+    const signature = keys.join(",");
+    const known = shapes.find((shape) => shape.type === type && shape.keys.join(",") === signature);
+    if (known) {
+      known.count++;
+    } else {
+      shapes.push({ type, keys, count: 1 });
+    }
+    facts.unknownLines = shapes;
+  }
+};
+
+// src/Shared/Utils/ThreadSummaryUtil.ts
+var UNKNOWN_SUBAGENT_TYPE2 = "subagent";
+var ThreadSummaryUtil = class _ThreadSummaryUtil {
+  static summarize(input) {
+    const { facts, idleMs } = input;
+    for (const [threadId, eventsAtMs] of input.threadIdToEventsAtMs) {
+      eventsAtMs.sort((left, right) => left - right);
+      const isMain = threadId === SessionUtil.MAIN_THREAD_ID;
+      const threadFacts = {
+        thread: isMain ? SessionUtil.mainThread() : _ThreadSummaryUtil.threadRefOf(facts, threadId),
+        activeMs: TimeUtil.activeTime(eventsAtMs, idleMs),
+        firstEventAtMs: eventsAtMs[0],
+        lastEventAtMs: eventsAtMs.at(-1),
+        promptHash: input.threadIdToFirstPromptHash.get(threadId)
+      };
+      facts.threads.push(threadFacts);
+      if (isMain) {
+        facts.activeMs = threadFacts.activeMs;
+        facts.startedAtMs = threadFacts.firstEventAtMs;
+        facts.endedAtMs = threadFacts.lastEventAtMs;
+      }
+    }
+  }
+  static threadRefOf(facts, threadId) {
+    const typeOf = facts.tools.find((call) => call.thread.id === threadId)?.thread.agentType ?? facts.messages.find((message) => message.thread.id === threadId)?.thread.agentType ?? UNKNOWN_SUBAGENT_TYPE2;
+    return { id: threadId, agentType: typeOf };
+  }
+};
+
+// src/Shared/Utils/JsonlUtil.ts
+import { createReadStream } from "node:fs";
+import { createInterface } from "node:readline";
+var JsonlUtil = class _JsonlUtil {
+  static async read(file, handlers) {
+    const lines = createInterface({
+      input: createReadStream(file, { encoding: "utf8" }),
+      crlfDelay: Infinity
+    });
+    let lineNumber = 0;
+    for await (const line of lines) {
+      lineNumber++;
+      if (line.trim()) {
+        _JsonlUtil.handleLine(line, lineNumber, handlers);
+      }
+    }
+  }
+  static handleLine(line, lineNumber, handlers) {
+    const record = GuardUtil.parseJson(line);
+    if (record === void 0) {
+      handlers.onBadLine();
+      return;
+    }
+    try {
+      handlers.onRecord(record, lineNumber);
+    } catch {
+      handlers.onBadLine();
+    }
+  }
+};
+
+// src/Providers/Antigravity/Services/AntigravitySessionService.ts
+var TRANSCRIPT_FILE_NAME = "transcript.jsonl";
+var LOGS_SUBDIR = join5(".system_generated", "logs");
+var MAX_PROMPT_CHARS = 2e3;
+var MAX_NAME_CHARS2 = 60;
+var DEFAULT_IDLE_MINUTES = 5;
+var MS_PER_MINUTE = 6e4;
+var IDLE_MS = DEFAULT_IDLE_MINUTES * MS_PER_MINUTE;
+var TIMED_RECORD_TYPES = /* @__PURE__ */ new Set([
+  "USER_INPUT",
+  "PLANNER_RESPONSE",
+  "ERROR_MESSAGE"
+]);
+var IGNORED_RECORD_TYPES = /* @__PURE__ */ new Set(["SYSTEM_MESSAGE", "CHECKPOINT"]);
+var describeShell = (args) => {
+  const command = GuardUtil.asString(args.CommandLine) ?? GuardUtil.asString(args.command) ?? "";
+  return {
+    key: NormalizeUtil.commandKey(command),
+    category: "shell",
+    summary: command
+  };
+};
+var describeRead = (args) => {
+  const filePath = GuardUtil.asString(args.Path) ?? GuardUtil.asString(args.path);
+  return {
+    key: "read",
+    category: "read",
+    summary: filePath ?? "read",
+    filePath
+  };
+};
+var describeEdit = (args) => {
+  const filePath = GuardUtil.asString(args.Path) ?? GuardUtil.asString(args.path);
+  return {
+    key: "edit",
+    category: "edit",
+    summary: filePath ?? "edit",
+    filePath
+  };
+};
+var describeWrite = (args) => {
+  const filePath = GuardUtil.asString(args.Path) ?? GuardUtil.asString(args.path);
+  return {
+    key: "write",
+    category: "edit",
+    summary: filePath ?? "write",
+    filePath
+  };
+};
+var describePlan = (args) => {
+  const action = GuardUtil.asString(args.Action) ?? GuardUtil.asString(args.action) ?? "manage_task";
+  return {
+    key: "manage_task",
+    category: "plan",
+    summary: action
+  };
+};
+var describeSearch = (args) => {
+  const query = GuardUtil.asString(args.query) ?? "search_web";
+  return {
+    key: "search_web",
+    category: "search",
+    summary: query
+  };
+};
+var describeDelegation = (args) => {
+  const subagentType = GuardUtil.asString(args.TypeName) ?? GuardUtil.asString(args.Role) ?? "subagent";
+  const prompt = GuardUtil.asString(args.Prompt);
+  return {
+    key: `spawn_agent:${subagentType}`,
+    category: "delegation",
+    summary: subagentType,
+    subagentType,
+    subagentPromptHash: prompt ? HashUtil.sha(prompt) : void 0
+  };
+};
+var NAME_TO_DESCRIBER = /* @__PURE__ */ new Map([
+  ["run_command", describeShell],
+  ["read_file", describeRead],
+  ["edit_file", describeEdit],
+  ["write_file", describeWrite],
+  ["manage_task", describePlan],
+  ["search_web", describeSearch],
+  ["invoke_subagent", describeDelegation]
+]);
+var AntigravitySessionService = class {
+  constructor(homeDir) {
+    this.homeDir = homeDir;
+  }
+  recordTypeToHandler = /* @__PURE__ */ new Map([
+    ["USER_INPUT", (context, line) => {
+      this.handleUserInput(context, line);
+    }],
+    ["PLANNER_RESPONSE", (context, line) => {
+      this.handlePlannerResponse(context, line);
+    }],
+    ["ERROR_MESSAGE", (context, line) => {
+      this.handleErrorMessage(context, line);
+    }],
+    ["GENERIC", (context, line) => {
+      this.handleGeneric(context, line);
+    }]
+  ]);
+  async discoverTranscripts(options) {
+    const conversationIdToWorkspace = await this.readWorkspaceMap();
+    const brainDir = AntigravityPathUtil.brainDir(this.homeDir);
+    const conversationIds = await readdir3(brainDir).catch(() => []);
+    const transcripts = [];
+    for (const conversationId of conversationIds) {
+      const transcriptPath = join5(brainDir, conversationId, LOGS_SUBDIR, TRANSCRIPT_FILE_NAME);
+      const fileStat = await stat2(transcriptPath).catch(() => void 0);
+      const workspace = conversationIdToWorkspace.get(conversationId);
+      const isCandidate = options.shouldReadAllProjects === true || workspace !== void 0 && this.isInsideProject(workspace, options.projectDir);
+      if (!fileStat?.isFile() || !isCandidate) {
+        continue;
+      }
+      transcripts.push({
+        file: transcriptPath,
+        modifiedAtMs: fileStat.mtimeMs,
+        bytes: fileStat.size,
+        sessionId: conversationId,
+        subagentFiles: [],
+        isExactProject: workspace === options.projectDir
+      });
+    }
+    return transcripts.sort((left, right) => left.modifiedAtMs - right.modifiedAtMs || CollectionUtil.compareCodeUnits(left.sessionId, right.sessionId));
+  }
+  async parseSession(transcript, options) {
+    const initialFacts = {
+      sessionId: transcript.sessionId,
+      provider: "antigravity",
+      file: transcript.file,
+      files: [transcript.file],
+      projectDir: options?.projectDir,
+      activeMs: 0,
+      prompts: [],
+      tools: [],
+      messages: [],
+      threads: [],
+      apiErrors: [],
+      compactions: [],
+      environment: {},
+      reported: { isCostPartial: true, turns: [] },
+      unparsedLines: 0
+    };
+    const context = {
+      facts: initialFacts,
+      currentFile: transcript.file,
+      currentThread: SessionUtil.mainThread(),
+      threadIdToEventsAtMs: /* @__PURE__ */ new Map(),
+      threadIdToFirstPromptHash: /* @__PURE__ */ new Map()
+    };
+    await this.processTranscriptFile(context);
+    ThreadSummaryUtil.summarize({
+      facts: initialFacts,
+      idleMs: options?.idleMs ?? IDLE_MS,
+      threadIdToEventsAtMs: context.threadIdToEventsAtMs,
+      threadIdToFirstPromptHash: context.threadIdToFirstPromptHash
+    });
+    if (initialFacts.threads.length === 0) {
+      initialFacts.threads.push({ thread: SessionUtil.mainThread(), activeMs: 0 });
+    }
+    initialFacts.environment.platform ??= SessionUtil.platformFromPath(initialFacts.projectDir);
+    return initialFacts;
+  }
+  async readWorkspaceMap() {
+    const conversationIdToWorkspace = /* @__PURE__ */ new Map();
+    const historyFile = AntigravityPathUtil.historyFile(this.homeDir);
+    await JsonlUtil.read(historyFile, {
+      onRecord: (record) => {
+        const entry = GuardUtil.asRecord(record);
+        const conversationId = GuardUtil.asString(entry?.conversationId);
+        const workspace = GuardUtil.asString(entry?.workspace);
+        if (conversationId && workspace) {
+          conversationIdToWorkspace.set(conversationId, workspace);
+        }
+      },
+      onBadLine: () => void 0
+    }).catch(() => void 0);
+    const lastConversationsFile = AntigravityPathUtil.lastConversationsFile(this.homeDir);
+    const text = await readFile4(lastConversationsFile, "utf8").catch(() => void 0);
+    if (text) {
+      this.mergeLastConversations(conversationIdToWorkspace, text);
+    }
+    return conversationIdToWorkspace;
+  }
+  mergeLastConversations(conversationIdToWorkspace, text) {
+    const parsed = GuardUtil.asRecord(GuardUtil.parseJson(text));
+    if (!parsed) {
+      return;
+    }
+    for (const [workspace, conversationId] of Object.entries(parsed)) {
+      const idString = GuardUtil.asString(conversationId);
+      if (idString && !conversationIdToWorkspace.has(idString)) {
+        conversationIdToWorkspace.set(idString, workspace);
+      }
+    }
+  }
+  isInsideProject(cwd, projectDir) {
+    const path = relative2(projectDir, cwd);
+    return path === "" || !path.startsWith("..") && !path.startsWith(sep) && !/^[A-Za-z]:/.test(path);
+  }
+  async processTranscriptFile(context) {
+    const streamHandlers = {
+      onRecord: (record, lineIndex) => {
+        this.handleRecord(context, record, lineIndex);
+      },
+      onBadLine: () => {
+        context.facts.unparsedLines += 1;
+      }
+    };
+    await JsonlUtil.read(context.currentFile, streamHandlers);
+  }
+  handleRecord(context, value, lineNumber) {
+    const record = GuardUtil.asRecord(value);
+    if (!record) {
+      return;
+    }
+    const occurredAt = GuardUtil.asString(record.created_at);
+    const parsedAtMs = occurredAt === void 0 ? Number.NaN : Date.parse(occurredAt);
+    const occurredAtMs = Number.isNaN(parsedAtMs) ? void 0 : parsedAtMs;
+    const lineType = GuardUtil.asString(record.type);
+    const line = {
+      record,
+      lineNumber,
+      occurredAtMs,
+      occurredAt,
+      thread: context.currentThread,
+      type: lineType
+    };
+    if (occurredAtMs !== void 0 && lineType !== void 0 && TIMED_RECORD_TYPES.has(lineType)) {
+      const eventsAtMs = context.threadIdToEventsAtMs.get(line.thread.id) ?? [];
+      eventsAtMs.push(occurredAtMs);
+      context.threadIdToEventsAtMs.set(line.thread.id, eventsAtMs);
+    }
+    const handler = lineType ? this.recordTypeToHandler.get(lineType) : void 0;
+    if (handler) {
+      handler(context, line);
+      return;
+    }
+    if (!IGNORED_RECORD_TYPES.has(lineType ?? "")) {
+      UnknownLineUtil.record(context.facts, record, lineType);
+    }
+  }
+  makeEvidence(context, line, text) {
+    const excerpt = text ? RedactUtil.excerpt(text) : void 0;
+    return {
+      sessionId: context.facts.sessionId,
+      file: context.currentFile,
+      line: line.lineNumber,
+      occurredAt: line.occurredAt,
+      thread: line.thread.agentType,
+      excerpt
+    };
+  }
+  handleUserInput(context, line) {
+    const rawContent = GuardUtil.asString(line.record.content);
+    if (!rawContent) {
+      return;
+    }
+    const threadId = line.thread.id;
+    if (!context.threadIdToFirstPromptHash.has(threadId)) {
+      context.threadIdToFirstPromptHash.set(threadId, HashUtil.sha(rawContent));
+    }
+    const redactedContent = RedactUtil.redact(rawContent);
+    const text = redactedContent.slice(0, MAX_PROMPT_CHARS);
+    context.facts.prompts.push({
+      text,
+      ref: this.makeEvidence(context, line, redactedContent),
+      sentAtMs: line.occurredAtMs,
+      isCorrection: NormalizeUtil.isCorrection(rawContent),
+      isInterruption: false
+    });
+  }
+  describeTool(name, args) {
+    const describer = NAME_TO_DESCRIBER.get(name);
+    if (describer) {
+      return describer(args);
+    }
+    return {
+      key: name,
+      category: "other",
+      summary: name
+    };
+  }
+  handlePlannerResponse(context, line) {
+    const input = GuardUtil.asNumber(line.record.input_tokens) ?? 0;
+    const output = GuardUtil.asNumber(line.record.output_tokens) ?? 0;
+    const cacheRead = GuardUtil.asNumber(line.record.cache_read_tokens) ?? 0;
+    const message = {
+      id: `${line.thread.id}:${line.lineNumber}`,
+      usage: { input, output, cacheRead, cacheWrite: 0 },
+      thread: line.thread,
+      sentAtMs: line.occurredAtMs,
+      ref: this.makeEvidence(context, line)
+    };
+    context.facts.messages.push(message);
+    const rawCalls = GuardUtil.asArray(line.record.tool_calls);
+    for (const [index, item] of rawCalls.entries()) {
+      const callRecord = GuardUtil.asRecord(item);
+      if (!callRecord) {
+        continue;
+      }
+      const rawName = GuardUtil.asString(callRecord.name) ?? "unknown";
+      const args = GuardUtil.asRecord(callRecord.args) ?? {};
+      const description = this.describeTool(rawName, args);
+      const callId = `${line.thread.id}:${line.lineNumber}:${index}`;
+      const name = RedactUtil.excerpt(rawName, MAX_NAME_CHARS2);
+      const key = RedactUtil.redact(description.key);
+      const summary = RedactUtil.excerpt(description.summary);
+      const filePath = description.filePath ? RedactUtil.redact(description.filePath) : void 0;
+      const toolCall = {
+        id: callId,
+        name,
+        key,
+        summary,
+        category: description.category,
+        filePath,
+        thread: line.thread,
+        ref: this.makeEvidence(context, line, description.summary),
+        calledAtMs: line.occurredAtMs,
+        messageId: message.id,
+        subagentType: description.subagentType,
+        subagentPromptHash: description.subagentPromptHash
+      };
+      context.facts.tools.push(toolCall);
+    }
+  }
+  handleErrorMessage(context, line) {
+    const errorText = GuardUtil.asString(line.record.error) ?? GuardUtil.asString(line.record.content) ?? "unknown error";
+    context.facts.apiErrors.push({
+      code: RedactUtil.excerpt(errorText),
+      thread: line.thread,
+      ref: this.makeEvidence(context, line, errorText),
+      occurredAtMs: line.occurredAtMs
+    });
+  }
+  handleGeneric(context, line) {
+    const status = GuardUtil.asString(line.record.status);
+    const hasError = status === "ERROR" || line.record.error !== void 0;
+    if (hasError) {
+      UnknownLineUtil.record(context.facts, line.record, line.type);
+    }
+  }
+};
+
+// src/Providers/Antigravity/Adapters/AntigravityProviderAdapter.ts
+var AntigravityProviderAdapter = class extends BaseProviderAdapter {
+  type = "antigravity";
+  displayName = "Antigravity";
+  paths() {
+    return { homeDir: AntigravityPathUtil.homeDir() };
+  }
+  async discoverTranscripts(options) {
+    const service = new AntigravitySessionService(this.paths().homeDir);
+    return service.discoverTranscripts(options);
+  }
+  async parseSession(transcript, options) {
+    const service = new AntigravitySessionService(this.paths().homeDir);
+    return service.parseSession(transcript, options);
+  }
+  async takeInventory(options) {
+    const inventoryService = new AntigravityInventoryService(this.paths().homeDir);
+    return inventoryService.takeInventory(options);
+  }
+  retentionNote() {
+    return "Antigravity keeps session transcripts until they are deleted, so no retention window applies. harness-ledger never changes this setting.";
+  }
+};
+
+// src/Providers/ClaudeCode/Services/ClaudeCodeInventoryService.ts
+import { readdir as readdir4, readFile as readFile6, stat as stat4 } from "node:fs/promises";
+import { basename, join as join7, relative as relative4 } from "node:path";
+
 // src/Shared/Utils/GitUtil.ts
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -3604,12 +4224,12 @@ var GitUtil = class {
 };
 
 // src/Providers/ClaudeCode/Services/ClaudeCodePieceCollectorService.ts
-import { readFile as readFile3, realpath, stat } from "node:fs/promises";
-import { dirname, join as join3, relative, sep } from "node:path";
-var PROJECT_SCOPES = /* @__PURE__ */ new Set(["project", "local"]);
+import { readFile as readFile5, realpath, stat as stat3 } from "node:fs/promises";
+import { dirname, join as join6, relative as relative3, sep as sep2 } from "node:path";
+var PROJECT_SCOPES2 = /* @__PURE__ */ new Set(["project", "local"]);
 var KINDS_WITH_SKILLS = /* @__PURE__ */ new Set(["agent"]);
 var READ_ONLY_SCOPES = /* @__PURE__ */ new Set(["plugin", "managed"]);
-var MAX_DESCRIPTION_CHARS = 300;
+var MAX_DESCRIPTION_CHARS2 = 300;
 var CLAUDE_FOLDER = ".claude";
 var MAX_HASHED_FILE_BYTES = 1e6;
 var ClaudeCodePieceCollectorService = class {
@@ -3617,7 +4237,7 @@ var ClaudeCodePieceCollectorService = class {
     this.projectDir = projectDir;
     this.gitChangeDates = gitChangeDates;
   }
-  static MAX_DESCRIPTION_CHARS = MAX_DESCRIPTION_CHARS;
+  static MAX_DESCRIPTION_CHARS = MAX_DESCRIPTION_CHARS2;
   pieces = [];
   notes = [];
   seenRealPaths = /* @__PURE__ */ new Set();
@@ -3636,23 +4256,23 @@ var ClaudeCodePieceCollectorService = class {
     }
     const realFile = await realpath(file).catch(() => file);
     const realAnchor = await realpath(anchor).catch(() => anchor);
-    const isLinked = realFile !== join3(realAnchor, relative(anchor, file));
+    const isLinked = realFile !== join6(realAnchor, relative3(anchor, file));
     return isLinked ? RedactUtil.redact(PathUtil.tildify(realFile)) : void 0;
   }
   anchorOf(file) {
-    const isInsideProject = !relative(this.projectDir, file).startsWith("..");
+    const isInsideProject = !relative3(this.projectDir, file).startsWith("..");
     if (isInsideProject) {
       return this.projectDir;
     }
-    const claudeFolderIndex = file.lastIndexOf(`${sep}${CLAUDE_FOLDER}${sep}`);
+    const claudeFolderIndex = file.lastIndexOf(`${sep2}${CLAUDE_FOLDER}${sep2}`);
     return claudeFolderIndex === -1 ? void 0 : file.slice(0, claudeFolderIndex);
   }
   displayPath(file, scope) {
-    const isProjectFile = PROJECT_SCOPES.has(scope);
-    return isProjectFile ? relative(this.projectDir, file) : PathUtil.tildify(file);
+    const isProjectFile = PROJECT_SCOPES2.has(scope);
+    return isProjectFile ? relative3(this.projectDir, file) : PathUtil.tildify(file);
   }
   async changeOf(file, scope) {
-    const projectRelativePath = relative(this.projectDir, file);
+    const projectRelativePath = relative3(this.projectDir, file);
     const isCommittedAsIs = scope === "project" && !this.gitChangeDates.dirtyPaths.has(projectRelativePath);
     const committedAt = isCommittedAsIs ? this.gitChangeDates.pathToCommittedAt.get(projectRelativePath) : void 0;
     if (committedAt) {
@@ -3661,17 +4281,17 @@ var ClaudeCodePieceCollectorService = class {
         modifiedSource: "git"
       };
     }
-    const fileStat = await stat(file).catch(() => void 0);
+    const fileStat = await stat3(file).catch(() => void 0);
     return fileStat ? {
       modifiedAt: new Date(fileStat.mtimeMs).toISOString(),
       modifiedSource: "mtime"
     } : {};
   }
   async fileHash(file) {
-    const fileStat = await stat(file).catch(() => void 0);
+    const fileStat = await stat3(file).catch(() => void 0);
     const isHashable = fileStat !== void 0 && fileStat.size <= MAX_HASHED_FILE_BYTES;
-    const content = isHashable ? await readFile3(file).catch(() => Buffer.alloc(0)) : Buffer.from(`${fileStat?.size ?? 0}`);
-    return HashUtil.sha(`${relative(this.projectDir, file)}
+    const content = isHashable ? await readFile5(file).catch(() => Buffer.alloc(0)) : Buffer.from(`${fileStat?.size ?? 0}`);
+    return HashUtil.sha(`${relative3(this.projectDir, file)}
 ${content.toString("base64")}`);
   }
   uniqueId(kind, name, scope) {
@@ -3681,7 +4301,7 @@ ${content.toString("base64")}`);
   }
   async addFile(filePiece) {
     const isNew = await this.markSeen(filePiece.file);
-    const text = isNew ? await readFile3(filePiece.file, "utf8").catch(() => void 0) : void 0;
+    const text = isNew ? await readFile5(filePiece.file, "utf8").catch(() => void 0) : void 0;
     if (text === void 0) {
       return;
     }
@@ -3704,11 +4324,11 @@ ${content.toString("base64")}`);
       hash: extraFiles.length ? HashUtil.sha([text, ...extraHashes].join("\n")) : HashUtil.sha(text),
       bytes: Buffer.byteLength(text),
       approxTokens: NumberUtil.approxTokens(text),
-      description: FrontmatterUtil.asText(keyToValue.description)?.slice(0, MAX_DESCRIPTION_CHARS),
+      description: FrontmatterUtil.asText(keyToValue.description)?.slice(0, MAX_DESCRIPTION_CHARS2),
       model: FrontmatterUtil.asText(keyToValue.model),
       tools: FrontmatterUtil.asList(keyToValue.tools ?? keyToValue["allowed-tools"]),
       ...latestChange,
-      files: extraFiles.length ? extraFiles.map((extraFile) => relative(pieceFolder, extraFile)) : void 0,
+      files: extraFiles.length ? extraFiles.map((extraFile) => relative3(pieceFolder, extraFile)) : void 0,
       preloadedSkills: KINDS_WITH_SKILLS.has(filePiece.kind) ? FrontmatterUtil.asList(keyToValue.skills) : void 0,
       isEditable: !READ_ONLY_SCOPES.has(filePiece.scope),
       plugin: filePiece.plugin
@@ -3718,7 +4338,7 @@ ${content.toString("base64")}`);
 
 // src/Providers/ClaudeCode/Services/ClaudeCodeInventoryService.ts
 var DEFAULT_RETENTION_DAYS = 30;
-var { MAX_DESCRIPTION_CHARS: MAX_DESCRIPTION_CHARS2 } = ClaudeCodePieceCollectorService;
+var { MAX_DESCRIPTION_CHARS: MAX_DESCRIPTION_CHARS3 } = ClaudeCodePieceCollectorService;
 var MAX_COMPONENT_DEPTH = 4;
 var HARNESS_PATHS = ["CLAUDE.md", "CLAUDE.local.md", ".claude", ".mcp.json"];
 var MAX_SKILL_FILES = 50;
@@ -3735,7 +4355,7 @@ var ClaudeCodeInventoryService = class {
     const builder = new ClaudeCodePieceCollectorService(projectDir, changeDates);
     const shouldIncludeUser = !options.isProjectOnly;
     await this.addInstructionFiles(builder, shouldIncludeUser);
-    await this.addComponents(builder, join4(projectDir, ".claude"), "project");
+    await this.addComponents(builder, join7(projectDir, ".claude"), "project");
     if (shouldIncludeUser) {
       await this.addComponents(builder, this.homeDir, "user");
     }
@@ -3760,19 +4380,19 @@ var ClaudeCodeInventoryService = class {
     const projectDir = builder.projectDir;
     const instructionFiles = [
       {
-        file: join4(projectDir, "CLAUDE.md"),
+        file: join7(projectDir, "CLAUDE.md"),
         kind: "instructions",
         name: "project",
         scope: "project"
       },
       {
-        file: join4(projectDir, ".claude", "CLAUDE.md"),
+        file: join7(projectDir, ".claude", "CLAUDE.md"),
         kind: "instructions",
         name: "project-dotclaude",
         scope: "project"
       },
       {
-        file: join4(projectDir, "CLAUDE.local.md"),
+        file: join7(projectDir, "CLAUDE.local.md"),
         kind: "instructions",
         name: "local",
         scope: "local"
@@ -3780,7 +4400,7 @@ var ClaudeCodeInventoryService = class {
     ];
     if (shouldIncludeUser) {
       instructionFiles.push({
-        file: join4(this.homeDir, "CLAUDE.md"),
+        file: join7(this.homeDir, "CLAUDE.md"),
         kind: "instructions",
         name: "user",
         scope: "user"
@@ -3793,9 +4413,9 @@ var ClaudeCodeInventoryService = class {
   async addComponents(builder, baseDir, scope, componentOptions = {}) {
     const prefix = componentOptions.namePrefix ?? "";
     const plugin = componentOptions.plugin;
-    for (const skillDir of await readdir2(join4(baseDir, "skills")).catch(() => [])) {
-      const skillFolder = join4(baseDir, "skills", skillDir);
-      const file = join4(skillFolder, "SKILL.md");
+    for (const skillDir of await readdir4(join7(baseDir, "skills")).catch(() => [])) {
+      const skillFolder = join7(baseDir, "skills", skillDir);
+      const file = join7(skillFolder, "SKILL.md");
       const declaredName = await this.declaredNameOf(file);
       const extraFiles = await this.skillFolderFiles(skillFolder);
       await builder.addFile({
@@ -3807,8 +4427,8 @@ var ClaudeCodeInventoryService = class {
         name: `${prefix}${declaredName ?? skillDir}`
       });
     }
-    const rootSkill = join4(baseDir, "SKILL.md");
-    const rootSkillStat = componentOptions.canBeRootSkill ? await stat2(rootSkill).catch(() => void 0) : void 0;
+    const rootSkill = join7(baseDir, "SKILL.md");
+    const rootSkillStat = componentOptions.canBeRootSkill ? await stat4(rootSkill).catch(() => void 0) : void 0;
     if (rootSkillStat !== void 0) {
       await builder.addFile({
         file: rootSkill,
@@ -3818,7 +4438,7 @@ var ClaudeCodeInventoryService = class {
         plugin
       });
     }
-    const agentsDir = join4(baseDir, "agents");
+    const agentsDir = join7(baseDir, "agents");
     for (const file of await this.listMarkdownFiles(agentsDir)) {
       const declaredName = await this.declaredNameOf(file);
       await builder.addFile({
@@ -3829,7 +4449,7 @@ var ClaudeCodeInventoryService = class {
         name: `${prefix}${declaredName ?? this.nameFromPath(agentsDir, file)}`
       });
     }
-    const commandsDir = join4(baseDir, "commands");
+    const commandsDir = join7(baseDir, "commands");
     for (const file of await this.listMarkdownFiles(commandsDir)) {
       await builder.addFile({
         file,
@@ -3841,20 +4461,20 @@ var ClaudeCodeInventoryService = class {
     }
   }
   async declaredNameOf(file) {
-    const text = await readFile4(file, "utf8").catch(() => "");
+    const text = await readFile6(file, "utf8").catch(() => "");
     return FrontmatterUtil.asText(FrontmatterUtil.parse(text).keyToValue.name);
   }
   nameFromPath(baseDir, file) {
-    return relative2(baseDir, file).replace(/\.md$/, "").replace(/[\\/]/g, ":");
+    return relative4(baseDir, file).replace(/\.md$/, "").replace(/[\\/]/g, ":");
   }
   async skillFolderFiles(dir, depth = 0) {
     if (depth > MAX_SKILL_FOLDER_DEPTH) {
       return [];
     }
-    const entries = await readdir2(dir, { withFileTypes: true }).catch(() => []);
+    const entries = await readdir4(dir, { withFileTypes: true }).catch(() => []);
     const files = [];
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-      const entryPath = join4(dir, entry.name);
+      const entryPath = join7(dir, entry.name);
       const isHidden = entry.name.startsWith(".");
       const { isDirectory, isFile } = await this.entryKindOf(entry, entryPath);
       if (isDirectory && !isHidden && !SKIPPED_FOLDERS.has(entry.name)) {
@@ -3871,17 +4491,17 @@ var ClaudeCodeInventoryService = class {
     if (!entry.isSymbolicLink()) {
       return { isDirectory: entry.isDirectory(), isFile: entry.isFile() };
     }
-    const target = await stat2(entryPath).catch(() => void 0);
+    const target = await stat4(entryPath).catch(() => void 0);
     return { isDirectory: target?.isDirectory() ?? false, isFile: target?.isFile() ?? false };
   }
   async listMarkdownFiles(dir, depth = 0) {
     if (depth > MAX_COMPONENT_DEPTH) {
       return [];
     }
-    const entries = await readdir2(dir, { withFileTypes: true }).catch(() => []);
+    const entries = await readdir4(dir, { withFileTypes: true }).catch(() => []);
     const files = [];
     for (const entry of entries) {
-      const entryPath = join4(dir, entry.name);
+      const entryPath = join7(dir, entry.name);
       const { isDirectory, isFile } = await this.entryKindOf(entry, entryPath);
       if (isDirectory) {
         files.push(...await this.listMarkdownFiles(entryPath, depth + 1));
@@ -3897,17 +4517,17 @@ var ClaudeCodeInventoryService = class {
     const settingsFiles = [];
     if (shouldIncludeUser) {
       settingsFiles.push({
-        file: join4(this.homeDir, "settings.json"),
+        file: join7(this.homeDir, "settings.json"),
         scope: "user"
       });
     }
     settingsFiles.push(
       {
-        file: join4(projectDir, ".claude", "settings.json"),
+        file: join7(projectDir, ".claude", "settings.json"),
         scope: "project"
       },
       {
-        file: join4(projectDir, ".claude", "settings.local.json"),
+        file: join7(projectDir, ".claude", "settings.local.json"),
         scope: "local"
       }
     );
@@ -3996,7 +4616,7 @@ var ClaudeCodeInventoryService = class {
     return pieces;
   }
   async addMcpServers(builder, shouldIncludeUser) {
-    const projectMcpFile = join4(builder.projectDir, ".mcp.json");
+    const projectMcpFile = join7(builder.projectDir, ".mcp.json");
     const projectMcp = await this.readJsonFile(projectMcpFile);
     const projectServers = GuardUtil.asRecord(projectMcp?.mcpServers);
     const projectChange = await builder.changeOf(projectMcpFile, "project");
@@ -4046,7 +4666,7 @@ var ClaudeCodeInventoryService = class {
       if (!pluginIdToIsEnabled.has(pluginId)) {
         builder.notes.push(`Plugin ${pluginId} is installed but not listed in enabledPlugins; assumed enabled.`);
       }
-      const manifestFile = join4(installPath, ".claude-plugin", "plugin.json");
+      const manifestFile = join7(installPath, ".claude-plugin", "plugin.json");
       const manifest = await this.readJsonFile(manifestFile);
       const serialized = JSON.stringify(manifest ?? {});
       builder.pieces.push({
@@ -4058,7 +4678,7 @@ var ClaudeCodeInventoryService = class {
         hash: HashUtil.sha(serialized),
         bytes: serialized.length,
         approxTokens: 0,
-        description: GuardUtil.asString(manifest?.description)?.slice(0, MAX_DESCRIPTION_CHARS2),
+        description: GuardUtil.asString(manifest?.description)?.slice(0, MAX_DESCRIPTION_CHARS3),
         isEditable: false,
         plugin: pluginId
       });
@@ -4072,7 +4692,7 @@ var ClaudeCodeInventoryService = class {
   }
   async readInstalledPlugins() {
     const pluginIdToInstallPath = /* @__PURE__ */ new Map();
-    const installedFile = join4(this.homeDir, "plugins", "installed_plugins.json");
+    const installedFile = join7(this.homeDir, "plugins", "installed_plugins.json");
     const installed = await this.readJsonFile(installedFile);
     const plugins = GuardUtil.asRecord(installed?.plugins) ?? installed ?? {};
     for (const [pluginId, value] of Object.entries(plugins)) {
@@ -4085,95 +4705,25 @@ var ClaudeCodeInventoryService = class {
     return pluginIdToInstallPath;
   }
   async readJsonFile(file) {
-    const text = await readFile4(file, "utf8").catch(() => void 0);
+    const text = await readFile6(file, "utf8").catch(() => void 0);
     return text === void 0 ? void 0 : GuardUtil.asRecord(GuardUtil.parseJson(text));
   }
 };
 
 // src/Providers/ClaudeCode/Services/ClaudeCodeSessionService.ts
-import { readdir as readdir3, readFile as readFile5, stat as stat3 } from "node:fs/promises";
-import { basename as basename2, isAbsolute as isAbsolute2, join as join6, relative as relative3 } from "node:path";
-
-// src/Shared/Utils/JsonlUtil.ts
-import { createReadStream } from "node:fs";
-import { createInterface } from "node:readline";
-var JsonlUtil = class _JsonlUtil {
-  static async read(file, handlers) {
-    const lines = createInterface({
-      input: createReadStream(file, { encoding: "utf8" }),
-      crlfDelay: Infinity
-    });
-    let lineNumber = 0;
-    for await (const line of lines) {
-      lineNumber++;
-      if (line.trim()) {
-        _JsonlUtil.handleLine(line, lineNumber, handlers);
-      }
-    }
-  }
-  static handleLine(line, lineNumber, handlers) {
-    const record = GuardUtil.parseJson(line);
-    if (record === void 0) {
-      handlers.onBadLine();
-      return;
-    }
-    try {
-      handlers.onRecord(record, lineNumber);
-    } catch {
-      handlers.onBadLine();
-    }
-  }
-};
-
-// src/Shared/Utils/ThreadSummaryUtil.ts
-var UNKNOWN_SUBAGENT_TYPE2 = "subagent";
-var ThreadSummaryUtil = class _ThreadSummaryUtil {
-  static summarize(input) {
-    const { facts, idleMs } = input;
-    for (const [threadId, eventsAtMs] of input.threadIdToEventsAtMs) {
-      eventsAtMs.sort((left, right) => left - right);
-      const isMain = threadId === SessionUtil.MAIN_THREAD_ID;
-      const threadFacts = {
-        thread: isMain ? SessionUtil.mainThread() : _ThreadSummaryUtil.threadRefOf(facts, threadId),
-        activeMs: TimeUtil.activeTime(eventsAtMs, idleMs),
-        firstEventAtMs: eventsAtMs[0],
-        lastEventAtMs: eventsAtMs.at(-1),
-        promptHash: input.threadIdToFirstPromptHash.get(threadId)
-      };
-      facts.threads.push(threadFacts);
-      if (isMain) {
-        facts.activeMs = threadFacts.activeMs;
-        facts.startedAtMs = threadFacts.firstEventAtMs;
-        facts.endedAtMs = threadFacts.lastEventAtMs;
-      }
-    }
-  }
-  static threadRefOf(facts, threadId) {
-    const typeOf = facts.tools.find((call) => call.thread.id === threadId)?.thread.agentType ?? facts.messages.find((message) => message.thread.id === threadId)?.thread.agentType ?? UNKNOWN_SUBAGENT_TYPE2;
-    return { id: threadId, agentType: typeOf };
-  }
-};
+import { readdir as readdir5, readFile as readFile7, stat as stat5 } from "node:fs/promises";
+import { basename as basename2, isAbsolute as isAbsolute2, join as join9, relative as relative5 } from "node:path";
 
 // src/Providers/ClaudeCode/Utils/ClaudeCodePathUtil.ts
-import { homedir as homedir3 } from "node:os";
-import { join as join5 } from "node:path";
-
-// src/Shared/Utils/EnvUtil.ts
-var EnvUtil = class {
-  static read(name) {
-    const value = process.env[name];
-    return value === "" ? void 0 : value;
-  }
-};
-
-// src/Providers/ClaudeCode/Utils/ClaudeCodePathUtil.ts
+import { homedir as homedir4 } from "node:os";
+import { join as join8 } from "node:path";
 var ClaudeCodePathUtil = class {
   static homeDir() {
-    return EnvUtil.read("HARNESS_LEDGER_CLAUDE_HOME") ?? EnvUtil.read("CLAUDE_CONFIG_DIR") ?? join5(homedir3(), ".claude");
+    return EnvUtil.read("HARNESS_LEDGER_CLAUDE_HOME") ?? EnvUtil.read("CLAUDE_CONFIG_DIR") ?? join8(homedir4(), ".claude");
   }
   static claudeJsonPath() {
     const configDir = EnvUtil.read("CLAUDE_CONFIG_DIR");
-    const defaultPath = configDir ? join5(configDir, ".claude.json") : join5(homedir3(), ".claude.json");
+    const defaultPath = configDir ? join8(configDir, ".claude.json") : join8(homedir4(), ".claude.json");
     return EnvUtil.read("HARNESS_LEDGER_CLAUDE_JSON") ?? defaultPath;
   }
   static encodeProjectDir(projectDir) {
@@ -4249,7 +4799,7 @@ var ClaudeCodeTranscriptUtil = class _ClaudeCodeTranscriptUtil {
 var TRANSCRIPT_EXTENSION = ".jsonl";
 var UNKNOWN_SUBAGENT_TYPE3 = "subagent";
 var DEFAULT_SUBAGENT_TYPE = "general-purpose";
-var MAX_PROMPT_CHARS = 2e3;
+var MAX_PROMPT_CHARS2 = 2e3;
 var MAX_SUMMARY_CHARS = 160;
 var SUBAGENT_TYPE_KEYS = ["agentType", "agent_type", "subagentType", "subagent_type", "attributionAgent"];
 var TIMED_LINE_TYPES = /* @__PURE__ */ new Set(["user", "assistant", "attachment", "system"]);
@@ -4266,13 +4816,13 @@ var TOKENS_PER_THOUSAND2 = 1e3;
 var VALID_TOOL_NAME = /^[\w.:-]{1,100}$/;
 var MALFORMED_TOOL_NAME = "(malformed tool name)";
 var REJECTED_WITHOUT_FEEDBACK = "rejected without feedback";
-var MAX_UNKNOWN_TYPE_CHARS = 60;
+var MAX_UNKNOWN_TYPE_CHARS2 = 60;
 var DETACHED_BRANCH_NAMES = /* @__PURE__ */ new Set(["HEAD"]);
 var COMPACTION_TRIGGER_TO_IS_KNOWN = {
   auto: true,
   manual: true
 };
-var MAX_UNKNOWN_KEYS = 40;
+var MAX_UNKNOWN_KEYS2 = 40;
 var IGNORED_LINE_TYPES = /* @__PURE__ */ new Set([
   "summary",
   "last-prompt",
@@ -4365,22 +4915,22 @@ var ClaudeCodeSessionService = class {
     }
   };
   async discoverTranscripts(options) {
-    const projectsDir = join6(this.homeDir, "projects");
-    const projectFolders = await readdir3(projectsDir).catch(() => []);
+    const projectsDir = join9(this.homeDir, "projects");
+    const projectFolders = await readdir5(projectsDir).catch(() => []);
     const encodedProject = ClaudeCodePathUtil.encodeProjectDir(options.projectDir);
     const isCandidateFolder = (folder) => folder === encodedProject || folder.startsWith(`${encodedProject}-`);
     const selectedFolders = options.shouldReadAllProjects ? projectFolders : projectFolders.filter(isCandidateFolder);
     const transcripts = [];
     for (const folder of selectedFolders) {
-      const folderPath = join6(projectsDir, folder);
-      const entries = await readdir3(folderPath).catch(() => []);
+      const folderPath = join9(projectsDir, folder);
+      const entries = await readdir5(folderPath).catch(() => []);
       for (const entry of entries.filter((name) => name.endsWith(TRANSCRIPT_EXTENSION))) {
-        const fileStat = await this.statFile(join6(folderPath, entry));
+        const fileStat = await this.statFile(join9(folderPath, entry));
         if (!fileStat) {
           continue;
         }
         const sessionId = entry.slice(0, -TRANSCRIPT_EXTENSION.length);
-        const subagentFolder = join6(folderPath, sessionId, "subagents");
+        const subagentFolder = join9(folderPath, sessionId, "subagents");
         const subagentFiles = await this.listSubagentFiles(subagentFolder);
         transcripts.push({
           ...fileStat,
@@ -4453,14 +5003,14 @@ var ClaudeCodeSessionService = class {
     return facts;
   }
   async listSubagentFiles(subagentsDir) {
-    const entries = await readdir3(subagentsDir).catch(() => []);
+    const entries = await readdir5(subagentsDir).catch(() => []);
     const stats = await Promise.all(
-      entries.filter((name) => name.endsWith(TRANSCRIPT_EXTENSION)).map(async (name) => this.statFile(join6(subagentsDir, name)))
+      entries.filter((name) => name.endsWith(TRANSCRIPT_EXTENSION)).map(async (name) => this.statFile(join9(subagentsDir, name)))
     );
     return stats.filter((fileStat) => fileStat !== void 0);
   }
   async statFile(file) {
-    const fileStat = await stat3(file).catch(() => void 0);
+    const fileStat = await stat5(file).catch(() => void 0);
     if (!fileStat?.isFile()) {
       return void 0;
     }
@@ -4517,7 +5067,7 @@ var ClaudeCodeSessionService = class {
   }
   async readSubagentMetaType(subagentFile) {
     const metaFile = subagentFile.replace(/\.jsonl$/, ".meta.json");
-    const metaText = await readFile5(metaFile, "utf8").catch(() => void 0);
+    const metaText = await readFile7(metaFile, "utf8").catch(() => void 0);
     if (metaText === void 0) {
       return void 0;
     }
@@ -4562,8 +5112,8 @@ var ClaudeCodeSessionService = class {
     }
   }
   recordUnknownLine(facts, record, lineType) {
-    const type = RedactUtil.excerpt(lineType ?? "(no type)", MAX_UNKNOWN_TYPE_CHARS);
-    const keys = Object.keys(record).sort(CollectionUtil.compareCodeUnits).slice(0, MAX_UNKNOWN_KEYS).map((key) => RedactUtil.excerpt(key, MAX_UNKNOWN_TYPE_CHARS));
+    const type = RedactUtil.excerpt(lineType ?? "(no type)", MAX_UNKNOWN_TYPE_CHARS2);
+    const keys = Object.keys(record).sort(CollectionUtil.compareCodeUnits).slice(0, MAX_UNKNOWN_KEYS2).map((key) => RedactUtil.excerpt(key, MAX_UNKNOWN_TYPE_CHARS2));
     const shapes = facts.unknownLines ?? [];
     const signature = keys.join(",");
     const known = shapes.find((shape) => shape.type === type && shape.keys.join(",") === signature);
@@ -4808,7 +5358,7 @@ var ClaudeCodeSessionService = class {
     context.facts.prompts.push({
       command,
       isInterruption,
-      text: RedactUtil.redact(text).slice(0, MAX_PROMPT_CHARS),
+      text: RedactUtil.redact(text).slice(0, MAX_PROMPT_CHARS2),
       ref: this.evidenceFactory(context, line)(text || `/${command ?? ""}`),
       sentAtMs: line.occurredAtMs,
       isCorrection: !isInterruption && hasEarlierPrompt && NormalizeUtil.isCorrection(text)
@@ -4932,7 +5482,7 @@ var ClaudeCodeSessionService = class {
   }
   toProjectRelative(filePath, projectDir) {
     const isInsideProject = projectDir !== void 0 && isAbsolute2(filePath) && (filePath === projectDir || filePath.startsWith(`${projectDir}/`));
-    return isInsideProject ? relative3(projectDir, filePath) || "." : PathUtil.tildify(filePath);
+    return isInsideProject ? relative5(projectDir, filePath) || "." : PathUtil.tildify(filePath);
   }
 };
 
@@ -4962,77 +5512,12 @@ var ClaudeCodeProviderAdapter = class extends BaseProviderAdapter {
 };
 
 // src/Providers/Codex/Adapters/CodexProviderAdapter.ts
-import { homedir as homedir5 } from "node:os";
-import { join as join10 } from "node:path";
+import { homedir as homedir6 } from "node:os";
+import { join as join13 } from "node:path";
 
 // src/Providers/Codex/Services/CodexInventoryService.ts
-import { readdir as readdir4, readFile as readFile7, stat as stat5 } from "node:fs/promises";
-import { basename as basename3, join as join7 } from "node:path";
-
-// src/Shared/Utils/PieceFileUtil.ts
-import { readFile as readFile6, stat as stat4 } from "node:fs/promises";
-import { relative as relative4 } from "node:path";
-var MAX_DESCRIPTION_CHARS3 = 300;
-var PROJECT_SCOPES2 = /* @__PURE__ */ new Set(["project", "local"]);
-var PieceFileUtil = class _PieceFileUtil {
-  static async fromFile(options) {
-    const text = await readFile6(options.file, "utf8").catch(() => void 0);
-    if (text === void 0) {
-      return void 0;
-    }
-    const { keyToValue } = FrontmatterUtil.parse(text);
-    const fileStat = await stat4(options.file).catch(() => void 0);
-    const description = options.description ?? FrontmatterUtil.asText(keyToValue.description);
-    return {
-      id: `${options.kind}:${options.name}`,
-      kind: options.kind,
-      name: options.name,
-      scope: options.scope,
-      path: _PieceFileUtil.displayPath(options.file, options.scope, options.projectDir),
-      hash: HashUtil.sha(text),
-      bytes: Buffer.byteLength(text),
-      approxTokens: NumberUtil.approxTokens(text),
-      description: description?.slice(0, MAX_DESCRIPTION_CHARS3),
-      model: options.model ?? FrontmatterUtil.asText(keyToValue.model),
-      modifiedAt: fileStat ? new Date(fileStat.mtimeMs).toISOString() : void 0,
-      modifiedSource: fileStat ? "mtime" : void 0,
-      isEditable: true
-    };
-  }
-  static displayPath(file, scope, projectDir) {
-    const isProjectFile = PROJECT_SCOPES2.has(scope);
-    return isProjectFile ? relative4(projectDir, file) : PathUtil.tildify(file);
-  }
-  static mcpPiece(options) {
-    return {
-      id: `mcp:${options.name}`,
-      kind: "mcp",
-      name: options.name,
-      scope: options.scope,
-      path: _PieceFileUtil.displayPath(options.file, options.scope, options.projectDir),
-      hash: HashUtil.sha(options.name),
-      bytes: 0,
-      approxTokens: 0,
-      isEditable: true
-    };
-  }
-  static async settled(pending) {
-    const pieces = await Promise.all(pending);
-    return pieces.filter((piece) => piece !== void 0);
-  }
-  static fingerprint(pieces) {
-    return HashUtil.sha(pieces.map((piece) => `${piece.id}=${piece.hash}`).join("\n"));
-  }
-  static withUniqueIds(pieces) {
-    const idToCount = /* @__PURE__ */ new Map();
-    const unique = pieces.map((piece) => {
-      const count = idToCount.get(piece.id) ?? 0;
-      idToCount.set(piece.id, count + 1);
-      return count === 0 ? piece : { ...piece, id: `${piece.id}@${piece.scope}` };
-    });
-    return unique.sort((left, right) => left.id.localeCompare(right.id));
-  }
-};
+import { readdir as readdir6, readFile as readFile8, stat as stat6 } from "node:fs/promises";
+import { basename as basename3, join as join10 } from "node:path";
 
 // src/Providers/Codex/Utils/CodexTomlUtil.ts
 var TABLE_HEADER = /^\[mcp_servers\.("?)([^\]"]+)\1\]/;
@@ -5066,7 +5551,7 @@ var CodexTomlUtil = class {
 };
 
 // src/Providers/Codex/Services/CodexInventoryService.ts
-var INSTRUCTION_FILES = ["AGENTS.override.md", "AGENTS.md"];
+var INSTRUCTION_FILES2 = ["AGENTS.override.md", "AGENTS.md"];
 var AGENT_KEYS = ["name", "description", "model"];
 var CodexInventoryService = class {
   constructor(homeDir, userSkillsDir) {
@@ -5077,19 +5562,19 @@ var CodexInventoryService = class {
     const { projectDir } = options;
     const pieces = [];
     const places = [
-      { scope: "project", root: projectDir, skillsDir: join7(projectDir, ".agents", "skills") }
+      { scope: "project", root: projectDir, skillsDir: join10(projectDir, ".agents", "skills") }
     ];
     if (!options.isProjectOnly) {
       places.push({ scope: "user", root: this.homeDir, skillsDir: this.userSkillsDir });
     }
     for (const place of places) {
       const isProject = place.scope === "project";
-      const configFolder = isProject ? join7(place.root, ".codex") : place.root;
+      const configFolder = isProject ? join10(place.root, ".codex") : place.root;
       pieces.push(
         ...await this.instructionPieces(place.root, place.scope, projectDir),
         ...await this.skillPieces(place.skillsDir, place.scope, projectDir),
-        ...await this.agentPieces(join7(configFolder, "agents"), place.scope, projectDir),
-        ...await this.mcpPieces(join7(configFolder, "config.toml"), place.scope, projectDir)
+        ...await this.agentPieces(join10(configFolder, "agents"), place.scope, projectDir),
+        ...await this.mcpPieces(join10(configFolder, "config.toml"), place.scope, projectDir)
       );
     }
     const uniquePieces = PieceFileUtil.withUniqueIds(pieces);
@@ -5104,20 +5589,20 @@ var CodexInventoryService = class {
     };
   }
   async instructionPieces(root, scope, projectDir) {
-    return PieceFileUtil.settled(INSTRUCTION_FILES.map(async (name) => PieceFileUtil.fromFile({ file: join7(root, name), kind: "instructions", name, scope, projectDir })));
+    return PieceFileUtil.settled(INSTRUCTION_FILES2.map(async (name) => PieceFileUtil.fromFile({ file: join10(root, name), kind: "instructions", name, scope, projectDir })));
   }
   async skillPieces(skillsDir, scope, projectDir) {
-    const folders = await readdir4(skillsDir).catch(() => []);
+    const folders = await readdir6(skillsDir).catch(() => []);
     return PieceFileUtil.settled(folders.map(async (folder) => {
-      const piece = await PieceFileUtil.fromFile({ file: join7(skillsDir, folder, "SKILL.md"), kind: "skill", name: folder, scope, projectDir });
-      return piece && { ...piece, files: await this.extraFiles(join7(skillsDir, folder)) };
+      const piece = await PieceFileUtil.fromFile({ file: join10(skillsDir, folder, "SKILL.md"), kind: "skill", name: folder, scope, projectDir });
+      return piece && { ...piece, files: await this.extraFiles(join10(skillsDir, folder)) };
     }));
   }
   async extraFiles(skillFolder) {
-    const names = await readdir4(skillFolder, { recursive: true }).catch(() => []);
+    const names = await readdir6(skillFolder, { recursive: true }).catch(() => []);
     const files = [];
     for (const name of names.filter((entry) => basename3(entry) !== "SKILL.md")) {
-      const fileStat = await stat5(join7(skillFolder, name)).catch(() => void 0);
+      const fileStat = await stat6(join10(skillFolder, name)).catch(() => void 0);
       if (fileStat?.isFile()) {
         files.push(name);
       }
@@ -5125,57 +5610,38 @@ var CodexInventoryService = class {
     return files.length ? files.sort((left, right) => left.localeCompare(right)) : void 0;
   }
   async agentPieces(agentsDir, scope, projectDir) {
-    const allNames = await readdir4(agentsDir).catch(() => []);
+    const allNames = await readdir6(agentsDir).catch(() => []);
     const names = allNames.filter((name) => name.endsWith(".toml"));
     return PieceFileUtil.settled(names.map(async (fileName) => {
-      const file = join7(agentsDir, fileName);
-      const text = await readFile7(file, "utf8").catch(() => "");
+      const file = join10(agentsDir, fileName);
+      const text = await readFile8(file, "utf8").catch(() => "");
       const { name, description, model } = CodexTomlUtil.topLevelStrings(text, AGENT_KEYS);
       const agentName = name ?? basename3(fileName, ".toml");
       return PieceFileUtil.fromFile({ kind: "agent", name: agentName, file, scope, projectDir, description, model });
     }));
   }
   async mcpPieces(file, scope, projectDir) {
-    const text = await readFile7(file, "utf8").catch(() => "");
+    const text = await readFile8(file, "utf8").catch(() => "");
     return CodexTomlUtil.mcpServerNames(text).map((name) => PieceFileUtil.mcpPiece({ name, file, scope, projectDir }));
   }
 };
 
 // src/Providers/Codex/Services/CodexSessionService.ts
-import { readdir as readdir5, stat as stat6 } from "node:fs/promises";
-import { basename as basename4, join as join9, relative as relative5, sep as sep2 } from "node:path";
-
-// src/Shared/Utils/UnknownLineUtil.ts
-var MAX_UNKNOWN_TYPE_CHARS2 = 60;
-var MAX_UNKNOWN_KEYS2 = 40;
-var UnknownLineUtil = class {
-  static record(facts, record, lineType) {
-    const type = RedactUtil.excerpt(lineType ?? "(no type)", MAX_UNKNOWN_TYPE_CHARS2);
-    const keys = Object.keys(record).sort(CollectionUtil.compareCodeUnits).slice(0, MAX_UNKNOWN_KEYS2).map((key) => RedactUtil.excerpt(key, MAX_UNKNOWN_TYPE_CHARS2));
-    const shapes = facts.unknownLines ?? [];
-    const signature = keys.join(",");
-    const known = shapes.find((shape) => shape.type === type && shape.keys.join(",") === signature);
-    if (known) {
-      known.count++;
-    } else {
-      shapes.push({ type, keys, count: 1 });
-    }
-    facts.unknownLines = shapes;
-  }
-};
+import { readdir as readdir7, stat as stat7 } from "node:fs/promises";
+import { basename as basename4, join as join12, relative as relative6, sep as sep3 } from "node:path";
 
 // src/Providers/Codex/Utils/CodexPathUtil.ts
-import { homedir as homedir4 } from "node:os";
-import { join as join8 } from "node:path";
+import { homedir as homedir5 } from "node:os";
+import { join as join11 } from "node:path";
 var CodexPathUtil = class {
   static homeDir() {
-    return EnvUtil.read("HARNESS_LEDGER_CODEX_HOME") ?? EnvUtil.read("CODEX_HOME") ?? join8(homedir4(), ".codex");
+    return EnvUtil.read("HARNESS_LEDGER_CODEX_HOME") ?? EnvUtil.read("CODEX_HOME") ?? join11(homedir5(), ".codex");
   }
   static userAgentsDir(userHome) {
-    return EnvUtil.read("HARNESS_LEDGER_CODEX_AGENTS_HOME") ?? join8(userHome, ".agents");
+    return EnvUtil.read("HARNESS_LEDGER_CODEX_AGENTS_HOME") ?? join11(userHome, ".agents");
   }
   static sessionsDir(homeDir) {
-    return join8(homeDir, "sessions");
+    return join11(homeDir, "sessions");
   }
 };
 
@@ -5244,7 +5710,7 @@ var CodexTranscriptUtil = class _CodexTranscriptUtil {
 var ROLLOUT_PREFIX = "rollout-";
 var ROLLOUT_EXTENSION = ".jsonl";
 var UNKNOWN_SUBAGENT_TYPE4 = "subagent";
-var MAX_PROMPT_CHARS2 = 2e3;
+var MAX_PROMPT_CHARS3 = 2e3;
 var MAX_UNKNOWN_TYPE_CHARS3 = 60;
 var INTERRUPTION_TEXT = "[Request interrupted by user]";
 var MCP_TOOL_PREFIX = "mcp__";
@@ -5281,7 +5747,7 @@ var commandOf = (input) => {
   const script = isShellWrapper ? asList.at(-1) : void 0;
   return GuardUtil.asString(command) ?? script ?? (asList.length ? asList.join(" ") : void 0);
 };
-var describeShell = (input) => {
+var describeShell2 = (input) => {
   const command = commandOf(input) ?? "";
   return {
     key: NormalizeUtil.commandKey(command),
@@ -5295,7 +5761,7 @@ var describePatch = (_input, rawInput) => ({
   summary: "apply_patch",
   filePath: PATCH_FILE_PATTERN.exec(rawInput ?? "")?.[1]
 });
-var describePlan = () => ({ key: "update_plan", category: "plan", summary: "update_plan" });
+var describePlan2 = () => ({ key: "update_plan", category: "plan", summary: "update_plan" });
 var describeSpawn = (input) => {
   const subagentType = GuardUtil.asString(input.agent_type) ?? "default";
   const message = GuardUtil.asString(input.message);
@@ -5307,13 +5773,13 @@ var describeSpawn = (input) => {
     subagentType
   };
 };
-var NAME_TO_DESCRIBER = {
-  exec_command: describeShell,
-  shell_command: describeShell,
-  shell: describeShell,
-  local_shell: describeShell,
+var NAME_TO_DESCRIBER2 = {
+  exec_command: describeShell2,
+  shell_command: describeShell2,
+  shell: describeShell2,
+  local_shell: describeShell2,
   apply_patch: describePatch,
-  update_plan: describePlan,
+  update_plan: describePlan2,
   spawn_agent: describeSpawn
 };
 var RESULT_KIND_TO_IS_ERROR = {
@@ -5469,12 +5935,12 @@ var CodexSessionService = class {
   }
   async listRollouts() {
     const sessionsDir = CodexPathUtil.sessionsDir(this.homeDir);
-    const names = await readdir5(sessionsDir, { recursive: true }).catch(() => []);
+    const names = await readdir7(sessionsDir, { recursive: true }).catch(() => []);
     const files = names.filter((name) => basename4(name).startsWith(ROLLOUT_PREFIX) && name.endsWith(ROLLOUT_EXTENSION));
     const entries = [];
     for (const name of files) {
-      const file = join9(sessionsDir, name);
-      const fileStat = await stat6(file).catch(() => void 0);
+      const file = join12(sessionsDir, name);
+      const fileStat = await stat7(file).catch(() => void 0);
       if (fileStat?.isFile()) {
         entries.push({
           file,
@@ -5490,8 +5956,8 @@ var CodexSessionService = class {
     if (cwd === void 0) {
       return false;
     }
-    const path = relative5(projectDir, cwd);
-    return path === "" || !path.startsWith("..") && !path.startsWith(sep2) && !/^[A-Za-z]:/.test(path);
+    const path = relative6(projectDir, cwd);
+    return path === "" || !path.startsWith("..") && !path.startsWith(sep3) && !/^[A-Za-z]:/.test(path);
   }
   idFromFileName(file) {
     return basename4(file, ROLLOUT_EXTENSION).slice(ROLLOUT_PREFIX.length);
@@ -5599,7 +6065,7 @@ var CodexSessionService = class {
   addPrompt(context, line, text, isInterruption) {
     context.openMessage = void 0;
     context.facts.prompts.push({
-      text: RedactUtil.redact(text.slice(0, MAX_PROMPT_CHARS2)),
+      text: RedactUtil.redact(text.slice(0, MAX_PROMPT_CHARS3)),
       ref: this.evidenceFactory(context, line)(text),
       sentAtMs: line.occurredAtMs,
       isCorrection: !isInterruption && NormalizeUtil.isCorrection(text),
@@ -5652,7 +6118,7 @@ var CodexSessionService = class {
   }
   describeTool(name, rawInput) {
     const input = CodexTranscriptUtil.argumentsOf(rawInput);
-    const describer = Object.hasOwn(NAME_TO_DESCRIBER, name) ? NAME_TO_DESCRIBER[name] : void 0;
+    const describer = Object.hasOwn(NAME_TO_DESCRIBER2, name) ? NAME_TO_DESCRIBER2[name] : void 0;
     if (describer) {
       return describer(input, GuardUtil.asString(rawInput));
     }
@@ -5751,8 +6217,8 @@ var CodexProviderAdapter = class extends BaseProviderAdapter {
     return this.sessionService().parseSession(transcript, options);
   }
   async takeInventory(options) {
-    const userAgentsDir = CodexPathUtil.userAgentsDir(homedir5());
-    const userSkillsDir = join10(userAgentsDir, "skills");
+    const userAgentsDir = CodexPathUtil.userAgentsDir(homedir6());
+    const userSkillsDir = join13(userAgentsDir, "skills");
     const inventoryService = new CodexInventoryService(this.paths().homeDir, userSkillsDir);
     return inventoryService.takeInventory(options);
   }
@@ -5765,8 +6231,8 @@ var CodexProviderAdapter = class extends BaseProviderAdapter {
 };
 
 // src/Providers/Cursor/Services/CursorInventoryService.ts
-import { readdir as readdir6, readFile as readFile8 } from "node:fs/promises";
-import { basename as basename5, join as join11 } from "node:path";
+import { readdir as readdir8, readFile as readFile9 } from "node:fs/promises";
+import { basename as basename5, join as join14 } from "node:path";
 var RULE_EXTENSIONS = [".mdc", ".md"];
 var CursorInventoryService = class {
   constructor(homeDir) {
@@ -5775,7 +6241,7 @@ var CursorInventoryService = class {
   async takeInventory(options) {
     const { projectDir } = options;
     const agentsMd = PieceFileUtil.fromFile({
-      file: join11(projectDir, "AGENTS.md"),
+      file: join14(projectDir, "AGENTS.md"),
       kind: "instructions",
       name: "AGENTS.md",
       scope: "project",
@@ -5783,18 +6249,18 @@ var CursorInventoryService = class {
     });
     const pieces = await PieceFileUtil.settled([agentsMd]);
     const scopeToFolder = {
-      project: join11(projectDir, ".cursor"),
+      project: join14(projectDir, ".cursor"),
       user: this.homeDir
     };
     const scopes = options.isProjectOnly ? ["project"] : ["project", "user"];
     for (const scope of scopes) {
       const folder = scopeToFolder[scope];
       pieces.push(
-        ...await this.folderPieces(join11(folder, "rules"), "instructions", scope, projectDir, RULE_EXTENSIONS),
-        ...await this.folderPieces(join11(folder, "commands"), "command", scope, projectDir, [".md"]),
-        ...await this.folderPieces(join11(folder, "agents"), "agent", scope, projectDir, [".md"]),
-        ...await this.skillPieces(join11(folder, "skills"), scope, projectDir),
-        ...await this.mcpPieces(join11(folder, "mcp.json"), scope, projectDir)
+        ...await this.folderPieces(join14(folder, "rules"), "instructions", scope, projectDir, RULE_EXTENSIONS),
+        ...await this.folderPieces(join14(folder, "commands"), "command", scope, projectDir, [".md"]),
+        ...await this.folderPieces(join14(folder, "agents"), "agent", scope, projectDir, [".md"]),
+        ...await this.skillPieces(join14(folder, "skills"), scope, projectDir),
+        ...await this.mcpPieces(join14(folder, "mcp.json"), scope, projectDir)
       );
     }
     const uniquePieces = PieceFileUtil.withUniqueIds(pieces);
@@ -5809,19 +6275,19 @@ var CursorInventoryService = class {
     };
   }
   async folderPieces(folder, kind, scope, projectDir, extensions) {
-    const allNames = await readdir6(folder).catch(() => []);
+    const allNames = await readdir8(folder).catch(() => []);
     const names = allNames.filter((name) => extensions.some((extension) => name.endsWith(extension)));
     return PieceFileUtil.settled(names.map(async (fileName) => {
       const name = basename5(fileName).replace(/\.[^.]+$/, "");
-      return PieceFileUtil.fromFile({ file: join11(folder, fileName), kind, name, scope, projectDir });
+      return PieceFileUtil.fromFile({ file: join14(folder, fileName), kind, name, scope, projectDir });
     }));
   }
   async skillPieces(skillsDir, scope, projectDir) {
-    const folders = await readdir6(skillsDir).catch(() => []);
-    return PieceFileUtil.settled(folders.map(async (name) => PieceFileUtil.fromFile({ file: join11(skillsDir, name, "SKILL.md"), kind: "skill", name, scope, projectDir })));
+    const folders = await readdir8(skillsDir).catch(() => []);
+    return PieceFileUtil.settled(folders.map(async (name) => PieceFileUtil.fromFile({ file: join14(skillsDir, name, "SKILL.md"), kind: "skill", name, scope, projectDir })));
   }
   async mcpPieces(file, scope, projectDir) {
-    const text = await readFile8(file, "utf8").catch(() => void 0);
+    const text = await readFile9(file, "utf8").catch(() => void 0);
     const config = GuardUtil.asRecord(text === void 0 ? void 0 : GuardUtil.parseJson(text));
     const servers = GuardUtil.asRecord(config?.mcpServers) ?? {};
     return Object.keys(servers).map((name) => PieceFileUtil.mcpPiece({ name, file, scope, projectDir }));
@@ -5829,18 +6295,18 @@ var CursorInventoryService = class {
 };
 
 // src/Providers/Cursor/Services/CursorSessionService.ts
-import { readdir as readdir7, stat as stat7 } from "node:fs/promises";
-import { basename as basename6, dirname as dirname2, join as join13, sep as sep3 } from "node:path";
+import { readdir as readdir9, stat as stat8 } from "node:fs/promises";
+import { basename as basename6, dirname as dirname2, join as join16, sep as sep4 } from "node:path";
 
 // src/Providers/Cursor/Utils/CursorPathUtil.ts
-import { homedir as homedir6 } from "node:os";
-import { join as join12 } from "node:path";
+import { homedir as homedir7 } from "node:os";
+import { join as join15 } from "node:path";
 var CursorPathUtil = class {
   static homeDir() {
-    return EnvUtil.read("HARNESS_LEDGER_CURSOR_HOME") ?? join12(homedir6(), ".cursor");
+    return EnvUtil.read("HARNESS_LEDGER_CURSOR_HOME") ?? join15(homedir7(), ".cursor");
   }
   static projectsDir(homeDir) {
-    return join12(homeDir, "projects");
+    return join15(homeDir, "projects");
   }
   static encodeProjectDir(projectDir) {
     return projectDir.split(/[^a-zA-Z0-9]/).filter((part) => part !== "").join("-");
@@ -5851,31 +6317,31 @@ var CursorPathUtil = class {
 var TRANSCRIPTS_FOLDER = "agent-transcripts";
 var SUBAGENTS_FOLDER = "subagents";
 var TRANSCRIPT_EXTENSION2 = ".jsonl";
-var MAX_PROMPT_CHARS3 = 2e3;
+var MAX_PROMPT_CHARS4 = 2e3;
 var UNKNOWN_SUBAGENT_TYPE5 = "subagent";
 var USER_QUERY_PATTERN = /<user_query>([\s\S]*?)<\/user_query>/;
 var PATCH_FILE_PATTERN2 = /^\*\*\* (?:Update|Add|Delete) File: (.+)$/m;
-var MAX_NAME_CHARS2 = 60;
+var MAX_NAME_CHARS3 = 60;
 var TURN_ROW_TYPES = /* @__PURE__ */ new Set(["turn_ended"]);
 var pathOf = (input) => GuardUtil.firstString(input, ["path", "target_notebook", "file_path"]);
-var describeRead = (input) => ({ key: "Read", category: "read", summary: pathOf(input) ?? "Read", filePath: pathOf(input) });
-var describeEdit = (input) => ({ key: "Edit", category: "edit", summary: pathOf(input) ?? "Edit", filePath: pathOf(input) });
+var describeRead2 = (input) => ({ key: "Read", category: "read", summary: pathOf(input) ?? "Read", filePath: pathOf(input) });
+var describeEdit2 = (input) => ({ key: "Edit", category: "edit", summary: pathOf(input) ?? "Edit", filePath: pathOf(input) });
 var describePatch2 = (_input, rawInput) => ({
   key: "Edit",
   category: "edit",
   summary: "ApplyPatch",
   filePath: PATCH_FILE_PATTERN2.exec(GuardUtil.asString(rawInput) ?? "")?.[1]
 });
-var describeSearch = (input) => ({
+var describeSearch2 = (input) => ({
   key: "Search",
   category: "search",
   summary: GuardUtil.firstString(input, ["pattern", "glob_pattern", "query", "search_term", "url"]) ?? "Search"
 });
-var describeShell2 = (input) => {
+var describeShell3 = (input) => {
   const command = GuardUtil.asString(input.command) ?? "";
   return { key: NormalizeUtil.commandKey(command), category: "shell", summary: command };
 };
-var describePlan2 = () => ({ key: "Plan", category: "plan", summary: "Plan" });
+var describePlan3 = () => ({ key: "Plan", category: "plan", summary: "Plan" });
 var describeSubagent = (input) => {
   const subagentType = GuardUtil.asString(input.subagent_type) ?? "generalPurpose";
   const prompt = GuardUtil.asString(input.prompt);
@@ -5892,23 +6358,23 @@ var describeMcp = (input) => {
   return { key: server, category: "mcp", summary: `${server}:${GuardUtil.asString(input.toolName) ?? ""}` };
 };
 var TOOL_NAME_TO_DESCRIBER2 = /* @__PURE__ */ new Map([
-  ["Read", describeRead],
-  ["ReadFile", describeRead],
-  ["StrReplace", describeEdit],
-  ["Write", describeEdit],
-  ["Delete", describeEdit],
-  ["EditNotebook", describeEdit],
+  ["Read", describeRead2],
+  ["ReadFile", describeRead2],
+  ["StrReplace", describeEdit2],
+  ["Write", describeEdit2],
+  ["Delete", describeEdit2],
+  ["EditNotebook", describeEdit2],
   ["ApplyPatch", describePatch2],
-  ["Grep", describeSearch],
-  ["rg", describeSearch],
-  ["Glob", describeSearch],
-  ["SemanticSearch", describeSearch],
-  ["WebSearch", describeSearch],
-  ["WebFetch", describeSearch],
-  ["Shell", describeShell2],
-  ["TodoWrite", describePlan2],
-  ["CreatePlan", describePlan2],
-  ["SwitchMode", describePlan2],
+  ["Grep", describeSearch2],
+  ["rg", describeSearch2],
+  ["Glob", describeSearch2],
+  ["SemanticSearch", describeSearch2],
+  ["WebSearch", describeSearch2],
+  ["WebFetch", describeSearch2],
+  ["Shell", describeShell3],
+  ["TodoWrite", describePlan3],
+  ["CreatePlan", describePlan3],
+  ["SwitchMode", describePlan3],
   ["Task", describeSubagent],
   ["Subagent", describeSubagent],
   ["CallMcpTool", describeMcp]
@@ -5927,7 +6393,7 @@ var CursorSessionService = class {
   };
   async discoverTranscripts(options) {
     const projectsDir = CursorPathUtil.projectsDir(this.homeDir);
-    const folders = await readdir7(projectsDir).catch(() => []);
+    const folders = await readdir9(projectsDir).catch(() => []);
     const encodedProject = CursorPathUtil.encodeProjectDir(options.projectDir);
     const isCandidate = (folder) => folder === encodedProject || folder.startsWith(`${encodedProject}-`);
     const entries = [];
@@ -5986,16 +6452,16 @@ var CursorSessionService = class {
     return facts;
   }
   async listTranscripts(projectsDir, folder) {
-    const root = join13(projectsDir, folder, TRANSCRIPTS_FOLDER);
-    const names = await readdir7(root, { recursive: true }).catch(() => []);
+    const root = join16(projectsDir, folder, TRANSCRIPTS_FOLDER);
+    const names = await readdir9(root, { recursive: true }).catch(() => []);
     const entries = [];
     for (const name of names.filter((candidate) => candidate.endsWith(TRANSCRIPT_EXTENSION2))) {
-      const transcriptFile = join13(root, name);
-      const fileStat = await stat7(transcriptFile).catch(() => void 0);
+      const transcriptFile = join16(root, name);
+      const fileStat = await stat8(transcriptFile).catch(() => void 0);
       if (!fileStat?.isFile()) {
         continue;
       }
-      const parts = name.split(sep3);
+      const parts = name.split(sep4);
       const isSubagent = parts.includes(SUBAGENTS_FOLDER);
       const parentFolder = dirname2(dirname2(name));
       entries.push({
@@ -6061,7 +6527,7 @@ var CursorSessionService = class {
       return;
     }
     context.facts.prompts.push({
-      text: RedactUtil.redact(query.slice(0, MAX_PROMPT_CHARS3)),
+      text: RedactUtil.redact(query.slice(0, MAX_PROMPT_CHARS4)),
       ref: this.evidence(context, lineNumber, query),
       isCorrection: NormalizeUtil.isCorrection(query),
       isInterruption: false
@@ -6096,7 +6562,7 @@ var CursorSessionService = class {
     return {
       ...description,
       id,
-      name: RedactUtil.excerpt(name, MAX_NAME_CHARS2),
+      name: RedactUtil.excerpt(name, MAX_NAME_CHARS3),
       key: RedactUtil.redact(description.key),
       summary,
       thread: context.currentThread,
@@ -6106,7 +6572,7 @@ var CursorSessionService = class {
   }
   handleError(context, record, lineNumber) {
     context.facts.apiErrors.push({
-      code: RedactUtil.excerpt(GuardUtil.asString(record.error) ?? "unknown", MAX_NAME_CHARS2),
+      code: RedactUtil.excerpt(GuardUtil.asString(record.error) ?? "unknown", MAX_NAME_CHARS3),
       thread: context.currentThread,
       ref: this.evidence(context, lineNumber, GuardUtil.asString(record.status))
     });
@@ -6143,7 +6609,8 @@ var ProviderModule = class _ProviderModule {
   static TYPE_TO_FACTORY = {
     "claude-code": () => new ClaudeCodeProviderAdapter(),
     "codex": () => new CodexProviderAdapter(),
-    "cursor": () => new CursorProviderAdapter()
+    "cursor": () => new CursorProviderAdapter(),
+    "antigravity": () => new AntigravityProviderAdapter()
   };
   static create(type = _ProviderModule.DEFAULT_PROVIDER) {
     return _ProviderModule.TYPE_TO_FACTORY[type]();
@@ -6245,8 +6712,8 @@ var ConfigService = class _ConfigService {
 import { cpus } from "node:os";
 
 // src/Shared/Services/StoreService.ts
-import { mkdir, readFile as readFile9, rename, writeFile } from "node:fs/promises";
-import { dirname as dirname3, join as join14 } from "node:path";
+import { mkdir, readFile as readFile10, rename, writeFile } from "node:fs/promises";
+import { dirname as dirname3, join as join17 } from "node:path";
 var DATA_DIR_NAME = ".harness-ledger";
 var JSON_INDENT = 2;
 var FACTS_CACHE_FILE = "cache/facts.json";
@@ -6259,14 +6726,14 @@ var StoreService = class _StoreService {
   // Why: bump when the parser's output shape changes, so cached facts are re-parsed.
   static FACTS_VERSION = 5;
   static forProject(projectDir, dataDir) {
-    return new _StoreService(dataDir ?? join14(projectDir, DATA_DIR_NAME));
+    return new _StoreService(dataDir ?? join17(projectDir, DATA_DIR_NAME));
   }
   async readJson(relativePath) {
-    const text = await readFile9(join14(this.root, relativePath), "utf8").catch(() => void 0);
+    const text = await readFile10(join17(this.root, relativePath), "utf8").catch(() => void 0);
     return text === void 0 ? void 0 : GuardUtil.parseJson(text);
   }
   async writeJson(relativePath, value, shouldIndent = true) {
-    const file = join14(this.root, relativePath);
+    const file = join17(this.root, relativePath);
     await mkdir(dirname3(file), { recursive: true });
     const temporaryFile = `${file}.${process.pid}.tmp`;
     const serialized = JSON.stringify(value, null, shouldIndent ? JSON_INDENT : 0);
@@ -7093,7 +7560,7 @@ Output is JSON on stdout. Nothing leaves your machine.`;
     });
   }
   async addSuggestions({ values, common }) {
-    const rawJson = values.file ? await readFile10(values.file, "utf8") : await this.readStdin();
+    const rawJson = values.file ? await readFile11(values.file, "utf8") : await this.readStdin();
     const items = GuardUtil.parseJson(rawJson);
     if (items === void 0) {
       throw new Error("Suggestions must be valid JSON.");
