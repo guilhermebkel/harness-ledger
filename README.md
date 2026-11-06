@@ -8,7 +8,7 @@
 <p align="center">
   <strong>Every piece of your coding agent's harness, with what it costs you and the receipts.</strong>
   <br />
-  <em>Reads the sessions your agent already saves, names the piece behind each problem, and checks whether the fix worked. Works with Claude Code, Codex and Cursor.</em>
+  <em>Reads the sessions your agent already saves, names the piece behind each problem, and checks whether the fix worked. Works with Claude Code, Codex, Cursor and Antigravity.</em>
 </p>
 
 <p align="center">
@@ -80,11 +80,11 @@ Accept a suggestion and later runs compare the piece before and after the change
 npx skills add guilhermebkel/harness-ledger -g
 ```
 
-The [`skills`](https://github.com/vercel-labs/skills) CLI asks which of your agents (Claude Code, Codex, Cursor) should get the skill. Name them to skip the question (`-a claude-code -a codex -a cursor`), or drop `-g` to install only in the current project. The skill carries its own script, so there is nothing else to install. Running the script needs Node.js 20+. Update later with `npx skills update`.
+The [`skills`](https://github.com/vercel-labs/skills) CLI asks which of your agents (Claude Code, Codex, Cursor, Antigravity) should get the skill. Name them to skip the question (`-a claude-code -a codex -a cursor -a antigravity`), or drop `-g` to install only in the current project. The skill carries its own script, so there is nothing else to install. Running the script needs Node.js 20+. Update later with `npx skills update`.
 
 ### 2. Analyze your sessions
 
-Open your agent in the project, pick its strongest reasoning model, and run the skill, the same way in Claude Code, Codex and Cursor:
+Open your agent in the project, pick its strongest reasoning model, and run the skill, the same way in Claude Code, Codex, Cursor and Antigravity:
 
 ```text
 /audit-harness
@@ -203,8 +203,9 @@ To see what a run of the skill cost you, look at its own row the next time you a
 | Claude Code | ✅ Supported |
 | Codex | ✅ Supported. Cost is partial: some token counts are not recorded |
 | Cursor | ✅ Supported. Cost is partial: transcripts record no tokens, tool results, model or times, so failure signals that need a result don't appear |
+| Antigravity | ✅ Supported. Cost is partial: token counts and active time are recorded, but pricing is unestimated; tool results and settings inspection are omitted. Project association relies on `history.jsonl` and `last_conversations.json`, which map workspaces to conversations: older sessions or sessions without a recorded workspace are omitted when filtering by project, but included with `--all-projects` |
 
-Point the script at another agent with `--provider codex` or `--provider cursor`. `HARNESS_LEDGER_CODEX_HOME` and `HARNESS_LEDGER_CURSOR_HOME` relocate their folders (`~/.codex`, `~/.cursor`) when yours live elsewhere.
+Point the script at another agent with `--provider codex`, `--provider cursor` or `--provider antigravity`. `HARNESS_LEDGER_CODEX_HOME`, `HARNESS_LEDGER_CURSOR_HOME` and `HARNESS_LEDGER_ANTIGRAVITY_HOME` relocate their folders (`~/.codex`, `~/.cursor`, `~/.gemini/antigravity-cli`) when yours live elsewhere.
 
 Each agent is a provider: one folder that reads its own transcripts and settings into a shared model. Want yours? [`docs/adding-a-provider.md`](docs/adding-a-provider.md) walks through it.
 
@@ -213,7 +214,7 @@ Each agent is a provider: one folder that reads its own transcripts and settings
 - **Everything runs locally.** Transcripts are read in place, never copied, never sent. Only derived, redacted findings are stored, in `.harness-ledger/`.
 - **Secrets stay out.** Every string that can reach a report goes through redaction. Hooks and MCP servers are kept as names and shapes, never their commands, arguments or env values.
 - **No telemetry.** When the script meets something it can't map (a new transcript format, a model with no price), the report offers a link to a prefilled GitHub issue holding only names and counts. You read it and decide whether to send it.
-- **Your retention, untouched.** Claude Code deletes transcripts older than 30 days by default; Codex and Cursor keep theirs. The skill tells you how much history you have and never changes that setting.
+- **Your retention, untouched.** Claude Code deletes transcripts older than 30 days by default; Codex, Cursor and Antigravity keep theirs. The skill tells you how much history you have and never changes that setting.
 
 Found a way around any of this? See [SECURITY.md](SECURITY.md).
 

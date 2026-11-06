@@ -65,3 +65,4 @@ Every evidence line carries the cost of its occurrence (`evidence[].cost`, unrou
 ## Before and after
 
 `compare` reports per piece: error rate, corrections per session, active minutes, input and output tokens, money per invocation, and `recoveryMinutesPerInvocation` (time in failure chains). Corrections and chains count only when the piece was running (its turn, or the failing call); global pieces (instructions, hooks, settings) answer for all of them. Token and recovery moves are reported but don't vote in the verdict: tokens are already in money, recovery time is already in active time.
+

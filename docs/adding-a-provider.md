@@ -1,6 +1,6 @@
 # Adding a provider
 
-How to add support for another agentic coding tool (a provider, see `GLOSSARY.md`) such as Codex or Cursor (both already added, so their folders are good examples). The layout and its rules are in ADR 0008; planned work is in GitHub issues. Follow the steps in order: each one gives the next one its input.
+How to add support for another agentic coding tool (a provider, see `GLOSSARY.md`) such as Codex, Cursor or Antigravity (already added, so their folders are good examples). The layout and its rules are in ADR 0008; planned work is in GitHub issues. Follow the steps in order: each one gives the next one its input.
 
 ## 1. Find where the provider keeps its sessions
 
@@ -16,8 +16,8 @@ find ~ -newer /tmp/harness-ledger-marker -type f 2>/dev/null \
 Note for the provider:
 
 - The folder of session files and how it's organized (per project, per date, one file per session).
-- The format: JSONL (one event per line, like Claude Code and Codex) or something else. Treat an editor database (SQLite) as a last resort: read it only from a copy, never the original, which the editor keeps open (issue #4).
-- How a session says which project it belongs to (a folder name, or a working directory recorded inside it).
+- The format: JSONL (one event per line, like Claude Code, Codex and Antigravity) or something else. Treat an editor database (SQLite) as a last resort: read it only from a copy, never the original, which the editor keeps open (issue #4).
+- How a session says which project it belongs to (a folder name, or a working directory recorded inside it). In Antigravity, sessions in `brain/` are mapped to workspaces through `history.jsonl` and `cache/last_conversations.json`. Because these maps are sparse and can omit older sessions, filtering by project leaves out unassociated or orphan sessions to avoid arbitrary misattribution; passing `--all-projects` discovers all sessions including orphans.
 - Where subagent runs are stored, if the provider has subagents.
 - The environment variable that relocates the provider's home, if any. The adapter honors it, and also gets an `HARNESS_LEDGER_<PROVIDER>_HOME` override for tests (see `ClaudeCodePathUtil`).
 - The harness: instruction files, skills, agents or modes, commands, hooks, MCP servers, plugins, settings and retention.

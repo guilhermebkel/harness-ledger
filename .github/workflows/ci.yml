@@ -39,7 +39,7 @@ jobs:
           mkdir -p skills/audit-harness/scripts
           cp dist/harness-ledger.mjs skills/audit-harness/scripts/harness-ledger.mjs
           WORK=$(mktemp -d)
-          (cd "$WORK" && npx --yes skills@1.7.4 add "$GITHUB_WORKSPACE" -a claude-code -a codex -a cursor --copy -y)
+          (cd "$WORK" && npx --yes skills@1.7.4 add "$GITHUB_WORKSPACE" -a claude-code -a codex -a cursor -a antigravity --copy -y)
           for dir in .agents/skills .claude/skills; do
             node "$WORK/$dir/audit-harness/scripts/harness-ledger.mjs" --help > /dev/null
             test -f "$WORK/$dir/audit-harness/references/findings.md"

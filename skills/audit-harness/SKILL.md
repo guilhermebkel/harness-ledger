@@ -22,7 +22,7 @@ All data comes from the bundled script, `scripts/harness-ledger.mjs` inside this
 node "<this skill's folder>/scripts/harness-ledger.mjs" <command> --provider <type> [options]
 ```
 
-`<type>` is the agent you are running in: `claude-code`, `codex` or `cursor`. Pass it on every command, so the script reads that agent's sessions.
+`<type>` is the agent you are running in: `claude-code`, `codex`, `cursor` or `antigravity`. Pass it on every command, so the script reads that agent's sessions.
 
 It needs Node.js 20+. If `node` is missing or older, look for a newer one the person already has (`nvm`, `fnm`, `volta`, `mise`, or `~/.nvm/versions/node/*/bin/node`), use it and say which in one line; stop only if there is none. It reads transcripts in place, prints JSON, and writes only to `.harness-ledger/` in the project.
 
@@ -104,7 +104,7 @@ If `.harness-ledger/` is not in `.gitignore` and the project is a git repo, ask 
 Only when the user explicitly asks for a specific suggestion. Then:
 
 1. Show the exact change (a diff or the new text) and the file it touches, and wait for a yes.
-2. Only edit harness files: the instruction files (`CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`), files under the agent's project folder (`.claude/`, `.codex/`, `.cursor/`, `.agents/`: agents, skills, commands, rules, hooks and permissions), and `.mcp.json`. User-level files under the agent's home folder (`~/.claude/`, `~/.codex/`, `~/.cursor/`) only when the user names them. Never edit plugin files (they're overwritten on update; suggest the change to the plugin's author instead), application code, or retention settings.
+2. Only edit harness files: the instruction files (`CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`), files under the agent's project folder (`.claude/`, `.codex/`, `.cursor/`, `.agents/`: agents, skills, commands, rules, hooks and permissions), and `.mcp.json`. User-level files under the agent's home folder (`~/.claude/`, `~/.codex/`, `~/.cursor/`, `~/.gemini/antigravity-cli/`) only when the user names them. Never edit plugin files (they're overwritten on update; suggest the change to the plugin's author instead), application code, or retention settings.
 3. Prefer the smallest change that fixes the cause. For "Rule exists, but is ignored", that is a hook, a script or a permission rule — not more text.
 4. After editing, run `suggestions set <id> applied`. Tell the user that running the comparison after a few more sessions (at least the configured minimum per side) will show whether it helped.
 5. If the project is a git repo, offer to commit the change on a branch; don't commit or push unless asked.
